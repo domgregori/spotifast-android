@@ -19,3 +19,4 @@ pub mod paths;
 pub mod proxy;
 pub mod resample;
 pub mod settings;
+pub mod util;
