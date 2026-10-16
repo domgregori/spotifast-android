@@ -6,6 +6,7 @@ use crate::api::models::{Artist, PlayableItem, pick_image};
 use crate::app::App;
 use crate::i18n::{gettext, ngettext, pgettext};
 use crate::model::{Action, DiscographyFilter, Loadable, Page, RowContext};
+use crate::model_ext::DiscographyFilterExt;
 use crate::theme::{self, Icon};
 use crate::util;
 

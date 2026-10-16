@@ -694,19 +694,6 @@ impl SearchFilter {
         Self::Podcasts,
         Self::Episodes,
     ];
-
-    pub fn label(self, locale: crate::i18n::Locale) -> std::borrow::Cow<'static, str> {
-        use crate::i18n::{gettext, pgettext};
-        match self {
-            Self::All => pgettext(locale, "filter", "All"),
-            Self::Songs => gettext(locale, "Songs"),
-            Self::Artists => gettext(locale, "Artists"),
-            Self::Albums => gettext(locale, "Albums"),
-            Self::Playlists => gettext(locale, "Playlists"),
-            Self::Podcasts => gettext(locale, "Podcasts"),
-            Self::Episodes => gettext(locale, "Episodes"),
-        }
-    }
 }
 
 #[derive(Default)]
@@ -821,16 +808,6 @@ pub enum DiscographyFilter {
 impl DiscographyFilter {
     pub const ALL: [DiscographyFilter; 4] =
         [Self::All, Self::Albums, Self::Singles, Self::AppearsOn];
-
-    pub fn label(self, locale: crate::i18n::Locale) -> std::borrow::Cow<'static, str> {
-        use crate::i18n::{gettext, pgettext};
-        match self {
-            Self::All => pgettext(locale, "filter", "All"),
-            Self::Albums => gettext(locale, "Albums"),
-            Self::Singles => gettext(locale, "Singles & EPs"),
-            Self::AppearsOn => gettext(locale, "Appears On"),
-        }
-    }
 
     pub fn groups(self) -> &'static str {
         match self {
@@ -1062,7 +1039,7 @@ pub enum Action {
     ToggleShuffle,
     CycleRepeat,
     SetShuffle(bool),
-    SetRepeat(crate::player::RepeatMode),
+    SetRepeat(crate::repeat::RepeatMode),
     AddToQueue {
         uri: String,
         label: String,
@@ -1074,7 +1051,7 @@ pub enum Action {
     },
     /// Move a row within the manually queued "Playing next" section, from a
     /// drag dropped back on the queue. Only applied while the local player
-    /// is the active target; see [`crate::app::App::queue_locally_reorderable`].
+    /// is the active target; see `App::queue_locally_reorderable`.
     MoveInQueue {
         from: usize,
         to: usize,
@@ -1089,7 +1066,7 @@ pub enum Action {
     /// Take rows out of the manually queued "Playing next" section, each
     /// named by its index in the queue and the song it holds there. Only
     /// applied while the local player is the active target; see
-    /// [`crate::app::App::queue_locally_reorderable`].
+    /// `App::queue_locally_reorderable`.
     RemoveFromQueue {
         rows: Vec<(usize, String)>,
     },

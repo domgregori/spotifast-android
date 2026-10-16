@@ -18,6 +18,7 @@ pub mod link;
 pub mod locale;
 pub mod lyrics;
 pub mod made_for_you;
+pub mod model;
 pub mod now_playing;
 pub mod paths;
 pub mod playlist_cover;

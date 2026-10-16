@@ -8,6 +8,7 @@ use crate::api::models::{Artist, ArtistRef, PlayableItem, SearchResults, pick_im
 use crate::app::App;
 use crate::i18n::gettext;
 use crate::model::{Action, Loadable, Page, RowContext, SearchFilter};
+use crate::model_ext::SearchFilterExt;
 use crate::theme::{self, Icon};
 
 use super::widgets::{self, TrackRow};

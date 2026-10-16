@@ -25912,6 +25912,7 @@ mod tests {
     /// New snapshot fields are appended so older clients keep working.
     #[test]
     fn the_snapshot_appends_what_a_key_needs_without_moving_what_was_there() {
+        use crate::api::models::ArtistRef;
         // #given
         let mut app = headless_app();
         app.handle_local(LocalState {

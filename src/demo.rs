@@ -5547,6 +5547,7 @@ mod tests {
 
     #[test]
     fn search_shelves_and_filtered_grids_open_item_menus() {
+        use crate::model_ext::SearchFilterExt;
         for (filter, title, uri, labels) in [
             (
                 SearchFilter::Artists,
