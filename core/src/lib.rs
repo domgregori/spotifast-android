@@ -14,3 +14,4 @@ pub mod locale;
 pub mod lyrics;
 pub mod paths;
 pub mod resample;
+pub mod settings;

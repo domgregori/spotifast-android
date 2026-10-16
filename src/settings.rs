@@ -4,163 +4,41 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
-/// Local Library identity only. Never sent to Spotify as a context URI.
-pub const LIKED_SONGS_KEY: &str = "spotifast:liked-songs";
+pub use spotifast_core::settings::{
+    HomeSettings, HomeShelfSettings, LanguageChoice, LibraryShelf, LibrarySort, LIKED_SONGS_KEY,
+    PlayerBarVis, ThemeChoice, VisMode,
+};
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum LibraryShelf {
-    #[default]
-    Playlists,
-    Albums,
-    Artists,
-    Podcasts,
+/// Desktop-only labels for the portable theme choice.
+pub trait ThemeChoiceExt: Sized {
+    const ALL: [ThemeChoice; 3];
+    fn label(self, locale: crate::i18n::Locale) -> std::borrow::Cow<'static, str>;
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum LibrarySort {
-    Library,
-    RecentlyPlayed,
-    Name,
-    RecentlyAdded,
-    Local,
-    Spotify,
-}
+impl ThemeChoiceExt for ThemeChoice {
+    const ALL: [ThemeChoice; 3] = [ThemeChoice::System, ThemeChoice::Light, ThemeChoice::Dark];
 
-impl LibrarySort {
-    pub fn supports(self, shelf: LibraryShelf) -> bool {
-        match self {
-            Self::RecentlyPlayed | Self::Name | Self::Library => true,
-            Self::RecentlyAdded => matches!(shelf, LibraryShelf::Albums | LibraryShelf::Podcasts),
-            Self::Local | Self::Spotify => shelf == LibraryShelf::Playlists,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ThemeChoice {
-    Dark,
-    Light,
-    #[default]
-    System,
-}
-
-/// Whether a Home shelf is drawn. Hidden shelves still refresh normally.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct HomeShelfSettings {
-    pub visible: bool,
-}
-
-impl Default for HomeShelfSettings {
-    fn default() -> Self {
-        Self { visible: true }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(default)]
-pub struct HomeSettings {
-    pub made_for_you: HomeShelfSettings,
-    pub recommendations: HomeShelfSettings,
-}
-
-/// What moves behind the player bar's controls.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum PlayerBarVis {
-    #[default]
-    Off,
-    Spectrum,
-    Waveform,
-}
-
-impl PlayerBarVis {
-    /// The mode a click on the player bar moves to: spectrum, waveform,
-    /// then off, as Winamp's visualizer cycles.
-    pub fn next(self) -> Self {
-        match self {
-            Self::Off => Self::Spectrum,
-            Self::Spectrum => Self::Waveform,
-            Self::Waveform => Self::Off,
-        }
-    }
-}
-
-/// Mini-player visualizer mode.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum VisMode {
-    #[default]
-    Bars,
-    Scope,
-    Off,
-}
-
-impl VisMode {
-    /// Next mode in the display's click cycle.
-    pub fn next(self) -> Self {
-        match self {
-            Self::Bars => Self::Scope,
-            Self::Scope => Self::Off,
-            Self::Off => Self::Bars,
-        }
-    }
-}
-
-/// The interface language: the operating system's, or one chosen in Settings.
-///
-/// Stored as `"system"` or a locale tag such as `"es"` or `"pt-BR"`. A file
-/// without the field follows the system; a tag this version does not carry
-/// also follows the system, rather than making the whole file unreadable.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum LanguageChoice {
-    #[default]
-    System,
-    Locale(crate::i18n::Locale),
-}
-
-impl LanguageChoice {
-    /// The locale the interface is drawn in.
-    pub fn resolve(self) -> crate::i18n::Locale {
-        use crate::i18n::LocaleExt;
-        match self {
-            Self::System => crate::i18n::Locale::from_system(),
-            Self::Locale(locale) => locale,
-        }
-    }
-}
-
-impl Serialize for LanguageChoice {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(match self {
-            Self::System => "system",
-            Self::Locale(locale) => locale.tag(),
-        })
-    }
-}
-
-impl<'de> Deserialize<'de> for LanguageChoice {
-    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let value = serde_json::Value::deserialize(deserializer)?;
-        Ok(value
-            .as_str()
-            .and_then(crate::i18n::Locale::from_tag)
-            .map_or(Self::System, Self::Locale))
-    }
-}
-
-impl ThemeChoice {
-    pub const ALL: [ThemeChoice; 3] = [Self::System, Self::Light, Self::Dark];
-
-    pub fn label(self, locale: crate::i18n::Locale) -> std::borrow::Cow<'static, str> {
+    fn label(self, locale: crate::i18n::Locale) -> std::borrow::Cow<'static, str> {
         use crate::i18n::{gettext, pgettext};
         match self {
-            Self::Dark => pgettext(locale, "theme", "Dark"),
-            Self::Light => pgettext(locale, "theme", "Light"),
-            Self::System => gettext(locale, "Follow system"),
+            ThemeChoice::Dark => pgettext(locale, "theme", "Dark"),
+            ThemeChoice::Light => pgettext(locale, "theme", "Light"),
+            ThemeChoice::System => gettext(locale, "Follow system"),
+        }
+    }
+}
+
+/// Resolves the portable language choice against the desktop's system locale.
+pub trait LanguageChoiceExt: Sized {
+    fn resolve(self) -> crate::i18n::Locale;
+}
+
+impl LanguageChoiceExt for LanguageChoice {
+    fn resolve(self) -> crate::i18n::Locale {
+        use crate::i18n::LocaleExt;
+        match self {
+            LanguageChoice::System => crate::i18n::Locale::from_system(),
+            LanguageChoice::Locale(locale) => locale,
         }
     }
 }
@@ -953,6 +831,7 @@ mod tests {
     #[test]
     fn language_follows_the_system_unless_a_known_locale_was_chosen() {
         use super::LanguageChoice;
+        use super::LanguageChoiceExt;
         use crate::i18n::Locale;
         assert_eq!(Settings::default().language, LanguageChoice::System);
         let older: Settings = serde_json::from_value(serde_json::json!({"volume": 37})).unwrap();

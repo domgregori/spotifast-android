@@ -21,7 +21,9 @@ use crate::model::QueueTab;
 use crate::model::*;
 use crate::paths::AppDirs;
 use crate::player::{EngineConfig, LoadSpec, LocalState, Playback, PlayerCommand, RepeatMode};
-use crate::settings::{CachedRootlist, SessionState, Settings, ThemeChoice};
+use crate::settings::{
+    CachedRootlist, LanguageChoiceExt, SessionState, Settings, ThemeChoice,
+};
 use crate::single_instance::ControlCommand;
 use crate::theme::{self, Palette};
 use crate::util;
@@ -18586,6 +18588,7 @@ mod tests {
 
     #[test]
     fn custom_theme_changes_egui_base_and_colors_together_and_builtin_choices_remain_available() {
+        use crate::settings::ThemeChoiceExt;
         let mut app = test_app("custom-theme");
         let ctx = egui::Context::default();
         app.settings.theme = ThemeChoice::System;

@@ -6,7 +6,7 @@ use crate::api::models::pick_image;
 use crate::app::App;
 use crate::i18n::{gettext, ngettext, pgettext};
 use crate::model::{Action, Dialog};
-use crate::settings::{LanguageChoice, ProxyMode, ThemeChoice};
+use crate::settings::{LanguageChoice, ProxyMode, ThemeChoice, ThemeChoiceExt};
 use crate::theme::{self, Icon, Palette};
 
 use super::widgets;
