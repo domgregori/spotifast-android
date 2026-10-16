@@ -34,9 +34,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"
 directories = "6"
-# One protected-store API, with only each target's native provider below.
-# Durable Spotify grants must not be copied into ordinary state JSON.
-keyring-core = "1"
 # The whole UI. glow keeps the binary and the dependency tree small; wgpu is
 # not needed for a 2D music client.
 # AccessKit connects egui's control names, states, and actions to native screen readers.
@@ -190,7 +187,6 @@ ctr = "0.9"
 [target.'cfg(target_os = "macos")'.dependencies]
 # The packaged Dock artwork also identifies unbundled Cargo runs.
 fastframe-dock = { git = "https://github.com/crmne/fastframe", rev = "3339a8bc524a51c47f87ca78c368dde3569d90f5" }
-apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
 # The application menus and Dock menu (src/mac_menu.rs). "exception" lets
 # src/mac_touchbar_crash_guard.rs catch a specific AppKit Objective-C
 # exception instead of letting it abort the process. NSWorkspace and
@@ -205,13 +201,10 @@ objc2-app-kit = { version = "0.3", default-features = false, features = ["std", 
 objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSAppleEventDescriptor", "NSAppleEventManager", "NSDate", "NSObjCRuntime", "NSRunLoop", "NSString", "NSThread", "NSDictionary", "NSAttributedString", "NSData"] }
 
 [target.'cfg(windows)'.dependencies]
-windows-native-keyring-store = { version = "1.1", default-features = false }
 # Message loops, the taskbar thumbnail buttons and window styles.
 windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_Globalization", "Win32_Graphics_Gdi", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_System_Registry", "Win32_System_Threading", "Win32_UI_Accessibility", "Win32_UI_HiDpi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-# Reuses the zbus/Tokio stack already used for desktop integration.
-zbus-secret-service-keyring-store = { version = "1.0.1", features = ["rt-tokio-crypto-rust"] }
 librespot-playback = { version = "0.8", default-features = false, features = ["pulseaudio-backend", "rustls-tls-native-roots"] }
 # The session bus, for the desktop's light or dark preference
 # (src/appearance.rs). fastframe-now-playing's MPRIS already compiles this
@@ -228,6 +221,8 @@ x11rb = { version = "0.13", default-features = false }
 fastframe-i18n = { git = "https://github.com/crmne/fastframe", rev = "3339a8bc524a51c47f87ca78c368dde3569d90f5", features = ["build"] }
 
 [dev-dependencies]
+# The in-memory credential backend the tests exercise.
+spotifast-core = { path = "core", features = ["test-support"] }
 # Checks that every catalog covers the template and keeps its placeholders.
 polib = "0.3"
 # Run connection-deadline regressions with a virtual clock.

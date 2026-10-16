@@ -7,7 +7,9 @@
 //! OS stay in the desktop crate.
 
 pub mod auth;
+pub mod credentials;
 pub mod eq;
+pub mod file;
 pub mod http;
 pub mod limiter;
 pub mod link;

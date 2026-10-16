@@ -5965,7 +5965,6 @@ version = "0.13.3"
 dependencies = [
  "aes 0.8.4",
  "anyhow",
- "apple-native-keyring-store",
  "base64",
  "clap",
  "ctr",
@@ -5999,7 +5998,6 @@ dependencies = [
  "hyper-util",
  "image",
  "jiff",
- "keyring-core",
  "librespot-connect",
  "librespot-core",
  "librespot-metadata",
@@ -6037,13 +6035,11 @@ dependencies = [
  "tokio",
  "unicode-bidi",
  "urlencoding",
- "windows-native-keyring-store",
  "windows-sys 0.60.2",
  "winit",
  "winresource",
  "x11rb",
  "zbus",
- "zbus-secret-service-keyring-store",
 ]
 
 [[package]]
@@ -6051,12 +6047,15 @@ name = "spotifast-core"
 version = "0.13.3"
 dependencies = [
  "anyhow",
+ "apple-native-keyring-store",
  "base64",
  "directories",
  "http",
  "hyper-util",
+ "keyring-core",
  "librespot-core",
  "librespot-playback",
+ "librespot-protocol",
  "log",
  "percent-encoding",
  "rand 0.9.5",
@@ -6068,6 +6067,8 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "urlencoding",
+ "windows-native-keyring-store",
+ "zbus-secret-service-keyring-store",
 ]
 
 [[package]]

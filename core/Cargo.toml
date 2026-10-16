@@ -41,7 +41,28 @@ percent-encoding = "2"
 librespot-playback = { version = "0.8", default-features = false, features = ["rustls-tls-native-roots"] }
 # http.rs's tests exercise librespot's proxy URL handling.
 librespot-core = { version = "0.8", default-features = false, features = ["rustls-tls-native-roots"] }
+# credentials.rs's tests construct a stored-credentials grant.
+librespot-protocol = { version = "0.8", default-features = false }
+
+# Durable grants go in the platform credential store. keyring-core has no
+# Android backend; the Android arm will arrive via a UniFFI callback (HANDOFF
+# Phase A). Each desktop target's native provider below.
+[target.'cfg(not(target_os = "android"))'.dependencies]
+keyring-core = "1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+zbus-secret-service-keyring-store = { version = "1.0.1", features = ["rt-tokio-crypto-rust"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-native-keyring-store = { version = "1.1", default-features = false }
 
 [dev-dependencies]
 # auth.rs's tests pause the tokio clock (start_paused).
 tokio = { version = "1", features = ["test-util"] }
+
+[features]
+# Enables the in-memory credential backend used by the desktop crate's tests.
+test-support = []

@@ -34,7 +34,7 @@ pub enum Slot {
 impl Slot {
     pub const SPOTIFY: [Self; 3] = [Self::Shared, Self::Personal, Self::Playback];
     pub const ALL: [Self; 4] = [Self::Shared, Self::Personal, Self::Playback, Self::Proxy];
-    pub(crate) fn index(self) -> usize {
+    pub fn index(self) -> usize {
         self as usize
     }
     fn name(self) -> &'static str {
@@ -57,7 +57,7 @@ pub enum Grant {
 
 /// No Debug implementation: the password is usable, and the username is private.
 /// A saved password belongs to one network endpoint and username.
-pub use spotifast_core::proxy::ProxyPassword;
+pub use crate::proxy::ProxyPassword;
 
 impl Grant {
     fn valid_for(&self, slot: Slot) -> bool {
@@ -116,7 +116,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub(crate) fn proxy_message(self) -> &'static str {
+    pub fn proxy_message(self) -> &'static str {
         match self {
             Self::Unavailable | Self::Locked => {
                 "Unlock or enable the system credential store to remember the proxy password."
@@ -349,8 +349,8 @@ impl Store {
         Self::with_backend(dirs, Box::new(NativeStore::default()))
     }
 
-    #[cfg(test)]
-    pub(crate) fn in_memory(dirs: AppDirs) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn in_memory(dirs: AppDirs) -> Self {
         tests::memory_store(dirs)
     }
 
@@ -456,7 +456,7 @@ impl Store {
         .map_err(|_| Error::Invalid)?;
         // It holds no secret, but it lives with the credentials, which only
         // their owner reads.
-        fastframe_file::write_private(&self.marker_path(slot), bytes).map_err(|_| Error::Filesystem)
+        crate::file::write_private(&self.marker_path(slot), &bytes).map_err(|_| Error::Filesystem)
     }
 
     fn legacy_paths(&self, slot: Slot) -> Vec<PathBuf> {
@@ -725,7 +725,8 @@ impl Lease {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
+#[cfg_attr(not(test), allow(dead_code))]
 mod tests {
     use super::*;
     use std::collections::HashMap;
@@ -982,7 +983,7 @@ mod tests {
             unreachable!()
         };
         let settings = crate::settings::Settings {
-            proxy_mode: crate::settings::ProxyMode::Http,
+            proxy_mode: crate::proxy::ProxyMode::Http,
             proxy_host: password.host.clone(),
             proxy_port: password.port.to_string(),
             proxy_username: password.username.clone(),
