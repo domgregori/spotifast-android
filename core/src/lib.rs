@@ -8,6 +8,7 @@
 
 pub mod auth;
 pub mod api;
+pub mod account_cache;
 pub mod credentials;
 pub mod eq;
 pub mod file;
@@ -16,9 +17,12 @@ pub mod limiter;
 pub mod link;
 pub mod locale;
 pub mod lyrics;
+pub mod made_for_you;
 pub mod paths;
 pub mod playlist_cover;
+pub mod prerelease;
 pub mod proxy;
 pub mod resample;
+pub mod session_reads;
 pub mod settings;
 pub mod util;

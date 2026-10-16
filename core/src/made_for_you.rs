@@ -21,7 +21,7 @@ const ENDPOINT: &str = "https://api-partner.spotify.com/pathfinder/v2/query";
 const SECTION: &str = "spotify:section:0JQ5DAUnp4wcj0bCb3wh3S";
 const QUERY_HASH: &str = "eb3fba2d388cf4fc4d696b1757a58584e9538a3b515ea742e9cc9465807340be";
 // Spotify DJ is a special context that librespot cannot play as a playlist.
-pub(crate) const UNSUPPORTED_DJ_URI: &str = "spotify:playlist:37i9dQZF1EYkqdzj48dyYq";
+pub const UNSUPPORTED_DJ_URI: &str = "spotify:playlist:37i9dQZF1EYkqdzj48dyYq";
 const CACHE_AGE: Duration = Duration::from_secs(600);
 const LOAD_TIMEOUT: Duration = Duration::from_secs(60);
 const PAGE_SIZE: usize = 20;

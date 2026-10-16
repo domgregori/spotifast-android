@@ -891,7 +891,7 @@ mod tests {
                 );
             });
             let http =
-                crate::http::build_collection_client(&crate::settings::ProxyConfig::Off).unwrap();
+                crate::http::build_collection_client(&crate::proxy::ProxyConfig::Off).unwrap();
             let result = tokio::time::timeout(
                 Duration::from_secs(2),
                 write_collection(&http, &endpoint, "dummy", "dummy", b"mutation".to_vec()),

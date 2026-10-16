@@ -1,6 +1,6 @@
 //! Spotifast's internals, exposed so diagnostics and tests can reach them.
 
-pub mod account_cache;
+pub use spotifast_core::account_cache;
 pub use spotifast_core::api;
 pub mod app;
 #[cfg(target_os = "linux")]
@@ -32,7 +32,7 @@ pub mod mac_menu;
 pub mod mac_notch;
 #[cfg(target_os = "macos")]
 pub mod mac_touchbar_crash_guard;
-pub mod made_for_you;
+pub use spotifast_core::made_for_you;
 pub mod milkdrop;
 pub mod model;
 pub mod motion;
@@ -42,9 +42,9 @@ pub use spotifast_core::paths;
 pub mod player;
 pub use spotifast_core::playlist_cover;
 pub mod power;
-pub mod prerelease;
+pub use spotifast_core::prerelease;
 pub use spotifast_core::resample;
-pub mod session_reads;
+pub use spotifast_core::session_reads;
 pub mod settings;
 pub mod single_instance;
 pub mod sink;

@@ -37,6 +37,7 @@ rand = "0.9"
 directories = "6"
 urlencoding = "2"
 percent-encoding = "2"
+jiff = "0.2"
 # Playlist cover uploads: decode/re-encode JPEG and PNG artwork.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 # auth.rs needs reqwest; eq.rs needs librespot's channel/sample-rate constants.
@@ -45,6 +46,10 @@ librespot-playback = { version = "0.8", default-features = false, features = ["r
 librespot-core = { version = "0.8", default-features = false, features = ["rustls-tls-native-roots"] }
 # credentials.rs's tests construct a stored-credentials grant.
 librespot-protocol = { version = "0.8", default-features = false }
+# session_reads.rs reads catalogue data through the playback session.
+librespot-metadata = { version = "0.8", default-features = false }
+# session_reads.rs parses the rootlist's playlist4 protobuf.
+protobuf = "3"
 
 # Durable grants go in the platform credential store. keyring-core has no
 # Android backend; the Android arm will arrive via a UniFFI callback (HANDOFF
