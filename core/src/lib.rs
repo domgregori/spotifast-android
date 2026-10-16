@@ -7,6 +7,7 @@
 //! OS stay in the desktop crate.
 
 pub mod auth;
+pub mod api;
 pub mod credentials;
 pub mod eq;
 pub mod file;
@@ -16,6 +17,7 @@ pub mod link;
 pub mod locale;
 pub mod lyrics;
 pub mod paths;
+pub mod playlist_cover;
 pub mod proxy;
 pub mod resample;
 pub mod settings;

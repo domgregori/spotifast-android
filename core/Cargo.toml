@@ -37,6 +37,8 @@ rand = "0.9"
 directories = "6"
 urlencoding = "2"
 percent-encoding = "2"
+# Playlist cover uploads: decode/re-encode JPEG and PNG artwork.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 # auth.rs needs reqwest; eq.rs needs librespot's channel/sample-rate constants.
 librespot-playback = { version = "0.8", default-features = false, features = ["rustls-tls-native-roots"] }
 # http.rs's tests exercise librespot's proxy URL handling.

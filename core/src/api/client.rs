@@ -406,13 +406,13 @@ impl ApiClient {
     }
 
     /// A throttled shared app must not occupy the personal app's background slots.
-    pub(crate) async fn background_permit(&self) -> Option<tokio::sync::SemaphorePermit<'_>> {
+    pub async fn background_permit(&self) -> Option<tokio::sync::SemaphorePermit<'_>> {
         self.background_limiter.acquire().await.ok()
     }
 
     /// The Home section's `sp_t` field, from an already verified Web API
     /// grant. This is never sent to the Web API under the playback identity.
-    pub(crate) async fn home_context_token(&self) -> Result<String> {
+    pub async fn home_context_token(&self) -> Result<String> {
         self.provider()?.access_token().await
     }
 
@@ -444,7 +444,7 @@ impl ApiClient {
 
     /// Pathfinder has a separate cooldown: a shared Web API throttle must not
     /// block it, and a prerelease refresh must not erase its own Retry-After.
-    pub(crate) async fn partner_request(
+    pub async fn partner_request(
         &self,
         bearer: &str,
         client_token: &str,

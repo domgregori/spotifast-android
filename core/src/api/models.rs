@@ -273,22 +273,7 @@ impl Album {
             .map(|date| date.get(..4).unwrap_or(date))
     }
 
-    pub fn kind_label(&self, locale: crate::i18n::Locale) -> std::borrow::Cow<'static, str> {
-        use crate::i18n::gettext;
-        match self
-            .album_group
-            .as_deref()
-            .or(self.album_type.as_deref())
-            .unwrap_or("album")
-        {
-            "single" => gettext(locale, "Single"),
-            "compilation" => gettext(locale, "Compilation"),
-            "appears_on" => gettext(locale, "Appears On"),
-            _ => gettext(locale, "Album"),
-        }
-    }
-
-    pub(crate) fn is_single_release(&self) -> bool {
+    pub fn is_single_release(&self) -> bool {
         self.album_group.as_deref().or(self.album_type.as_deref()) == Some("single")
     }
 }
@@ -906,13 +891,8 @@ mod tests {
         // Shorter than a year, which `min` was there to hold.
         assert_eq!(dated("20").year(), Some("20"));
         // A date whose fourth byte is inside a character. `min` clamps the
-        // length and says nothing about boundaries, so this used to panic;
-        // `util::format_date` reads the same field with `get` and does not.
+        // length and says nothing about boundaries, so this used to panic.
         assert_eq!(dated("\u{c791}\u{b144}").year(), Some("\u{c791}\u{b144}"));
-        assert_eq!(
-            crate::util::format_date(crate::i18n::Locale::English, "\u{c791}\u{b144}"),
-            "\u{c791}\u{b144}"
-        );
         // No date at all is still no year.
         let json = r#"{"id":"a","name":"A","uri":"spotify:album:a"}"#;
         assert_eq!(serde_json::from_str::<Album>(json).unwrap().year(), None);

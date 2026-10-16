@@ -1,7 +1,7 @@
 //! Spotifast's internals, exposed so diagnostics and tests can reach them.
 
 pub mod account_cache;
-pub mod api;
+pub use spotifast_core::api;
 pub mod app;
 #[cfg(target_os = "linux")]
 pub mod appearance;
@@ -40,7 +40,7 @@ pub mod notch;
 pub mod opener;
 pub use spotifast_core::paths;
 pub mod player;
-pub mod playlist_cover;
+pub use spotifast_core::playlist_cover;
 pub mod power;
 pub mod prerelease;
 pub use spotifast_core::resample;

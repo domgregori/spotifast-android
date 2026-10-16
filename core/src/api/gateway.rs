@@ -256,7 +256,7 @@ impl ApiGateway {
 
     /// Psst's Home section query also carries a Web API grant as `sp_t`.
     /// Prefer the personal grant without waiting for shared verification.
-    pub(crate) async fn home_context_token(
+    pub async fn home_context_token(
         &self,
         playback_account: &str,
     ) -> Result<String, ApiError> {
@@ -325,7 +325,7 @@ impl ApiGateway {
 
     /// Reuse configured HTTP transport only after verifying the account.
     /// Pathfinder itself receives the playback session's Login5 credentials.
-    pub(crate) fn prerelease_http_client(&self) -> Option<Arc<ApiClient>> {
+    pub fn prerelease_http_client(&self) -> Option<Arc<ApiClient>> {
         [ApiSource::Personal, ApiSource::Shared]
             .into_iter()
             .find(|source| matches!(self.state(*source), SessionState::Ready { .. }))

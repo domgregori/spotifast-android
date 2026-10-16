@@ -6052,6 +6052,7 @@ dependencies = [
  "directories",
  "http",
  "hyper-util",
+ "image",
  "keyring-core",
  "librespot-core",
  "librespot-playback",

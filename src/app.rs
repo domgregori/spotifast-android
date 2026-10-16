@@ -1275,7 +1275,18 @@ impl App {
         if album.is_single_release() && self.confirmed_ep_albums.contains(&album.uri) {
             Cow::Borrowed("EP")
         } else {
-            album.kind_label(self.locale)
+            use crate::i18n::gettext;
+            match album
+                .album_group
+                .as_deref()
+                .or(album.album_type.as_deref())
+                .unwrap_or("album")
+            {
+                "single" => gettext(self.locale, "Single"),
+                "compilation" => gettext(self.locale, "Compilation"),
+                "appears_on" => gettext(self.locale, "Appears On"),
+                _ => gettext(self.locale, "Album"),
+            }
         }
     }
 
