@@ -12,4 +12,5 @@ pub mod limiter;
 pub mod link;
 pub mod locale;
 pub mod lyrics;
+pub mod paths;
 pub mod resample;

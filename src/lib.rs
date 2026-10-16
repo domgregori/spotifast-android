@@ -38,7 +38,7 @@ pub mod model;
 pub mod motion;
 pub mod notch;
 pub mod opener;
-pub mod paths;
+pub use spotifast_core::paths;
 pub mod player;
 pub mod playlist_cover;
 pub mod power;

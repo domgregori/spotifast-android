@@ -6052,6 +6052,7 @@ version = "0.13.3"
 dependencies = [
  "anyhow",
  "base64",
+ "directories",
  "librespot-playback",
  "log",
  "percent-encoding",
