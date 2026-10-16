@@ -203,6 +203,16 @@ pub fn temporary_files(dir: &std::path::Path) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// The volume as a percentage, for the interface and Connect.
+pub fn volume_to_percent(volume: u16) -> u8 {
+    ((u32::from(volume) * 100 + u32::from(u16::MAX) / 2) / u32::from(u16::MAX)) as u8
+}
+
+/// The 0..=65535 volume a percentage sets, for the mixer and the engine.
+pub fn percent_to_volume(percent: u8) -> u16 {
+    ((u32::from(percent.min(100)) * u32::from(u16::MAX)) / 100) as u16
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

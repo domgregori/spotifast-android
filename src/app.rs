@@ -11723,13 +11723,7 @@ pub fn eq_settings(settings: &Settings) -> crate::eq::EqSettings {
     .clamped()
 }
 
-pub fn volume_to_percent(volume: u16) -> u8 {
-    ((u32::from(volume) * 100 + u32::from(u16::MAX) / 2) / u32::from(u16::MAX)) as u8
-}
-
-pub fn percent_to_volume(percent: u8) -> u16 {
-    ((u32::from(percent.min(100)) * u32::from(u16::MAX)) / 100) as u16
-}
+pub use spotifast_core::util::{percent_to_volume, volume_to_percent};
 
 /// The window level for the Winamp window's always-on-top setting. Shared by
 /// window creation and the live window, so the mapping is owned in one place.
