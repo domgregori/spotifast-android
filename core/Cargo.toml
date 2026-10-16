@@ -9,10 +9,32 @@ repository = "https://github.com/crmne/spotifast"
 keywords = ["spotify", "music", "librespot", "player"]
 categories = ["multimedia::audio"]
 
-# Placeholder: portable modules move here from the desktop crate in the next
-# steps. Dependencies are added as modules arrive, so this stays dependency-free
-# until then. See HANDOFF.md Phase A.
+# Portable modules move here from the desktop crate (HANDOFF.md Phase A).
+# Dependencies are added as modules arrive. The librespot fork and the
+# egui/winit/hyper-proxy2 patches live in the workspace root's [patch.crates-io]
+# and apply to this member too.
 
 [lib]
 name = "spotifast_core"
 path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+thiserror = "2"
+log = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "net", "io-util"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json", "gzip", "http2"] }
+sha1 = "0.10"
+sha2 = "0.10"
+base64 = "0.22"
+rand = "0.9"
+urlencoding = "2"
+percent-encoding = "2"
+# auth.rs needs reqwest; eq.rs needs librespot's channel/sample-rate constants.
+librespot-playback = { version = "0.8", default-features = false, features = ["rustls-tls-native-roots"] }
+
+[dev-dependencies]
+# auth.rs's tests pause the tokio clock (start_paused).
+tokio = { version = "1", features = ["test-util"] }

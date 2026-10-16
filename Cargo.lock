@@ -6031,6 +6031,7 @@ dependencies = [
  "sha1",
  "sha2 0.10.9",
  "skrifa",
+ "spotifast-core",
  "thiserror 2.0.20",
  "tiny-skia",
  "tokio",
@@ -6048,6 +6049,22 @@ dependencies = [
 [[package]]
 name = "spotifast-core"
 version = "0.13.3"
+dependencies = [
+ "anyhow",
+ "base64",
+ "librespot-playback",
+ "log",
+ "percent-encoding",
+ "rand 0.9.5",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2 0.10.9",
+ "thiserror 2.0.20",
+ "tokio",
+ "urlencoding",
+]
 
 [[package]]
 name = "stable_deref_trait"

@@ -5,7 +5,8 @@ pub mod api;
 pub mod app;
 #[cfg(target_os = "linux")]
 pub mod appearance;
-pub mod auth;
+// Moved to spotifast-core; re-exported so `crate::auth` keeps resolving.
+pub use spotifast_core::auth;
 pub mod autoscroll;
 pub mod backend;
 pub mod bidi;
@@ -14,15 +15,15 @@ pub mod credentials;
 #[cfg(any(test, feature = "demo"))]
 pub mod demo;
 pub mod emoji;
-pub mod eq;
+pub use spotifast_core::eq;
 pub mod history;
 pub mod http;
 pub mod i18n;
 pub mod images;
 pub mod liked;
-pub mod limiter;
-pub mod link;
-pub mod lyrics;
+pub use spotifast_core::limiter;
+pub use spotifast_core::link;
+pub use spotifast_core::lyrics;
 #[cfg(target_os = "macos")]
 pub mod mac_links;
 #[cfg(target_os = "macos")]
@@ -42,7 +43,7 @@ pub mod player;
 pub mod playlist_cover;
 pub mod power;
 pub mod prerelease;
-pub mod resample;
+pub use spotifast_core::resample;
 pub mod session_reads;
 pub mod settings;
 pub mod single_instance;

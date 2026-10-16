@@ -23,6 +23,10 @@ name = "spotifast"
 path = "src/spotifast.rs"
 
 [dependencies]
+# The portable core, shared with the Android library. Its modules are
+# re-exported below in src/lib.rs so this crate's code keeps using
+# `crate::<module>` unchanged.
+spotifast-core = { path = "core" }
 anyhow = "1"
 thiserror = "2"
 clap = { version = "4.5", features = ["derive"] }
