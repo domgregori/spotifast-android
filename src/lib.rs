@@ -20,7 +20,7 @@ pub mod history;
 pub use spotifast_core::http;
 pub mod i18n;
 pub mod images;
-pub mod liked;
+pub use spotifast_core::liked;
 pub use spotifast_core::limiter;
 pub use spotifast_core::link;
 pub use spotifast_core::lyrics;

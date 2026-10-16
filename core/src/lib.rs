@@ -13,6 +13,7 @@ pub mod credentials;
 pub mod eq;
 pub mod file;
 pub mod http;
+pub mod liked;
 pub mod limiter;
 pub mod link;
 pub mod locale;
