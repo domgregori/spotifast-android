@@ -125,6 +125,7 @@ pub enum LanguageChoice {
 impl LanguageChoice {
     /// The locale the interface is drawn in.
     pub fn resolve(self) -> crate::i18n::Locale {
+        use crate::i18n::LocaleExt;
         match self {
             Self::System => crate::i18n::Locale::from_system(),
             Self::Locale(locale) => locale,

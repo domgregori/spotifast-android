@@ -19306,8 +19306,7 @@ mod tests {
 
     #[test]
     fn translated_context_labels_preserve_spotify_names() {
-        use crate::i18n::Locale;
-        use clap::ValueEnum;
+        use crate::i18n::LOCALES;
         let mut app = headless_app();
         let today = jiff::Zoned::now().strftime("%Y-%m-%d").to_string();
         let title = "Home {date} 夜";
@@ -19326,7 +19325,7 @@ mod tests {
             name: title.into(),
             ..Default::default()
         }]);
-        for &locale in Locale::value_variants() {
+        for &locale in LOCALES {
             app.locale = locale;
             app.assumed_context = None;
             assert_eq!(

@@ -1664,10 +1664,10 @@ mod tests {
 
     #[test]
     fn translated_sidebar_keeps_keyboard_navigation_and_accessible_names() {
-        use crate::i18n::{Locale, gettext};
-        use clap::ValueEnum;
+        use crate::i18n::gettext;
+        use crate::i18n::LOCALES;
         use egui::accesskit::{Action as AccessibleAction, Role};
-        for &locale in Locale::value_variants() {
+        for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-sidebar-{locale:?}"));
             app.locale = locale;
             accessible_frame(&ctx, &mut app, vec![]);
@@ -1734,11 +1734,11 @@ mod tests {
 
     #[test]
     fn translated_player_bar_keeps_control_identity_and_keyboard_actions() {
-        use crate::i18n::{Locale, gettext};
-        use clap::ValueEnum;
+        use crate::i18n::gettext;
+        use crate::i18n::LOCALES;
         use egui::accesskit::{Action as AccessibleAction, Role};
 
-        for &locale in Locale::value_variants() {
+        for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-player-{locale:?}"));
             accessible_frame(&ctx, &mut app, vec![]);
             let english = accessible_frame(&ctx, &mut app, vec![]);
@@ -1817,11 +1817,11 @@ mod tests {
 
     #[test]
     fn translated_player_bar_labels_follow_control_state_and_empty_playback() {
-        use crate::i18n::{Locale, gettext};
-        use clap::ValueEnum;
+        use crate::i18n::gettext;
+        use crate::i18n::LOCALES;
         use egui::accesskit::{Action as AccessibleAction, Role};
 
-        for &locale in Locale::value_variants() {
+        for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-player-state-{locale:?}"));
             app.locale = locale;
             accessible_frame(&ctx, &mut app, vec![]);
@@ -1864,11 +1864,11 @@ mod tests {
 
     #[test]
     fn translated_queue_controls_preserve_manual_and_context_rows() {
-        use crate::i18n::{Locale, gettext};
-        use clap::ValueEnum;
+        use crate::i18n::gettext;
+        use crate::i18n::LOCALES;
         use egui::accesskit::{Action as AccessibleAction, Role};
 
-        for &locale in Locale::value_variants() {
+        for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-queue-{locale:?}"));
             app.locale = locale;
             app.show_queue_panel = true;
@@ -1935,11 +1935,11 @@ mod tests {
 
     #[test]
     fn translated_lyrics_controls_keep_follow_retry_and_fullscreen_actions() {
-        use crate::i18n::{Locale, gettext, pgettext};
-        use clap::ValueEnum;
+        use crate::i18n::{gettext, pgettext};
+        use crate::i18n::LOCALES;
         use egui::accesskit::{Action as AccessibleAction, Role};
 
-        for &locale in Locale::value_variants() {
+        for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-lyrics-{locale:?}"));
             app.locale = locale;
             app.show_lyrics_panel = true;
@@ -2015,9 +2015,9 @@ mod tests {
 
     #[test]
     fn translated_panel_states_keep_original_lyrics_and_failure_details() {
-        use crate::i18n::{Locale, gettext};
-        use clap::ValueEnum;
-        for &locale in Locale::value_variants() {
+        use crate::i18n::gettext;
+        use crate::i18n::LOCALES;
+        for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-panel-states-{locale:?}"));
             app.locale = locale;
             app.show_lyrics_panel = true;

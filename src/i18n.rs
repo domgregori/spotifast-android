@@ -1,183 +1,113 @@
-//! Bundled gettext catalogs. English is the source language and the fallback
-//! for every message a catalog has not translated yet. The interface follows
-//! the operating system's language unless Settings names another one.
+//! Bundled gettext catalogs and the desktop half of the locale seam.
+//!
+//! The [`Locale`] identity lives in `spotifast_core::locale` so portable code
+//! can name the interface language without `fastframe-i18n`. This module
+//! keeps the gettext catalogs, the operating-system language detection, and
+//! the localized count/label helpers, all of which depend on `fastframe-i18n`
+//! and therefore stay out of the Android core. English is the source language
+//! and the fallback for every message a catalog has not translated yet. The
+//! interface follows the operating system's language unless Settings names
+//! another one.
 
-pub use fastframe_i18n::{gettext, ngettext, pgettext};
+use std::borrow::Cow;
+
+use fastframe_i18n as ffi;
+
+pub use spotifast_core::locale::{Locale, LOCALES};
 
 include!(concat!(env!("OUT_DIR"), "/catalogs.rs"));
 
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq, clap::ValueEnum)]
-pub enum Locale {
-    #[default]
-    #[value(name = "en", alias = "en-US")]
-    English,
-    #[value(name = "de-DE", alias = "de")]
-    German,
-    #[value(name = "es")]
-    Spanish,
-    #[value(name = "nl")]
-    Dutch,
-    #[value(name = "pt-BR")]
-    PortugueseBrazil,
-    #[value(name = "pt-PT")]
-    PortuguesePortugal,
-    #[value(name = "fr")]
-    French,
-    #[value(name = "sv")]
-    Swedish,
-    #[value(name = "pl")]
-    Polish,
-    #[value(name = "ru")]
-    Russian,
-    #[value(name = "it")]
-    Italian,
-    #[value(name = "ja")]
-    Japanese,
-    #[value(name = "zh-Hans")]
-    ChineseSimplified,
-    #[value(name = "zh-Hant")]
-    ChineseTraditional,
-    #[value(name = "tr")]
-    Turkish,
-    #[value(name = "uk")]
-    Ukrainian,
-}
+/// A private newtype that carries the core [`Locale`] into `fastframe-i18n`'s
+/// [`ffi::Locale`] trait. Neither the trait nor the type is local to this
+/// crate, so the orphan rule forbids implementing the trait for the type
+/// directly; the wrapper below is the seam.
+#[derive(Clone, Copy)]
+struct FfiLocale(Locale);
 
-impl fastframe_i18n::Locale for Locale {
-    fn catalog(self) -> Option<&'static dyn fastframe_i18n::Translator> {
-        match self {
-            Self::English => None,
-            Self::German => Some(&de_de::Translator),
-            Self::Spanish => Some(&es::Translator),
-            Self::Dutch => Some(&nl::Translator),
-            Self::PortugueseBrazil => Some(&pt_br::Translator),
-            Self::PortuguesePortugal => Some(&pt_pt::Translator),
-            Self::French => Some(&fr::Translator),
-            Self::Swedish => Some(&sv::Translator),
-            Self::Polish => Some(&pl::Translator),
-            Self::Russian => Some(&ru::Translator),
-            Self::Italian => Some(&it::Translator),
-            Self::Japanese => Some(&ja::Translator),
-            Self::ChineseSimplified => Some(&zh_hans::Translator),
-            Self::ChineseTraditional => Some(&zh_hant::Translator),
-            Self::Turkish => Some(&tr::Translator),
-            Self::Ukrainian => Some(&uk::Translator),
+impl ffi::Locale for FfiLocale {
+    fn catalog(self) -> Option<&'static dyn ffi::Translator> {
+        match self.0 {
+            Locale::English => None,
+            Locale::German => Some(&de_de::Translator),
+            Locale::Spanish => Some(&es::Translator),
+            Locale::Dutch => Some(&nl::Translator),
+            Locale::PortugueseBrazil => Some(&pt_br::Translator),
+            Locale::PortuguesePortugal => Some(&pt_pt::Translator),
+            Locale::French => Some(&fr::Translator),
+            Locale::Swedish => Some(&sv::Translator),
+            Locale::Polish => Some(&pl::Translator),
+            Locale::Russian => Some(&ru::Translator),
+            Locale::Italian => Some(&it::Translator),
+            Locale::Japanese => Some(&ja::Translator),
+            Locale::ChineseSimplified => Some(&zh_hans::Translator),
+            Locale::ChineseTraditional => Some(&zh_hant::Translator),
+            Locale::Turkish => Some(&tr::Translator),
+            Locale::Ukrainian => Some(&uk::Translator),
         }
     }
 }
 
-impl Locale {
-    /// The tag this locale is named by on the command line and in
-    /// `settings.json`. [`Self::from_tag`] reads each one back.
-    pub fn tag(self) -> &'static str {
-        match self {
-            Self::English => "en",
-            Self::German => "de-DE",
-            Self::Spanish => "es",
-            Self::Dutch => "nl",
-            Self::PortugueseBrazil => "pt-BR",
-            Self::PortuguesePortugal => "pt-PT",
-            Self::French => "fr",
-            Self::Swedish => "sv",
-            Self::Polish => "pl",
-            Self::Russian => "ru",
-            Self::Italian => "it",
-            Self::Japanese => "ja",
-            Self::ChineseSimplified => "zh-Hans",
-            Self::ChineseTraditional => "zh-Hant",
-            Self::Turkish => "tr",
-            Self::Ukrainian => "uk",
-        }
-    }
+/// Translates `source`, or returns it unchanged when the language has no
+/// catalog or the catalog has not translated it.
+pub fn gettext(locale: Locale, source: &'static str) -> Cow<'static, str> {
+    ffi::gettext(FfiLocale(locale), source)
+}
 
-    /// The locale a stored or typed tag names exactly, as [`Self::tag`]
-    /// writes it or by one of its command-line aliases.
-    pub fn from_tag(tag: &str) -> Option<Self> {
-        <Self as clap::ValueEnum>::from_str(tag, true).ok()
-    }
+/// Translates a phrase whose meaning depends on where it appears. Falls back
+/// to `source`.
+pub fn pgettext(locale: Locale, context: &'static str, source: &'static str) -> Cow<'static, str> {
+    ffi::pgettext(FfiLocale(locale), context, source)
+}
 
-    /// The language's name in that language. A listener who has the app in a
-    /// language they cannot read must still find their own in the picker, so
-    /// these are never translated.
-    pub fn native_name(self) -> &'static str {
-        match self {
-            Self::English => "English",
-            Self::German => "Deutsch",
-            Self::Spanish => "Español",
-            Self::Dutch => "Nederlands",
-            Self::PortugueseBrazil => "Português (Brasil)",
-            Self::PortuguesePortugal => "Português (Portugal)",
-            Self::French => "Français",
-            Self::Swedish => "Svenska",
-            Self::Polish => "Polski",
-            Self::Russian => "Русский",
-            Self::Italian => "Italiano",
-            Self::Japanese => "日本語",
-            Self::ChineseSimplified => "简体中文",
-            Self::ChineseTraditional => "繁體中文",
-            Self::Turkish => "Türkçe",
-            Self::Ukrainian => "Українська",
-        }
-    }
+/// Chooses a whole translated phrase for `count` by the catalog's plural
+/// rules.
+pub fn ngettext(
+    locale: Locale,
+    singular: &'static str,
+    plural: &'static str,
+    count: u32,
+) -> Cow<'static, str> {
+    ffi::ngettext(FfiLocale(locale), singular, plural, count)
+}
 
+/// The desktop half of the locale seam: everything about a [`Locale`] that
+/// needs the gettext catalogs or the operating system, built on
+/// `fastframe-i18n`. Android resolves the interface language itself and does
+/// not implement this trait.
+pub trait LocaleExt: Sized {
     /// The language the operating system is read in, or English when it
     /// prefers only languages no catalog covers.
     ///
     /// The first preferred language with a catalog wins, so a desktop that
     /// lists Norwegian and then German gets German.
-    pub fn from_system() -> Self {
+    fn from_system() -> Self;
+
+    /// The catalog closest to a language tag, BCP 47 (`pt-BR`, `zh-Hant-TW`)
+    /// or POSIX (`es_UY.UTF-8`), or `None` when no catalog speaks it.
+    fn from_language_tag(tag: &str) -> Option<Self>;
+
+    fn liked_song_count(self, count: u32) -> String;
+    fn song_count(self, count: u32) -> String;
+    fn playlist_count(self, count: u32) -> String;
+    fn folder_playlist_count(self, count: u32) -> String;
+    fn folder_state_label(self, name: &str, collapsed: bool) -> String;
+}
+
+impl LocaleExt for Locale {
+    fn from_system() -> Self {
         // Tests assert the English interface whatever the machine reads. A
         // test about another language sets it explicitly.
         if cfg!(test) {
             return Self::English;
         }
-        fastframe_i18n::detect(Self::from_parsed_tag).unwrap_or_default()
+        ffi::detect(from_parsed_tag).unwrap_or_default()
     }
 
-    /// The catalog closest to a language tag, BCP 47 (`pt-BR`, `zh-Hant-TW`)
-    /// or POSIX (`es_UY.UTF-8`), or `None` when no catalog speaks it.
-    pub fn from_language_tag(tag: &str) -> Option<Self> {
-        fastframe_i18n::LanguageTag::parse(tag).and_then(|tag| Self::from_parsed_tag(&tag))
+    fn from_language_tag(tag: &str) -> Option<Self> {
+        ffi::LanguageTag::parse(tag).and_then(|tag| from_parsed_tag(&tag))
     }
 
-    fn from_parsed_tag(tag: &fastframe_i18n::LanguageTag) -> Option<Self> {
-        let region = tag.region.as_deref();
-        Some(match tag.language.as_str() {
-            "en" => Self::English,
-            "de" => Self::German,
-            "es" => Self::Spanish,
-            "nl" => Self::Dutch,
-            "fr" => Self::French,
-            "sv" => Self::Swedish,
-            "pl" => Self::Polish,
-            "ru" => Self::Russian,
-            "it" => Self::Italian,
-            "ja" => Self::Japanese,
-            "tr" => Self::Turkish,
-            "uk" => Self::Ukrainian,
-            // Portuguese outside Brazil follows the European standard. A bare
-            // "pt" goes to Brazil, where most Portuguese speakers live.
-            "pt" => match region {
-                Some(
-                    "pt" | "ao" | "cv" | "gw" | "mo" | "mz" | "st" | "tl" | "gq" | "ch" | "lu",
-                ) => Self::PortuguesePortugal,
-                _ => Self::PortugueseBrazil,
-            },
-            // A written script decides. Otherwise the region does, and
-            // Simplified is the default, as in mainland China and Singapore.
-            // Windows writes the legacy Chinese scripts as the regions CHS
-            // and CHT.
-            "zh" => match (tag.script.as_deref(), region) {
-                (Some("hant"), _) => Self::ChineseTraditional,
-                (Some("hans"), _) => Self::ChineseSimplified,
-                (_, Some("tw" | "hk" | "mo" | "cht")) => Self::ChineseTraditional,
-                _ => Self::ChineseSimplified,
-            },
-            _ => return None,
-        })
-    }
-
-    pub fn liked_song_count(self, count: u32) -> String {
+    fn liked_song_count(self, count: u32) -> String {
         ngettext(
             self,
             // Translators: Keep {count} exactly as written. It becomes the number of liked songs.
@@ -188,7 +118,7 @@ impl Locale {
         .replace("{count}", &count.to_string())
     }
 
-    pub fn song_count(self, count: u32) -> String {
+    fn song_count(self, count: u32) -> String {
         ngettext(
             self,
             // Translators: Keep {count} exactly as written. It becomes a number of songs.
@@ -199,7 +129,7 @@ impl Locale {
         .replace("{count}", &count.to_string())
     }
 
-    pub fn playlist_count(self, count: u32) -> String {
+    fn playlist_count(self, count: u32) -> String {
         ngettext(
             self,
             // Translators: Keep {count} exactly as written. It becomes a number of playlists.
@@ -210,7 +140,7 @@ impl Locale {
         .replace("{count}", &count.to_string())
     }
 
-    pub fn folder_playlist_count(self, count: u32) -> String {
+    fn folder_playlist_count(self, count: u32) -> String {
         ngettext(
             self,
             // Translators: Keep {count} exactly as written. It becomes the number of playlists a folder holds.
@@ -221,7 +151,7 @@ impl Locale {
         .replace("{count}", &count.to_string())
     }
 
-    pub fn folder_state_label(self, name: &str, collapsed: bool) -> String {
+    fn folder_state_label(self, name: &str, collapsed: bool) -> String {
         // Translators: Keep {name} exactly as written. It becomes the folder name.
         let label = if collapsed {
             gettext(self, "{name}, folder, collapsed")
@@ -232,26 +162,44 @@ impl Locale {
     }
 }
 
-/// Every bundled language, in the order the Settings picker lists them: by
-/// their own names, as a reader of each would look for them.
-pub const LOCALES: &[Locale] = &[
-    Locale::German,
-    Locale::English,
-    Locale::Spanish,
-    Locale::French,
-    Locale::Italian,
-    Locale::Dutch,
-    Locale::Polish,
-    Locale::PortugueseBrazil,
-    Locale::PortuguesePortugal,
-    Locale::Swedish,
-    Locale::Turkish,
-    Locale::Russian,
-    Locale::Ukrainian,
-    Locale::Japanese,
-    Locale::ChineseSimplified,
-    Locale::ChineseTraditional,
-];
+/// Maps a parsed BCP 47 language tag to the closest catalog, or `None` when
+/// no catalog speaks it.
+fn from_parsed_tag(tag: &ffi::LanguageTag) -> Option<Locale> {
+    let region = tag.region.as_deref();
+    Some(match tag.language.as_str() {
+        "en" => Locale::English,
+        "de" => Locale::German,
+        "es" => Locale::Spanish,
+        "nl" => Locale::Dutch,
+        "fr" => Locale::French,
+        "sv" => Locale::Swedish,
+        "pl" => Locale::Polish,
+        "ru" => Locale::Russian,
+        "it" => Locale::Italian,
+        "ja" => Locale::Japanese,
+        "tr" => Locale::Turkish,
+        "uk" => Locale::Ukrainian,
+        // Portuguese outside Brazil follows the European standard. A bare
+        // "pt" goes to Brazil, where most Portuguese speakers live.
+        "pt" => match region {
+            Some(
+                "pt" | "ao" | "cv" | "gw" | "mo" | "mz" | "st" | "tl" | "gq" | "ch" | "lu",
+            ) => Locale::PortuguesePortugal,
+            _ => Locale::PortugueseBrazil,
+        },
+        // A written script decides. Otherwise the region does, and
+        // Simplified is the default, as in mainland China and Singapore.
+        // Windows writes the legacy Chinese scripts as the regions CHS
+        // and CHT.
+        "zh" => match (tag.script.as_deref(), region) {
+            (Some("hant"), _) => Locale::ChineseTraditional,
+            (Some("hans"), _) => Locale::ChineseSimplified,
+            (_, Some("tw" | "hk" | "mo" | "cht")) => Locale::ChineseTraditional,
+            _ => Locale::ChineseSimplified,
+        },
+        _ => return None,
+    })
+}
 
 #[cfg(test)]
 mod tests {
@@ -325,31 +273,12 @@ mod tests {
     fn the_first_preferred_language_with_a_catalog_wins() {
         let tags = |list: &[&str]| list.iter().map(|tag| tag.to_string()).collect::<Vec<_>>();
         let preferred = |list: &[&str]| {
-            fastframe_i18n::first_supported(tags(list), Locale::from_parsed_tag).unwrap_or_default()
+            ffi::first_supported(tags(list), from_parsed_tag).unwrap_or_default()
         };
         assert_eq!(preferred(&["nb-NO", "de-DE", "en-US"]), Locale::German);
         assert_eq!(preferred(&["es-MX", "en-US"]), Locale::Spanish);
         assert_eq!(preferred(&["ko-KR"]), Locale::English);
         assert_eq!(preferred(&[]), Locale::English);
-    }
-
-    #[test]
-    fn every_locale_round_trips_through_its_tag_and_is_listed_once() {
-        for &locale in LOCALES {
-            assert_eq!(Locale::from_tag(locale.tag()), Some(locale));
-            assert_eq!(Locale::from_language_tag(locale.tag()), Some(locale));
-            assert!(!locale.native_name().is_empty());
-            assert_eq!(LOCALES.iter().filter(|other| **other == locale).count(), 1);
-        }
-        assert_eq!(
-            LOCALES.len(),
-            <Locale as clap::ValueEnum>::value_variants().len()
-        );
-        assert_eq!(Locale::from_tag("de"), Some(Locale::German));
-        assert_eq!(Locale::from_tag("en-US"), Some(Locale::English));
-        assert_eq!(Locale::from_tag("tr"), Some(Locale::Turkish));
-        assert_eq!(Locale::from_tag("uk"), Some(Locale::Ukrainian));
-        assert_eq!(Locale::from_tag("klingon"), None);
     }
 
     #[test]
