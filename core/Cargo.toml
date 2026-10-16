@@ -1,0 +1,18 @@
+[package]
+name = "spotifast-core"
+version = "0.13.3"
+edition = "2024"
+rust-version = "1.98"
+license = "MIT"
+description = "Spotifast's portable core: auth, credentials, playback/Connect, Web API data access, and the tokio bridge, shared by the desktop binary and the Android library."
+repository = "https://github.com/crmne/spotifast"
+keywords = ["spotify", "music", "librespot", "player"]
+categories = ["multimedia::audio"]
+
+# Placeholder: portable modules move here from the desktop crate in the next
+# steps. Dependencies are added as modules arrive, so this stays dependency-free
+# until then. See HANDOFF.md Phase A.
+
+[lib]
+name = "spotifast_core"
+path = "src/lib.rs"
