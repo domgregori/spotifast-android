@@ -17,7 +17,7 @@ pub mod demo;
 pub mod emoji;
 pub use spotifast_core::eq;
 pub mod history;
-pub mod http;
+pub use spotifast_core::http;
 pub mod i18n;
 pub mod images;
 pub mod liked;

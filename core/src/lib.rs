@@ -8,6 +8,7 @@
 
 pub mod auth;
 pub mod eq;
+pub mod http;
 pub mod limiter;
 pub mod link;
 pub mod locale;

@@ -25,7 +25,7 @@ log = "0.4"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "net", "io-util"] }
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json", "gzip", "http2"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json", "gzip", "http2", "blocking", "socks"] }
 # Same System-proxy matcher reqwest uses, so local playback follows the same
 # HTTP proxy. Used by proxy.rs's system-proxy detection.
 hyper-util = { version = "0.1", default-features = false, features = ["client-proxy", "client-proxy-system"] }
@@ -39,6 +39,8 @@ urlencoding = "2"
 percent-encoding = "2"
 # auth.rs needs reqwest; eq.rs needs librespot's channel/sample-rate constants.
 librespot-playback = { version = "0.8", default-features = false, features = ["rustls-tls-native-roots"] }
+# http.rs's tests exercise librespot's proxy URL handling.
+librespot-core = { version = "0.8", default-features = false, features = ["rustls-tls-native-roots"] }
 
 [dev-dependencies]
 # auth.rs's tests pause the tokio clock (start_paused).

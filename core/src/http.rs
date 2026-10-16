@@ -3,7 +3,7 @@
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use crate::settings::ProxyConfig;
+use crate::proxy::ProxyConfig;
 
 /// A cheap-to-clone handle to the process HTTP client.
 ///
@@ -71,7 +71,7 @@ pub fn build_client(proxy: &ProxyConfig) -> Result<reqwest::Client, String> {
 
 /// Collection mutations must not be replayed after an uncertain response.
 /// Keep the configured proxy and user agent, but disable retries and redirects.
-pub(crate) fn build_collection_client(proxy: &ProxyConfig) -> Result<reqwest::Client, String> {
+pub fn build_collection_client(proxy: &ProxyConfig) -> Result<reqwest::Client, String> {
     client_builder(proxy)?
         .retry(reqwest::retry::never())
         .redirect(reqwest::redirect::Policy::none())
@@ -94,7 +94,7 @@ fn client_builder(proxy: &ProxyConfig) -> Result<reqwest::ClientBuilder, String>
     apply_proxy(reqwest::Client::builder().user_agent(user_agent()), proxy)
 }
 
-pub(crate) fn blocking_builder(
+pub fn blocking_builder(
     proxy: &ProxyConfig,
 ) -> Result<reqwest::blocking::ClientBuilder, String> {
     apply_blocking_proxy(
@@ -183,7 +183,7 @@ mod tests {
         build_client(&ProxyConfig::Off).unwrap();
         build_client(&ProxyConfig::System).unwrap();
         let settings = crate::settings::Settings {
-            proxy_mode: crate::settings::ProxyMode::Socks,
+            proxy_mode: crate::proxy::ProxyMode::Socks,
             proxy_host: "127.0.0.1".into(),
             proxy_port: "1080".into(),
             proxy_username: "user".into(),
@@ -235,7 +235,7 @@ mod tests {
         });
 
         let settings = crate::settings::Settings {
-            proxy_mode: crate::settings::ProxyMode::Http,
+            proxy_mode: crate::proxy::ProxyMode::Http,
             proxy_host: proxy_addr.ip().to_string(),
             proxy_port: proxy_addr.port().to_string(),
             ..crate::settings::Settings::default()
@@ -284,7 +284,7 @@ mod tests {
         let username = "alice/name";
         let password = " secret/with spaces ";
         let settings = crate::settings::Settings {
-            proxy_mode: crate::settings::ProxyMode::Http,
+            proxy_mode: crate::proxy::ProxyMode::Http,
             proxy_host: proxy_addr.ip().to_string(),
             proxy_port: proxy_addr.port().to_string(),
             proxy_username: username.into(),
@@ -385,7 +385,7 @@ mod tests {
                 .unwrap();
         });
         let proxy = crate::settings::Settings {
-            proxy_mode: crate::settings::ProxyMode::Socks,
+            proxy_mode: crate::proxy::ProxyMode::Socks,
             proxy_host: address.ip().to_string(),
             proxy_port: address.port().to_string(),
             proxy_username: "dummy-user".into(),
