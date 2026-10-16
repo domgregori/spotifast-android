@@ -20,6 +20,7 @@ use crate::i18n::{Locale, gettext, ngettext};
 use crate::model::QueueTab;
 use crate::model::*;
 use crate::paths::AppDirs;
+use crate::history_ext::HistoryExt;
 use crate::player::{EngineConfig, LoadSpec, LocalState, Playback, PlayerCommand, RepeatMode};
 use crate::settings::{
     CachedRootlist, LanguageChoiceExt, SessionState, Settings, SettingsExt, ThemeChoice,

@@ -12,6 +12,7 @@ pub mod account_cache;
 pub mod credentials;
 pub mod eq;
 pub mod file;
+pub mod history;
 pub mod http;
 pub mod liked;
 pub mod limiter;
