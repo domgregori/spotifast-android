@@ -3739,6 +3739,7 @@ mod tests {
 
     #[test]
     fn the_windows_taskbar_setting_keeps_its_choice_without_closing_settings() {
+        use crate::settings::SettingsExt;
         use egui::accesskit::Role;
         let (ctx, mut app) = accessible_app("winamp-taskbar-setting");
         app.open(Page::Settings);
@@ -3781,6 +3782,7 @@ mod tests {
     /// shows the row.
     #[test]
     fn the_linux_autoscroll_switch_starts_off_and_is_saved() {
+        use crate::settings::SettingsExt;
         use egui::accesskit::{Role, Toggled};
         let (ctx, mut app) = accessible_app("autoscroll-setting");
         let text = settings_text(&ctx, &mut app, "Middle-click autoscroll");
@@ -5174,7 +5176,11 @@ mod tests {
         assert_eq!(app.settings.custom_theme.as_deref(), Some("local.json"));
         assert_eq!(app.palette, palette);
         assert_eq!(
-            app.settings.custom_theme_cache.as_ref().unwrap().palette,
+            serde_json::from_value::<crate::theme::CustomTheme>(
+                app.settings.custom_theme_cache.clone().unwrap()
+            )
+            .unwrap()
+            .palette,
             palette
         );
         assert_eq!(ctx.theme(), egui::Theme::Light);
@@ -8377,6 +8383,7 @@ mod tests {
     #[test]
     fn dragging_liked_songs_moves_it_and_its_menu_can_pin_it_again() {
         use crate::settings::LIKED_SONGS_KEY;
+        use crate::settings::SettingsExt;
         use egui::accesskit::Role;
         for compact in [false, true] {
             let (ctx, mut app) = accessible_app(&format!("liked-drag-{compact}"));

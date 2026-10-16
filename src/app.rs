@@ -22,7 +22,7 @@ use crate::model::*;
 use crate::paths::AppDirs;
 use crate::player::{EngineConfig, LoadSpec, LocalState, Playback, PlayerCommand, RepeatMode};
 use crate::settings::{
-    CachedRootlist, LanguageChoiceExt, SessionState, Settings, ThemeChoice,
+    CachedRootlist, LanguageChoiceExt, SessionState, Settings, SettingsExt, ThemeChoice,
 };
 use crate::single_instance::ControlCommand;
 use crate::theme::{self, Palette};
@@ -3666,17 +3666,17 @@ impl App {
         let mut changed = false;
         if let Some(filename) = &self.settings.custom_theme
             && let Some(theme) = self.custom_themes.find(filename)
-            && self.settings.custom_theme_cache.as_ref() != Some(theme)
+            && self.settings.custom_theme_cache.as_ref() != serde_json::to_value(theme).ok().as_ref()
         {
             // Use the current selection, never the selection captured by the scan.
-            self.settings.custom_theme_cache = Some(theme.clone());
+            self.settings.custom_theme_cache = serde_json::to_value(theme).ok();
             changed = true;
         }
         if self.custom_themes.follows_omarchy() {
             if let Some(theme) = self.custom_themes.system_theme()
-                && self.settings.system_theme_cache.as_ref() != Some(theme)
+                && self.settings.system_theme_cache.as_ref() != serde_json::to_value(theme).ok().as_ref()
             {
-                self.settings.system_theme_cache = Some(theme.clone());
+                self.settings.system_theme_cache = serde_json::to_value(theme).ok();
                 changed = true;
             }
         } else if self.settings.system_theme_cache.take().is_some() {
@@ -10384,7 +10384,7 @@ impl App {
             }
             Action::SetCustomTheme(filename) => {
                 if let Some(theme) = self.custom_themes.find(&filename) {
-                    self.settings.custom_theme_cache = Some(theme.clone());
+                    self.settings.custom_theme_cache = serde_json::to_value(theme).ok();
                     self.settings.custom_theme = Some(filename);
                     self.mark_settings_dirty();
                     ctx.set_theme(self.theme_preference());
