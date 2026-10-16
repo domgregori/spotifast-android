@@ -32,36 +32,9 @@ const HTTP_TIMEOUT: Duration = Duration::from_secs(6);
 type HmacSha1 = Hmac<Sha1>;
 type Aes128Ctr = ctr::Ctr128BE<aes::Aes128>;
 
-/// A receiver found on the network.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Receiver {
-    /// The name it advertises, e.g. "House Spotify".
-    pub name: String,
-    /// The receiver's stable Connect identity, after `getInfo` answers.
-    pub device_id: Option<String>,
-    pub address: std::net::IpAddr,
-    pub port: u16,
-    /// Path its HTTP interface answers on, from the `CPath` TXT record.
-    pub path: String,
-    /// A Google Cast device, started over Cast v2 instead of ZeroConf
-    /// (`crate::cast`). Its device id is known from its name alone.
-    pub cast: bool,
-}
-
-impl Receiver {
-    fn url(&self, query: &str) -> String {
-        let host = match self.address {
-            std::net::IpAddr::V6(address) => format!("[{address}]"),
-            std::net::IpAddr::V4(address) => address.to_string(),
-        };
-        let path = if self.path.starts_with('/') {
-            self.path.clone()
-        } else {
-            format!("/{}", self.path)
-        };
-        format!("http://{host}:{}{path}{query}", self.port)
-    }
-}
+/// A receiver found on the network. The struct itself lives in core; the
+/// discovery and Cast v2 handshake below stay desktop.
+pub use spotifast_core::zeroconf::Receiver;
 
 /// What a receiver says about itself.
 #[derive(Clone, Debug, Deserialize)]
