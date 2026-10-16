@@ -30,5 +30,6 @@ pub mod repeat;
 pub mod resample;
 pub mod session_reads;
 pub mod settings;
+pub mod sink;
 pub mod util;
 pub mod zeroconf;

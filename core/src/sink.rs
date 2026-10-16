@@ -15,6 +15,7 @@ use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::thread;
 use std::time::{Duration, Instant};
 
+#[cfg(not(target_os = "android"))]
 use fastframe_audio::{Buffer, BufferSize, Maintained, OutputOptions, Reason, Render};
 use librespot_playback::audio_backend::{Sink, SinkError, SinkResult};
 use librespot_playback::convert::Converter;
@@ -22,6 +23,7 @@ use librespot_playback::decoder::AudioPacket;
 use librespot_playback::mixer::VolumeGetter;
 use librespot_playback::player::PlayerEvent;
 use librespot_playback::{NUM_CHANNELS, SAMPLE_RATE};
+#[cfg(not(target_os = "android"))]
 use rodio::Source;
 
 use crate::resample::Resampler;
@@ -38,31 +40,39 @@ pub const NO_DEVICE: &str =
     "No audio output device was found. Connect or enable one, then press play again.";
 
 /// Opens the output: the device by name, else the default.
+#[cfg(not(target_os = "android"))]
 type Opener = fn(Option<&str>, u32, &AudioControl) -> Result<Output, OpenError>;
 
 /// Maximum queued rodio chunks before `write` blocks, about 200 ms of audio.
+#[cfg(not(target_os = "android"))]
 const QUEUE_LIMIT: usize = 12;
 
 /// How much of a full queue rodio plays before `write` is woken to top it
 /// up. librespot's packets hold 4 to 13 ms of sound, so polling every 10 ms
 /// (or waking for every packet) kept the decoder thread awake about 100
 /// times a second; this wakes it about 30 times.
+#[cfg(not(target_os = "android"))]
 const REFILL: Duration = Duration::from_millis(20);
 
 /// Longest `write` waits for rodio before it looks at the device again: a
 /// stream that has failed or stopped playing finishes no chunk to wake it.
+#[cfg(not(target_os = "android"))]
 const QUEUE_WAIT: Duration = Duration::from_millis(50);
 
 /// Maximum time `stop` waits for the queue to drain.
+#[cfg(not(target_os = "android"))]
 const DRAIN_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Length of each side of an interrupted-track fade.
+#[cfg(not(target_os = "android"))]
 const INTERRUPT_FADE: Duration = Duration::from_millis(50);
 
 /// How long Play takes to come up, and Pause and Stop to go down.
+#[cfg(not(target_os = "android"))]
 const TRANSPORT_FADE: Duration = Duration::from_millis(50);
 
 /// Smooths slider and mute changes at the device's sample rate.
+#[cfg(not(target_os = "android"))]
 const VOLUME_RAMP: Duration = Duration::from_millis(30);
 
 /// Default Windows device buffer length in milliseconds.
@@ -75,6 +85,7 @@ pub const DEFAULT_BUFFER_MS: u32 = 100;
 /// delay playback controls.
 pub const BUFFER_MS_RANGE: std::ops::RangeInclusive<u32> = 20..=500;
 
+#[cfg(not(target_os = "android"))]
 /// Coordinates an explicit track replacement with the audio thread.
 ///
 /// librespot deliberately leaves a gapless sink running between tracks. That
@@ -84,6 +95,7 @@ pub const BUFFER_MS_RANGE: std::ops::RangeInclusive<u32> = 20..=500;
 /// gated until librespot reports that the replacement track is loaded.
 /// A confirmed seek also discards queued audio, without gating packets from
 /// the decoder that has already moved to the requested position.
+#[cfg(not(target_os = "android"))]
 pub struct AudioControl {
     target: Mutex<AudioTarget>,
     waiting_for_track: AtomicBool,
@@ -93,11 +105,13 @@ pub struct AudioControl {
 }
 
 #[derive(Default)]
+#[cfg(not(target_os = "android"))]
 struct AudioTarget {
     sink: Weak<rodio::Sink>,
     envelope: Option<Arc<Envelope>>,
 }
 
+#[cfg(not(target_os = "android"))]
 impl AudioControl {
     pub fn new(buffer_ms: u32) -> Arc<Self> {
         Arc::new(Self {
@@ -111,7 +125,7 @@ impl AudioControl {
 
     /// Follows confirmed decoder transitions, including seeks requested by
     /// another Spotify client. Natural track changes retain gapless audio.
-    pub(crate) fn handle_player_event(&self, event: &PlayerEvent) {
+    pub fn handle_player_event(&self, event: &PlayerEvent) {
         match event {
             PlayerEvent::TrackChanged { .. } => self.track_changed(),
             PlayerEvent::Seeked { .. } => {
@@ -173,7 +187,7 @@ impl AudioControl {
 
     /// The processing wrapper owns a separate reset from the output queue.
     /// Keep it pending while old decoder packets are still being discarded.
-    pub(crate) fn take_processing_reset(&self) -> bool {
+    pub fn take_processing_reset(&self) -> bool {
         !self.waiting_for_track() && self.reset_processing.swap(false, Ordering::SeqCst)
     }
 
@@ -190,6 +204,7 @@ impl AudioControl {
 
 /// Frames handed to rodio, and frames it has finished with.
 /// The difference is what is still queued.
+#[cfg(not(target_os = "android"))]
 struct Queued {
     appended: AtomicU64,
     consumed: AtomicU64,
@@ -198,6 +213,7 @@ struct Queued {
     wake_at: AtomicU64,
 }
 
+#[cfg(not(target_os = "android"))]
 impl Queued {
     fn new() -> Arc<Self> {
         Arc::new(Self {
@@ -246,9 +262,11 @@ impl Queued {
 }
 
 /// The range a level moves over, as a fixed point fraction of full gain.
+#[cfg(not(target_os = "android"))]
 const SCALE: u32 = 1 << 24;
 
 /// A sample-clocked gain shared by every chunk in one rodio queue.
+#[cfg(not(target_os = "android"))]
 struct Envelope {
     level: AtomicU32,
     target: AtomicU32,
@@ -259,6 +277,7 @@ struct Envelope {
     full_step: u32,
 }
 
+#[cfg(not(target_os = "android"))]
 impl Envelope {
     /// Resting fully open, for a signal that is already sounding.
     fn open(sample_rate: u32, length: Duration) -> Arc<Self> {
@@ -335,16 +354,19 @@ impl Envelope {
 }
 
 /// The per-frame movement that crosses the whole range in `frames`.
+#[cfg(not(target_os = "android"))]
 fn step_over(frames: u32) -> u32 {
     SCALE.div_ceil(frames.max(1)).max(1)
 }
 
+#[cfg(not(target_os = "android"))]
 fn fade_frames(sample_rate: u32, length: Duration) -> u32 {
     (u64::from(sample_rate) * length.as_millis() as u64 / 1_000).max(1) as u32
 }
 
 /// Applies the shared interruption envelope on rodio's output thread, so it
 /// can smooth audio that was already queued when the user changes track.
+#[cfg(not(target_os = "android"))]
 struct TransitionSource {
     inner: rodio::buffer::SamplesBuffer,
     /// Smooths a track the listener replaced part way through.
@@ -362,6 +384,7 @@ struct TransitionSource {
     writer: thread::Thread,
 }
 
+#[cfg(not(target_os = "android"))]
 impl TransitionSource {
     fn new(
         inner: rodio::buffer::SamplesBuffer,
@@ -383,6 +406,7 @@ impl TransitionSource {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl Drop for TransitionSource {
     /// rodio drops whole sources on `stop`, which every track change does, so
     /// a chunk can end without being played. Settling up here is what stops
@@ -398,6 +422,7 @@ impl Drop for TransitionSource {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl Iterator for TransitionSource {
     type Item = f32;
 
@@ -419,6 +444,7 @@ impl Iterator for TransitionSource {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl Source for TransitionSource {
     fn current_span_len(&self) -> Option<usize> {
         self.inner.current_span_len()
@@ -437,6 +463,7 @@ impl Source for TransitionSource {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 pub struct RodioSink {
     /// The output device name from Settings; `None` means the default.
     device: Option<String>,
@@ -452,6 +479,7 @@ pub struct RodioSink {
     open: Opener,
 }
 
+#[cfg(not(target_os = "android"))]
 struct Output {
     device: fastframe_audio::Output<MixerRender>,
     volume: Arc<AtomicU32>,
@@ -474,6 +502,7 @@ struct Output {
     last_write: Option<Instant>,
 }
 
+#[cfg(not(target_os = "android"))]
 impl Output {
     fn failed(&self) -> bool {
         self.device.failed()
@@ -543,6 +572,7 @@ impl Output {
 }
 
 /// The converter from Spotify's rate to `sample_rate`, when they differ.
+#[cfg(not(target_os = "android"))]
 fn converter_to(sample_rate: u32) -> Option<Resampler> {
     let resampler = Resampler::new(SAMPLE_RATE, sample_rate, NUM_CHANNELS as usize);
     if resampler.is_some() {
@@ -554,12 +584,15 @@ fn converter_to(sample_rate: u32) -> Option<Resampler> {
 }
 
 /// A mixer and the rate it runs at.
+#[cfg(not(target_os = "android"))]
 type MadeMixer = (rodio::mixer::Mixer, u32);
 
+#[cfg(not(target_os = "android"))]
 type MixerSlot = Arc<Mutex<Option<MadeMixer>>>;
 
 /// A linear gain ramp, shared by every channel of an output frame.
 #[derive(Default)]
+#[cfg(not(target_os = "android"))]
 struct VolumeRamp {
     current: f32,
     target: f32,
@@ -567,6 +600,7 @@ struct VolumeRamp {
     sample_rate: u32,
 }
 
+#[cfg(not(target_os = "android"))]
 impl VolumeRamp {
     fn next_gain(&mut self, target: f32, sample_rate: u32) -> f32 {
         if target != self.target || sample_rate != self.sample_rate {
@@ -592,6 +626,7 @@ impl VolumeRamp {
 /// stream. A stream in the format the mixer already has keeps it, so a
 /// reopen on another device carries on from the same sample; another rate or
 /// channel count gets a new mixer, which waits in `made` for the sink.
+#[cfg(not(target_os = "android"))]
 struct MixerRender {
     volume: Arc<AtomicU32>,
     ramp: VolumeRamp,
@@ -600,6 +635,7 @@ struct MixerRender {
     made: MixerSlot,
 }
 
+#[cfg(not(target_os = "android"))]
 impl Render for MixerRender {
     fn configure(&mut self, sample_rate: u32, channels: u16) {
         if self.source.is_some() && self.format == (sample_rate, channels) {
@@ -630,6 +666,7 @@ impl Render for MixerRender {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl RodioSink {
     pub fn new(
         device: Option<String>,
@@ -691,6 +728,7 @@ impl RodioSink {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl Sink for RodioSink {
     /// Never fails: an output that cannot open is reported by the first
     /// `write` instead (#623).
@@ -843,6 +881,7 @@ impl Sink for RodioSink {
 ///
 /// Linux requires rtkit; CoreAudio owns its real-time callback on macOS.
 #[cfg(windows)]
+#[cfg(not(target_os = "android"))]
 fn take_precedence() {
     use windows_sys::Win32::System::Threading::{
         GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
@@ -855,9 +894,11 @@ fn take_precedence() {
 }
 
 #[cfg(not(windows))]
+#[cfg(not(target_os = "android"))]
 fn take_precedence() {}
 
 #[derive(Debug, thiserror::Error)]
+#[cfg(not(target_os = "android"))]
 enum OpenError {
     #[error("{NO_DEVICE}")]
     NoDevice,
@@ -865,6 +906,7 @@ enum OpenError {
     Device(fastframe_audio::OpenError),
 }
 
+#[cfg(not(target_os = "android"))]
 impl From<fastframe_audio::OpenError> for OpenError {
     fn from(error: fastframe_audio::OpenError) -> Self {
         match error {
@@ -879,6 +921,7 @@ impl From<fastframe_audio::OpenError> for OpenError {
 /// that has gone falls back to the default. The fixed buffer addresses
 /// Windows shared-mode underruns (#88); CoreAudio, ALSA, PulseAudio and
 /// PipeWire keep their proven driver-selected periods.
+#[cfg(not(target_os = "android"))]
 fn output_options(preferred: Option<&str>, buffer_ms: u32) -> OutputOptions {
     let device = match preferred.map(str::trim).filter(|name| !name.is_empty()) {
         Some(name) => fastframe_audio::Device::Named(name.to_string()),
@@ -897,6 +940,7 @@ fn output_options(preferred: Option<&str>, buffer_ms: u32) -> OutputOptions {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 fn open_output(
     preferred: Option<&str>,
     buffer_ms: u32,
@@ -938,6 +982,7 @@ fn open_output(
 }
 
 #[cfg(test)]
+#[cfg(not(target_os = "android"))]
 mod tests {
     use super::*;
     use std::sync::Mutex;

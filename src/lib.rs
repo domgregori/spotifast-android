@@ -49,7 +49,7 @@ pub use spotifast_core::resample;
 pub use spotifast_core::session_reads;
 pub mod settings;
 pub mod single_instance;
-pub mod sink;
+pub use spotifast_core::sink;
 pub mod skin;
 pub mod sonos;
 pub mod system_fonts;
