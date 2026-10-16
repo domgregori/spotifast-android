@@ -6,7 +6,7 @@ use crate::app::App;
 use crate::backend::AuthStatus;
 use crate::i18n::gettext;
 use crate::model::Action;
-use crate::settings::ProxyMode;
+use crate::settings::{ProxyMode, ProxyModeExt};
 use crate::theme;
 
 pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {

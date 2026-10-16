@@ -57,26 +57,7 @@ pub enum Grant {
 
 /// No Debug implementation: the password is usable, and the username is private.
 /// A saved password belongs to one network endpoint and username.
-#[derive(Clone, PartialEq, Serialize, Deserialize)]
-pub struct ProxyPassword {
-    pub host: String,
-    pub port: u16,
-    pub username: String,
-    pub password: String,
-}
-
-impl ProxyPassword {
-    fn valid(&self) -> bool {
-        let settings = crate::settings::Settings {
-            proxy_host: self.host.clone(),
-            proxy_port: self.port.to_string(),
-            proxy_username: self.username.clone(),
-            proxy_password: self.password.clone(),
-            ..Default::default()
-        };
-        settings.proxy_password_record().ok().flatten().as_ref() == Some(self)
-    }
-}
+pub use spotifast_core::proxy::ProxyPassword;
 
 impl Grant {
     fn valid_for(&self, slot: Slot) -> bool {
