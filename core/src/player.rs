@@ -61,7 +61,7 @@ pub struct EngineConfig {
     /// The equalizer's settings, shared with the window that sets them.
     pub eq: crate::eq::SharedEq,
     /// Proxy used by the Web API client. Librespot only uses the HTTP form.
-    pub proxy: crate::settings::ProxyConfig,
+    pub proxy: crate::proxy::ProxyConfig,
 }
 
 impl EngineConfig {
@@ -109,7 +109,7 @@ pub enum Playback {
     Paused,
 }
 
-pub use spotifast_core::repeat::RepeatMode;
+pub use crate::repeat::RepeatMode;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct LocalTrack {
@@ -289,7 +289,7 @@ pub struct Engine {
 }
 
 impl Engine {
-    pub(crate) fn credentials(&self) -> Option<Credentials> {
+    pub fn credentials(&self) -> Option<Credentials> {
         self.session.cache().and_then(|cache| cache.credentials())
     }
     /// Connects to Spotify and announces this device on Spotify Connect.
@@ -439,7 +439,7 @@ impl Engine {
 
     /// What this engine is heard at, kept past the engine itself: the next
     /// engine starts there.
-    pub(crate) fn heard(&self) -> Heard {
+    pub fn heard(&self) -> Heard {
         Heard {
             state: Arc::clone(&self.state),
         }
@@ -458,7 +458,7 @@ impl Engine {
     }
 
     /// Whether Spotify classifies this album as an EP in its internal metadata.
-    pub(crate) async fn album_is_ep(&self, album_uri: &str) -> Result<bool> {
+    pub async fn album_is_ep(&self, album_uri: &str) -> Result<bool> {
         let uri = SpotifyUri::from_uri(album_uri).context("invalid album URI")?;
         let album = MetadataAlbum::get(&self.session, &uri)
             .await
@@ -729,7 +729,7 @@ fn sink_builder(
 
 /// What an engine is heard at, for the engine that replaces it.
 #[derive(Clone)]
-pub(crate) struct Heard {
+pub struct Heard {
     state: Arc<Mutex<LocalState>>,
 }
 
@@ -737,13 +737,13 @@ impl Heard {
     /// The level set last, which the state holds exactly: a level set here
     /// goes into the state with the mixer, and Connect reports every other
     /// change of the level.
-    pub(crate) fn level(&self) -> u16 {
+    pub fn level(&self) -> u16 {
         self.state.lock().unwrap_or_else(|p| p.into_inner()).volume
     }
 
     /// An engine heard at `volume`, for tests that have no engine.
-    #[cfg(test)]
-    pub(crate) fn at(volume: u16) -> Self {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn at(volume: u16) -> Self {
         Self {
             state: Arc::new(Mutex::new(LocalState {
                 volume,
@@ -1301,9 +1301,8 @@ mod tests {
             audio_backend::find(Some("rodio".into())).is_none(),
             "librespot's rodio backend is not built in"
         );
-        if cfg!(target_os = "linux") {
-            assert!(librespot_backend(Some("pulseaudio")).is_some());
-        }
+        // The pulseaudio backend (and others) remain available where the
+        // desktop crate builds them in; core builds none.
     }
 
     fn uri() -> SpotifyUri {
@@ -1626,7 +1625,7 @@ mod tests {
             volume_dir: PathBuf::new(),
             audio_cache_dir: None,
             audio_cache_limit: None,
-            proxy: crate::settings::ProxyConfig::Off,
+            proxy: crate::proxy::ProxyConfig::Off,
         };
         let id = config.device_id();
         assert_eq!(id.len(), 40);

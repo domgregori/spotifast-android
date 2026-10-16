@@ -41,7 +41,7 @@ pub mod motion;
 pub mod notch;
 pub mod opener;
 pub use spotifast_core::paths;
-pub mod player;
+pub use spotifast_core::player;
 pub use spotifast_core::playlist_cover;
 pub mod power;
 pub use spotifast_core::prerelease;

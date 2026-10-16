@@ -23,13 +23,17 @@ pub mod made_for_you;
 pub mod model;
 pub mod now_playing;
 pub mod paths;
+pub mod player;
 pub mod playlist_cover;
 pub mod prerelease;
 pub mod proxy;
 pub mod repeat;
 pub mod resample;
 pub mod session_reads;
+#[cfg(not(target_os = "android"))]
+pub mod shm;
 pub mod settings;
 pub mod sink;
 pub mod util;
+pub mod vis;
 pub mod zeroconf;

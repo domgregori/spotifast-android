@@ -48,6 +48,8 @@ librespot-core = { version = "0.8", default-features = false, features = ["rustl
 librespot-protocol = { version = "0.8", default-features = false }
 # session_reads.rs reads catalogue data through the playback session.
 librespot-metadata = { version = "0.8", default-features = false }
+# player.rs owns the Spirc Connect device and its state.
+librespot-connect = { version = "0.8", default-features = false }
 # session_reads.rs parses the rootlist's playlist4 protobuf.
 protobuf = "3"
 
@@ -59,6 +61,8 @@ keyring-core = "1"
 # The desktop audio device stream and the rodio mixer/queue fill the sink.
 fastframe-audio = { git = "https://github.com/crmne/fastframe", rev = "3339a8bc524a51c47f87ca78c368dde3569d90f5" }
 rodio = { version = "0.21", default-features = false }
+# MilkDrop's shared-memory audio ring (memmap2).
+memmap2 = "0.9"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus-secret-service-keyring-store = { version = "1.0.1", features = ["rt-tokio-crypto-rust"] }

@@ -24,7 +24,7 @@ pub mod host;
 pub mod overlay;
 /// The shared-memory audio ring between the app and the MilkDrop child.
 #[cfg(feature = "milkdrop")]
-pub mod shm;
+pub use spotifast_core::shm;
 
 /// How long a preset plays before the next fades in.
 pub const DEFAULT_SECONDS: u32 = 10;
