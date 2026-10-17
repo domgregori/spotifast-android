@@ -115,7 +115,8 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.security.crypto)
     implementation(libs.androidx.browser)
-    // The UniFFI-generated bindings call through JNA.
-    implementation(libs.jna)
+    // The UniFFI-generated bindings call through JNA. The AAR ships
+    // libjnidispatch.so for the Android ABIs; the plain JAR does not.
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
     debugImplementation(libs.androidx.compose.ui.tooling)
 }
