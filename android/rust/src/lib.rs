@@ -41,6 +41,10 @@ pub trait PlaybackStateListener: Send + Sync {
     /// One playlist's tracks, as a JSON array of
     /// `{ "uri", "name", "artist", "duration_ms" }`.
     fn on_playlist_tracks(&self, playlist_id: String, tracks: String);
+
+    /// Search results for a query: the matching tracks, as a JSON array of
+    /// `{ "uri", "name", "artist", "duration_ms" }`.
+    fn on_search_tracks(&self, query: String, tracks: String);
 }
 
 /// Credential storage, implemented by Kotlin over EncryptedSharedPreferences.
@@ -164,6 +168,12 @@ impl CoreHandle {
         });
     }
 
+    /// Search for a query; the matching tracks arrive via `on_search_tracks`.
+    pub fn search(&self, query: String) {
+        let serial = self.generation.fetch_add(1, Ordering::Relaxed);
+        self.backend.lock().unwrap().api(ApiRequest::Search { query, serial });
+    }
+
     /// Register the outbound-state listener and start the event pump. Calling
     /// this again replaces the listener.
     pub fn set_listener(&self, listener: Arc<dyn PlaybackStateListener>) {
@@ -229,6 +239,31 @@ impl CoreHandle {
                                     };
                                     if let Ok(json) = serde_json::to_string(&entries) {
                                         listener.on_playlist_tracks(id, json);
+                                    }
+                                }
+                                ApiResponse::Search { query, result, .. } => {
+                                    let tracks: Vec<TrackEntry> = match result {
+                                        Ok(results) => results
+                                            .tracks
+                                            .map(|page| {
+                                                page.items
+                                                    .into_iter()
+                                                    .map(|track| {
+                                                        let artist = track.artist_names();
+                                                        TrackEntry {
+                                                            uri: track.uri,
+                                                            name: track.name,
+                                                            artist,
+                                                            duration_ms: track.duration_ms,
+                                                        }
+                                                    })
+                                                    .collect()
+                                            })
+                                            .unwrap_or_default(),
+                                        Err(_) => Vec::new(),
+                                    };
+                                    if let Ok(json) = serde_json::to_string(&tracks) {
+                                        listener.on_search_tracks(query, json);
                                     }
                                 }
                                 _ => {}

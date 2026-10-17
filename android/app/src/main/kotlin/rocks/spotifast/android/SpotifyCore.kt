@@ -51,6 +51,12 @@ object SpotifyCore {
     private val _selectedPlaylist = MutableStateFlow<String?>(null)
     val selectedPlaylist: StateFlow<String?> = _selectedPlaylist.asStateFlow()
 
+    private val _searchTracks = MutableStateFlow<List<TrackItem>>(emptyList())
+    val searchTracks: StateFlow<List<TrackItem>> = _searchTracks.asStateFlow()
+
+    private val _searching = MutableStateFlow(false)
+    val searching: StateFlow<Boolean> = _searching.asStateFlow()
+
     private var handle: CoreHandle? = null
 
     private val listener = object : PlaybackStateListener {
@@ -94,6 +100,21 @@ object SpotifyCore {
             }.getOrDefault(emptyList())
             _tracks.value = _tracks.value + (playlistId to items)
         }
+
+        override fun onSearchTracks(query: String, tracks: String) {
+            _searchTracks.value = runCatching {
+                val array = JSONArray(tracks)
+                (0 until array.length()).map { index ->
+                    val item = array.getJSONObject(index)
+                    TrackItem(
+                        item.getString("uri"),
+                        item.getString("name"),
+                        item.getString("artist"),
+                        item.getLong("duration_ms"),
+                    )
+                }
+            }.getOrDefault(emptyList())
+        }
     }
 
     @Synchronized
@@ -121,5 +142,16 @@ object SpotifyCore {
 
     fun closePlaylist() {
         _selectedPlaylist.value = null
+    }
+
+    fun search(query: String) = handle?.search(query)
+
+    fun openSearch() {
+        _searching.value = true
+    }
+
+    fun closeSearch() {
+        _searching.value = false
+        _searchTracks.value = emptyList()
     }
 }

@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -26,10 +27,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 
 class MainActivity : ComponentActivity() {
 
@@ -56,16 +61,17 @@ class MainActivity : ComponentActivity() {
 private fun App() {
     val authState by SpotifyCore.authState.collectAsState()
     val selectedPlaylist by SpotifyCore.selectedPlaylist.collectAsState()
+    val searching by SpotifyCore.searching.collectAsState()
 
     when (val state = authState) {
         is AuthState.WaitingForBrowser -> BrowserRedirect(state.url)
         is AuthState.Connecting -> Connecting()
         is AuthState.Connected -> {
             val playlistId = selectedPlaylist
-            if (playlistId != null) {
-                Playlist(playlistId)
-            } else {
-                Library(state.username)
+            when {
+                playlistId != null -> Playlist(playlistId)
+                searching -> Search()
+                else -> Library(state.username)
             }
         }
         else -> Login()
@@ -111,6 +117,9 @@ private fun Library(username: String) {
                 .padding(16.dp),
         ) {
             Text("Signed in as $username", style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = { SpotifyCore.openSearch() }) {
+                Text("Search")
+            }
             Spacer(Modifier.height(16.dp))
             if (library.isEmpty()) {
                 Text("Your library is empty.")
@@ -152,6 +161,58 @@ private fun Playlist(playlistId: String) {
             } else {
                 LazyColumn {
                     items(playlistTracks, key = { it.uri }) { track ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                        ) {
+                            Text(track.name, style = MaterialTheme.typography.bodyLarge)
+                            Text(track.artist, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Search() {
+    var query by remember { mutableStateOf("") }
+    val results by SpotifyCore.searchTracks.collectAsState()
+
+    LaunchedEffect(query) {
+        if (query.isNotBlank()) {
+            delay(300)
+            SpotifyCore.search(query.trim())
+        }
+    }
+
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+        ) {
+            TextButton(onClick = { SpotifyCore.closeSearch() }) {
+                Text("Back")
+            }
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                label = { Text("Search") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Spacer(Modifier.height(8.dp))
+            if (query.isBlank()) {
+                Text("Search for a track.")
+            } else if (results.isEmpty()) {
+                Text("No tracks found.")
+            } else {
+                LazyColumn {
+                    items(results, key = { it.uri }) { track ->
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
