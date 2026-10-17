@@ -20,6 +20,16 @@ impl AppDirs {
         Self::for_name("spotifast")
     }
 
+    /// Build the directories under an explicit base path, for platforms where
+    /// `ProjectDirs` has no native layout (Android hands its files directory).
+    pub fn from_base(base: PathBuf) -> Self {
+        Self {
+            config: base.join("config"),
+            state: base.join("state"),
+            cache: base.join("cache"),
+        }
+    }
+
     fn for_name(name: &str) -> Self {
         let project = ProjectDirs::from("me", "paolino", name);
         match project {

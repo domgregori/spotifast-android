@@ -79,14 +79,31 @@ pub struct CoreHandle {
 #[uniffi::export]
 impl CoreHandle {
     #[uniffi::constructor]
-    pub fn new(web_client_id: String, credential_store: Arc<dyn CredentialStore>) -> Arc<Self> {
+    pub fn new(
+        web_client_id: String,
+        credential_store: Arc<dyn CredentialStore>,
+        files_dir: String,
+    ) -> Arc<Self> {
         android_logger::init_once(
             android_logger::Config::default()
                 .with_max_level(log::LevelFilter::Debug)
                 .with_tag("spotifast"),
         );
-        let dirs = AppDirs::discover();
+        let dirs = AppDirs::from_base(std::path::PathBuf::from(files_dir));
         let _ = dirs.ensure();
+        // rustls-native-certs has no Android layout: point it at the system
+        // trust store so librespot's HTTP client can verify Spotify.
+        // SAFETY: called once at startup before any TLS handshake or other
+        // thread reads the environment.
+        unsafe {
+            std::env::set_var("SSL_CERT_DIR", "/system/etc/security/cacerts");
+        }
+        log::debug!(
+            "app dirs: config={:?} state={:?} cache={:?}",
+            dirs.config,
+            dirs.state,
+            dirs.cache
+        );
         let settings = Settings::default();
         let proxy = ProxyConfig::Off;
         let tap = AudioTap::new();

@@ -3341,6 +3341,7 @@ impl Worker {
             let cache = match config.open_cache() {
                 Ok(cache) => cache,
                 Err(error) => {
+                    log::error!("unable to open the playback cache: {error:#}");
                     let _ = commands.send(Command::EngineConnected {
                         lease: lease.clone(),
                         session_generation,

@@ -137,7 +137,8 @@ object SpotifyCore {
     @Synchronized
     fun init(context: Context) {
         if (handle == null) {
-            handle = CoreHandle(CLIENT_ID, EncryptedCredentialStore(context.applicationContext))
+            val filesDir = context.applicationContext.filesDir.absolutePath
+            handle = CoreHandle(CLIENT_ID, EncryptedCredentialStore(context.applicationContext), filesDir)
             handle?.setListener(listener)
         }
     }
