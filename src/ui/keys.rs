@@ -135,7 +135,7 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
     });
     if !typing
         && ctx.input_mut(|input| input.consume_key(Modifiers::NONE, Key::B))
-        && let Some(now) = app.now_playing().filter(|now| !now.is_episode)
+        && let Some(now) = app.engine.now_playing().filter(|now| !now.is_episode)
     {
         actions.push(Action::ToggleSaved(now.uri));
     }
@@ -143,15 +143,14 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
     for action in actions {
         match action {
             Action::OpenUri(kind) if kind == "artist" => {
-                if let Some(id) = app
-                    .now_playing()
+                if let Some(id) = app.engine.now_playing()
                     .and_then(|now| now.artists.first().and_then(|artist| artist.id.clone()))
                 {
                     app.engine.actions.push(Action::Open(Page::Artist(id)));
                 }
             }
             Action::OpenUri(kind) if kind == "album" => {
-                if let Some(now) = app.now_playing() {
+                if let Some(now) = app.engine.now_playing() {
                     if let Some(id) = now.album_id {
                         app.engine.actions.push(Action::Open(Page::Album(id)));
                     } else if let Some(id) = now.show_id {
@@ -599,7 +598,7 @@ mod tests {
             },
         );
         crate::demo::populate(&mut app);
-        let album = app.now_playing().and_then(|now| now.album_id);
+        let album = app.engine.now_playing().and_then(|now| now.album_id);
         assert!(album.is_some(), "the demo song has an album to go to");
 
         // The modifiers as the platform reports its command key.

@@ -22,3 +22,20 @@ impl Services for DesktopServices {
         Box::pin(async move { self.art.fetch(&url).await })
     }
 }
+
+/// The desktop [`FileWriter`], through `fastframe_file::Writer`.
+pub struct FastframeFileWriter(pub fastframe_file::Writer);
+
+impl spotifast_core::engine::FileWriter for FastframeFileWriter {
+    fn write(&self, path: &std::path::Path, bytes: Vec<u8>) {
+        self.0.write(path, bytes, fastframe_file::Access::Default);
+    }
+
+    fn write_private(&self, path: &std::path::Path, bytes: Vec<u8>) {
+        self.0.write(path, bytes, fastframe_file::Access::Private);
+    }
+
+    fn flush(&self, timeout: std::time::Duration) -> bool {
+        self.0.flush(timeout)
+    }
+}

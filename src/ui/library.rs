@@ -45,8 +45,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                 let id = album.id.clone();
                 let uri = album.uri.clone();
                 let subtitle = join_names(album.artists.iter().map(|artist| artist.name.as_str()));
-                let context_here = app.playing_context_uri().as_deref() == Some(uri.as_str());
-                let playing_here = context_here && app.believed_playing();
+                let context_here = app.engine.playing_context_uri().as_deref() == Some(uri.as_str());
+                let playing_here = context_here && app.engine.believed_playing();
                 let card_art = app.art_px(widgets::CARD_ART);
                 let card = widgets::card(
                     ui,
@@ -103,8 +103,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                 let artist = app.engine.library.artists.items[index].clone();
                 let id = artist.id.clone();
                 let uri = artist.uri.clone();
-                let context_here = app.playing_context_uri().as_deref() == Some(uri.as_str());
-                let playing_here = context_here && app.believed_playing();
+                let context_here = app.engine.playing_context_uri().as_deref() == Some(uri.as_str());
+                let playing_here = context_here && app.engine.believed_playing();
                 let card_art = app.art_px(widgets::CARD_ART);
                 let card = widgets::card(
                     ui,

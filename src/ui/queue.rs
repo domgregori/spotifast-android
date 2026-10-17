@@ -16,7 +16,7 @@ pub fn page(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     ui.add_space(8.0);
     // The queue refreshes on track changes, additions, and while visible.
-    let offer_save = !app.queue_playlist_uris().is_empty();
+    let offer_save = !app.engine.queue_playlist_uris().is_empty();
     ui.horizontal(|ui| {
         theme::text(
             ui,
@@ -64,7 +64,7 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
         // Measure buttons first and give the remaining width to the chips.
         // Without `shrink_left`, wrapped chips can overlap the close button.
         let tab = app.engine.queue_tab;
-        let offer_save = tab == QueueTab::Queue && !app.queue_playlist_uris().is_empty();
+        let offer_save = tab == QueueTab::Queue && !app.engine.queue_playlist_uris().is_empty();
         let mut picked = None;
         let mut close = false;
         let mut save = false;
@@ -156,7 +156,7 @@ fn save_button(
 
 /// Clears manual rows from the active local queue.
 fn clear_button(app: &mut App, ui: &mut egui::Ui) {
-    if !app.can_clear_queue() {
+    if !app.engine.can_clear_queue() {
         return;
     }
     let palette = app.palette;
@@ -195,7 +195,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
     // Neither the Web API nor librespot can reorder or insert into a live
     // remote queue, so without local playback active every drop just
     // appends, same as the "Add to queue" menu item.
-    let reorderable = app.queue_locally_reorderable();
+    let reorderable = app.engine.queue_locally_reorderable();
     if !reorderable && let Some(track) = queue_drop(ui, ui.clip_rect()) {
         app.engine.actions.push(Action::QueueMany {
             songs: track
@@ -217,7 +217,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
             return;
         }
     };
-    let now = app.now_playing();
+    let now = app.engine.now_playing();
     // Prefer the player's current track because the Web API can lag after a
     // skip.
     let current: Option<PlayableItem> = match &now {
@@ -225,14 +225,14 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
             .get()
             .and_then(|queue| queue.currently_playing.clone())
             .filter(|item| item.uri() == now.uri)
-            .or_else(|| app.now_playing_item()),
+            .or_else(|| app.engine.now_playing_item()),
         None => app.engine.queue
             .get()
             .and_then(|queue| queue.currently_playing.clone()),
     };
     // Where the songs come from, above the song itself. A radio has no
     // page, so its name is plain text.
-    if let Some(from) = app.playing_from().filter(|_| current.is_some()) {
+    if let Some(from) = app.engine.playing_from().filter(|_| current.is_some()) {
         ui.horizontal(|ui| {
             theme::text(
                 ui,
@@ -311,7 +311,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
     // The user's own songs get their own section on top; the playing
     // context's rows follow under the usual heading. One numbering runs
     // through both, because that is the order things play.
-    let queued_len = app.queued_rows_len().min(queue_len);
+    let queued_len = app.engine.queued_rows_len().min(queue_len);
     if queued_len > 0 {
         // The trash sits with the songs it removes: only this section is
         // the user's to clear, the context below plays itself.

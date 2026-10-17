@@ -15,13 +15,13 @@ use super::widgets::{self, TrackRow};
 
 pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
     if !app.engine.artist_pages.contains_key(id) {
-        app.ensure_loaded(Page::Artist(id.to_string()));
+        app.engine.ensure_loaded(Page::Artist(id.to_string()));
     }
     let Some(page) = app.engine.artist_pages.remove(id) else {
         return;
     };
     let preview =
-        super::loading_preview(ui.ctx(), id, &page.artist, || app.known_artist(id).cloned());
+        super::loading_preview(ui.ctx(), id, &page.artist, || app.engine.known_artist(id).cloned());
     let palette = app.palette;
     let locale = app.engine.locale;
     match &page.artist {
@@ -138,11 +138,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                             let subtitle = format!(
                                 "{} • {}",
                                 album.year().unwrap_or(""),
-                                app.album_kind_label(album)
+                                app.engine.album_kind_label(album)
                             );
                             let context_here =
-                                app.playing_context_uri().as_deref() == Some(album.uri.as_str());
-                            let playing_here = context_here && app.believed_playing();
+                                app.engine.playing_context_uri().as_deref() == Some(album.uri.as_str());
+                            let playing_here = context_here && app.engine.believed_playing();
                             let card_art = app.art_px(widgets::CARD_ART);
                             let card = widgets::card(
                                 ui,
@@ -217,8 +217,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                 widgets::shelf(ui, &palette, "related", &title, |ui| {
                     for artist in related {
                         let context_here =
-                            app.playing_context_uri().as_deref() == Some(artist.uri.as_str());
-                        let playing_here = context_here && app.believed_playing();
+                            app.engine.playing_context_uri().as_deref() == Some(artist.uri.as_str());
+                        let playing_here = context_here && app.engine.believed_playing();
                         let card_art = app.art_px(widgets::CARD_ART);
                         let card = widgets::card(
                             ui,
@@ -368,10 +368,10 @@ fn artist_hero(app: &mut App, ui: &mut egui::Ui, artist: &Artist, preview: Optio
 fn artist_actions(app: &mut App, ui: &mut egui::Ui, artist: &Artist) {
     let palette = app.palette;
     let locale = app.engine.locale;
-    let following = app.is_saved(&artist.uri).unwrap_or(false);
+    let following = app.engine.is_saved(&artist.uri).unwrap_or(false);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 18.0;
-        if app.play_pending(&artist.uri) {
+        if app.engine.play_pending(&artist.uri) {
             theme::circle_spinner(
                 ui,
                 56.0,

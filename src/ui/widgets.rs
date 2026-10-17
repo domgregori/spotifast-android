@@ -718,7 +718,7 @@ pub fn picked_menu(
         });
     }
     // Set one explicit saved state for the full selection.
-    let all_saved = uris.iter().all(|uri| app.is_saved(uri).unwrap_or(false));
+    let all_saved = uris.iter().all(|uri| app.engine.is_saved(uri).unwrap_or(false));
     let (icon, text) = if all_saved {
         (
             Icon::HeartFilled,
@@ -794,7 +794,7 @@ pub(crate) fn playlist_picker(
     let width = ui.available_width();
     let field_id = ui.make_persistent_id("playlist-filter");
     let highlight_id = ui.make_persistent_id("playlist-highlight");
-    let playlists = app.editable_playlists();
+    let playlists = app.engine.editable_playlists();
     let matching = |query: &str| {
         let needle = query.trim().to_lowercase();
         playlists
@@ -951,7 +951,7 @@ pub fn item_menu(
     // Only a song the user queued, and only on this computer's queue: the
     // context's rows play themselves, and no other queue can be rewritten.
     if let (Some(RowContext::Queue), Some(index)) = (context, index)
-        && app.can_remove_from_queue(index)
+        && app.engine.can_remove_from_queue(index)
         && menu_item(
             ui,
             &palette,
@@ -964,7 +964,7 @@ pub fn item_menu(
         });
     }
     if item.is_track() {
-        let saved = app.is_saved(&uri).unwrap_or(false);
+        let saved = app.engine.is_saved(&uri).unwrap_or(false);
         let (icon, text) = if saved {
             (
                 Icon::HeartFilled,
@@ -1171,7 +1171,7 @@ pub fn context_menu_items(
             label: name.to_string(),
         });
     }
-    let saved = app.is_saved(uri).unwrap_or(false);
+    let saved = app.engine.is_saved(uri).unwrap_or(false);
     let (icon, text) = match (kind, saved) {
         ("artist", true) => (Icon::CircleX, pgettext(locale, "artist", "Unfollow")),
         ("artist", false) => (Icon::CirclePlus, pgettext(locale, "artist", "Follow")),
@@ -1447,7 +1447,7 @@ fn track_row_contents(
                     ..
                 } => Some((id.clone(), row.index as u32)),
                 RowContext::Queue
-                    if row.index < app.queued_rows_len() && app.queue_locally_reorderable() =>
+                    if row.index < app.engine.queued_rows_len() && app.engine.queue_locally_reorderable() =>
                 {
                     Some(("queue".to_string(), row.index as u32))
                 }
@@ -1470,10 +1470,9 @@ fn track_row_contents(
     // sit in the queue while it plays (a repeat wrapping around, a song
     // queued twice), and only the Now playing row is the playing one.
     let is_current = !matches!(row.context, RowContext::Queue)
-        && app
-            .current_track_uri()
+        && app.engine.current_track_uri()
             .is_some_and(|uri| uri == row.item.uri());
-    let playing = is_current && app.believed_playing();
+    let playing = is_current && app.engine.believed_playing();
     let hovered = ui.is_enabled() && (ui.rect_contains_pointer(rect) || response.has_focus());
     if row.picked {
         // Keep the existing translucent selection, using a neutral palette
@@ -1503,7 +1502,7 @@ fn track_row_contents(
     // Number / play.
     if cols.number > 0.0 {
         let cell = Rect::from_min_size(pos2(x, rect.top()), vec2(cols.number, row_height));
-        if app.play_pending(row.item.uri()) {
+        if app.engine.play_pending(row.item.uri()) {
             let mut child = ui.new_child(
                 UiBuilder::new()
                     .max_rect(cell)
@@ -1566,7 +1565,7 @@ fn track_row_contents(
                     Color32::from_black_alpha(alpha),
                 );
             };
-            if app.play_pending(row.item.uri()) {
+            if app.engine.play_pending(row.item.uri()) {
                 scrim(140);
                 let mut child = ui.new_child(
                     UiBuilder::new()
@@ -1860,7 +1859,7 @@ fn track_row_contents(
 
     // Heart.
     if cols.heart > 0.0 {
-        let saved = app.is_saved(row.item.uri());
+        let saved = app.engine.is_saved(row.item.uri());
         let heart_rect = Rect::from_min_size(pos2(x, rect.top()), vec2(cols.heart, row_height));
         if row.item.is_track() {
             let mut child = ui.new_child(

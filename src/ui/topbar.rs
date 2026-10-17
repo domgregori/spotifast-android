@@ -282,7 +282,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 
             // The badges sit at the right end but grow with their text, so
             // measure them here, before the search field takes its share.
-            let remote_now = app.now_playing().filter(|now| !now.local);
+            let remote_now = app.engine.now_playing().filter(|now| !now.local);
             let device_icon = remote_now
                 .as_ref()
                 .and_then(|now| now.device_kind.as_deref())

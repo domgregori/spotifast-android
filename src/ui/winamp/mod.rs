@@ -307,7 +307,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
 
     let textures = app.winamp.textures(&ctx);
     let skin = app.winamp.skin.clone();
-    let now = app.now_playing();
+    let now = app.engine.now_playing();
     let time = ctx.input(|input| input.time);
     let shaded = app.engine.settings.winamp_shaded;
     let mask = if shaded {

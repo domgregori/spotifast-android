@@ -39,9 +39,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     for path in winamp::dropped_skins(ctx) {
         app.engine.actions.push(Action::InstallSkin(path));
     }
-    let signed_in = app.is_connected() && app.engine.user.is_some();
+    let signed_in = app.engine.is_connected() && app.engine.user.is_some();
     let connecting = matches!(app.engine.auth, AuthStatus::Connecting | AuthStatus::Starting)
-        || (app.is_connected() && app.engine.user.is_none());
+        || (app.engine.is_connected() && app.engine.user.is_none());
     if !signed_in {
         player_bar::end_tint_session(ctx);
         login::show(app, ui, connecting);
@@ -213,28 +213,28 @@ fn page_tint(app: &mut App) -> Option<Color32> {
         Page::Playlist(id) => app.engine.playlist_pages
             .get(id)
             .and_then(|page| page.playlist.get())
-            .or_else(|| app.known_playlist(id))
+            .or_else(|| app.engine.known_playlist(id))
             .and_then(|playlist| pick_image(&playlist.images, 64))
             .map(str::to_string),
         Page::Album(id) => app.engine.album_pages
             .get(id)
             .and_then(|page| page.album.get())
-            .or_else(|| app.known_album(id))
+            .or_else(|| app.engine.known_album(id))
             .and_then(|album| pick_image(&album.images, 64))
             .map(str::to_string),
         Page::Artist(id) => app.engine.artist_pages
             .get(id)
             .and_then(|page| page.artist.get())
-            .or_else(|| app.known_artist(id))
+            .or_else(|| app.engine.known_artist(id))
             .and_then(|artist| pick_image(&artist.images, 64))
             .map(str::to_string),
         Page::Show(id) => app.engine.show_pages
             .get(id)
             .and_then(|page| page.show.get())
-            .or_else(|| app.known_show(id))
+            .or_else(|| app.engine.known_show(id))
             .and_then(|show| pick_image(&show.images, 64))
             .map(str::to_string),
-        Page::Radio(seed) => pick_image(&app.radio_images(seed), 64).map(str::to_string),
+        Page::Radio(seed) => pick_image(&app.engine.radio_images(seed), 64).map(str::to_string),
         Page::LikedSongs => {
             return app.engine.settings
                 .accent_from_art

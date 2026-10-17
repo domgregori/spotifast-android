@@ -711,7 +711,7 @@ fn sample_lyrics() -> crate::lyrics::Lyrics {
 #[cfg(feature = "demo")]
 fn play_here(app: &mut App) {
     app.engine.local_ready = true;
-    let now = app.now_playing();
+    let now = app.engine.now_playing();
     app.engine.local.track = Some(crate::player::LocalTrack {
         uri: now.as_ref().map(|now| now.uri.clone()).unwrap_or_default(),
         title: now
@@ -829,11 +829,11 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 },
             );
             app.engine.local_ready = true;
-            app.open(Page::Album(id));
+            app.engine.open(Page::Album(id));
         }
     }
     if let Some(page) = page.and_then(Page::decode) {
-        app.open(page);
+        app.engine.open(page);
     }
     for surface in show.unwrap_or("").split(',').map(str::trim) {
         match surface {
@@ -946,7 +946,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
             | "lyrics-instrumental"
             | "lyrics-no-playback" => {
                 app.engine.show_lyrics_panel = true;
-                app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
+                app.engine.lyrics_uri = app.engine.now_playing().map(|now| now.uri);
                 app.engine.lyrics_following = false;
                 app.engine.lyrics = match surface {
                     "lyrics-empty" => Loadable::Loaded(None),
@@ -1172,7 +1172,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 );
             }
             "lyrics" | "lyrics-fullscreen" => {
-                app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
+                app.engine.lyrics_uri = app.engine.now_playing().map(|now| now.uri);
                 app.engine.lyrics = Loadable::Loaded(Some(sample_lyrics()));
                 app.engine.lyrics_following = true;
                 app.engine.show_lyrics_panel = true;
@@ -1183,7 +1183,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
             // Full-screen lyrics drawn in the window as it is, for shots at
             // a chosen size, which a real full screen would override.
             "lyrics-fullscreen-view" | "lyrics-fullscreen-instrumental" => {
-                app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
+                app.engine.lyrics_uri = app.engine.now_playing().map(|now| now.uri);
                 let mut lyrics = sample_lyrics();
                 lyrics.instrumental = surface == "lyrics-fullscreen-instrumental";
                 app.engine.lyrics = Loadable::Loaded(Some(lyrics));
@@ -1475,7 +1475,7 @@ mod tests {
         for (width, height) in [(1240.0, 800.0), (760.0, 520.0)] {
             for light in [false, true] {
                 let (ctx, mut app) = accessible_app("cover-dialog");
-                app.open(Page::Playlist("pl1".into()));
+                app.engine.open(Page::Playlist("pl1".into()));
                 app.engine.dialog = Some(Dialog::EditPlaylist {
                     id: "pl1".into(),
                     name: "Test".into(),
@@ -1584,7 +1584,7 @@ mod tests {
         assert_eq!(app.engine.page(), &Page::LikedSongs);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let pause = accessible_node(&tree, "Pause", Role::Button);
-        assert!(app.believed_playing());
+        assert!(app.engine.believed_playing());
         accessible_frame(
             &ctx,
             &mut app,
@@ -1596,7 +1596,7 @@ mod tests {
             vec![keyboard(egui::Key::Space, egui::Modifiers::NONE)],
         );
         assert!(
-            !app.believed_playing(),
+            !app.engine.believed_playing(),
             "focused Space must pause once, without firing the global shortcut too"
         );
         assert_eq!(tree.focus, pause);
@@ -1788,7 +1788,7 @@ mod tests {
             app.engine.remote.as_mut().unwrap().state.is_playing = true;
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let volume = accessible_node(&tree, &gettext(locale, "Volume (%)"), Role::Slider);
-            let before = app.now_playing().unwrap().volume_percent;
+            let before = app.engine.now_playing().unwrap().volume_percent;
             accessible_frame(
                 &ctx,
                 &mut app,
@@ -1799,7 +1799,7 @@ mod tests {
                 &mut app,
                 vec![keyboard(egui::Key::ArrowRight, egui::Modifiers::NONE)],
             );
-            assert_eq!(app.now_playing().unwrap().volume_percent, before + 5);
+            assert_eq!(app.engine.now_playing().unwrap().volume_percent, before + 5);
             accessible_frame(
                 &ctx,
                 &mut app,
@@ -1810,7 +1810,7 @@ mod tests {
                 &mut app,
                 vec![keyboard(egui::Key::Space, egui::Modifiers::NONE)],
             );
-            assert!(!app.believed_playing());
+            assert!(!app.engine.believed_playing());
             app.engine.backend.shutdown();
         }
     }
@@ -1846,7 +1846,7 @@ mod tests {
             }
 
             app.engine.remote = None;
-            assert!(app.now_playing().is_none());
+            assert!(app.engine.now_playing().is_none());
             let render = |app: &mut App, ui: &mut egui::Ui| crate::ui::player_bar::show(app, ui);
             view_frame(&ctx, &mut app, vec![], render);
             let painted = view_frame(&ctx, &mut app, vec![], render);
@@ -1874,7 +1874,7 @@ mod tests {
             app.engine.show_queue_panel = true;
             app.engine.local_ready = true;
             app.engine.local.track = Some(crate::player::LocalTrack {
-                uri: app.now_playing().unwrap().uri,
+                uri: app.engine.now_playing().unwrap().uri,
                 ..Default::default()
             });
             app.engine.local.playback = crate::player::Playback::Paused;
@@ -1883,7 +1883,7 @@ mod tests {
                 .iter()
                 .map(|item| item.uri().to_string())
                 .collect();
-            let saved_uris = app.queue_playlist_uris();
+            let saved_uris = app.engine.queue_playlist_uris();
             accessible_frame(&ctx, &mut app, vec![]);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let save = accessible_node(&tree, &gettext(locale, "Save as a playlist"), Role::Button);
@@ -1900,7 +1900,7 @@ mod tests {
             else {
                 panic!("saving the translated queue must open the existing playlist dialog");
             };
-            assert_eq!(name, &app.queue_playlist_name());
+            assert_eq!(name, &app.engine.queue_playlist_name());
             assert!(!public);
             assert_eq!(add_uris, &saved_uris);
             app.engine.dialog = None;
@@ -1943,7 +1943,7 @@ mod tests {
             let (ctx, mut app) = accessible_app(&format!("translated-lyrics-{locale:?}"));
             app.engine.locale = locale;
             app.engine.show_lyrics_panel = true;
-            app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
+            app.engine.lyrics_uri = app.engine.now_playing().map(|now| now.uri);
             app.engine.lyrics = Loadable::Loaded(Some(sample_lyrics()));
             app.engine.lyrics_following = false;
             accessible_frame(&ctx, &mut app, vec![]);
@@ -2021,7 +2021,7 @@ mod tests {
             let (ctx, mut app) = accessible_app(&format!("translated-panel-states-{locale:?}"));
             app.engine.locale = locale;
             app.engine.show_lyrics_panel = true;
-            app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
+            app.engine.lyrics_uri = app.engine.now_playing().map(|now| now.uri);
             for fullscreen in [false, true] {
                 app.engine.lyrics_fullscreen = fullscreen.then_some(false);
                 let view = |app: &mut App, ui: &mut egui::Ui| app.frame_ui(ui);
@@ -2525,7 +2525,7 @@ mod tests {
         let (ctx, mut app) = accessible_app("library-grid-art-drops");
         app.engine.settings.sidebar_grid = true;
         app.engine.settings.art_expanded = true;
-        assert!(app.now_playing().unwrap().art_url.is_some());
+        assert!(app.engine.now_playing().unwrap().art_url.is_some());
         let frame = |ctx: &egui::Context, app: &mut App, events| {
             let mut output = ctx.run_ui(
                 egui::RawInput {
@@ -2560,7 +2560,7 @@ mod tests {
                 if node.role() != Role::Button
                     || !playlists
                         .iter()
-                        .any(|playlist| playlist.name == label && app.can_edit_playlist(playlist))
+                        .any(|playlist| playlist.name == label && app.engine.can_edit_playlist(playlist))
                 {
                     return None;
                 }
@@ -2729,18 +2729,18 @@ mod tests {
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("library-grid-card-actions");
         app.engine.settings.sidebar_grid = true;
-        app.open(Page::Search);
+        app.engine.open(Page::Search);
 
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let card = accessible_node(&tree, "Sunday morning", Role::Button);
-        let previous_context = app.playing_context_uri();
+        let previous_context = app.engine.playing_context_uri();
         accessible_frame(
             &ctx,
             &mut app,
             vec![accessible_action(card, AccessibleAction::Click, None)],
         );
         assert_eq!(app.engine.page(), &Page::Playlist("pl2".into()));
-        assert_eq!(app.playing_context_uri(), previous_context);
+        assert_eq!(app.engine.playing_context_uri(), previous_context);
 
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let play = accessible_node(&tree, "Play Sunday morning", Role::Button);
@@ -2750,7 +2750,7 @@ mod tests {
             vec![accessible_action(play, AccessibleAction::Click, None)],
         );
         assert_eq!(
-            app.playing_context_uri().as_deref(),
+            app.engine.playing_context_uri().as_deref(),
             Some("spotify:playlist:pl2")
         );
         assert_eq!(app.engine.page(), &Page::Playlist("pl2".into()));
@@ -2761,7 +2761,7 @@ mod tests {
     fn double_clicking_a_library_grid_card_only_navigates() {
         let (ctx, mut app) = accessible_app("library-grid-double-click");
         app.engine.settings.sidebar_grid = true;
-        app.open(Page::Search);
+        app.engine.open(Page::Search);
         let view = crate::ui::sidebar::show;
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
@@ -2953,7 +2953,7 @@ mod tests {
     fn the_cross_on_a_recent_search_forgets_only_that_query() {
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("search-history");
-        app.open(Page::Search);
+        app.engine.open(Page::Search);
         // Recent searches stand in for results only while nothing is searched
         app.engine.search.query.clear();
         app.engine.search.committed.clear();
@@ -2979,7 +2979,7 @@ mod tests {
     fn clearing_the_global_search_stays_on_the_current_page() {
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("global-search-clear");
-        app.open(Page::Home);
+        app.engine.open(Page::Home);
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         assert!(!app.engine.search.query.is_empty());
@@ -3022,7 +3022,7 @@ mod tests {
     fn settings_search_filters_rows_clearing_and_empty_state() {
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("settings-search");
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let field = accessible_node(&tree, "Search settings", Role::TextInput);
@@ -3119,7 +3119,7 @@ mod tests {
     fn personal_app_setup_clears_a_saved_settings_search() {
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("settings-search-setup");
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let field = accessible_node(&tree, "Search settings", Role::TextInput);
@@ -3132,7 +3132,7 @@ mod tests {
         accessible_frame(&ctx, &mut app, vec![egui::Event::Text("theme".into())]);
         assert_eq!(settings_filter(&ctx), "theme");
         // ...leave Settings...
-        app.open(Page::Home);
+        app.engine.open(Page::Home);
         accessible_frame(&ctx, &mut app, vec![]);
         // ...and enter Personal App setup, which must reveal and focus
         // the Client ID field instead of landing on a filtered-out row.
@@ -3313,7 +3313,7 @@ mod tests {
     fn settings_search_keeps_apply_available_after_a_playback_edit() {
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("settings-search-apply");
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
         ctx.data_mut(|data| {
             data.insert_temp(egui::Id::new("settings-filter"), "normalize".to_string())
         });
@@ -3741,7 +3741,7 @@ mod tests {
         use crate::settings::SettingsExt;
         use egui::accesskit::Role;
         let (ctx, mut app) = accessible_app("winamp-taskbar-setting");
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         if !cfg!(windows) {
@@ -3793,7 +3793,7 @@ mod tests {
             app.engine.backend.shutdown();
             return;
         }
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let control = accessible_node(&tree, "Middle-click autoscroll", Role::CheckBox);
@@ -3847,7 +3847,7 @@ mod tests {
         let (ctx, mut app) = accessible_app("wayland-on-top");
         app.window_level_supported = false;
         app.engine.settings.winamp_on_top = true;
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let id = accessible_node(&tree, "Always on top", Role::CheckBox);
@@ -4030,7 +4030,7 @@ mod tests {
         for count in [1, 2] {
             let (ctx, mut app) = accessible_app(&format!("playlist-filter-{count}"));
             app.engine.backend.set_offline(true);
-            let owner = app.user_id().unwrap().to_string();
+            let owner = app.engine.user_id().unwrap().to_string();
             let make = |id: &str, name: &str, owned: bool, collaborative| Playlist {
                 id: id.into(),
                 uri: format!("spotify:playlist:{id}"),
@@ -4136,7 +4136,7 @@ mod tests {
     fn typing_in_the_playlist_filter_chooses_the_first_match() {
         let (ctx, mut app) = accessible_app("playlist-filter-choice");
         app.engine.backend.set_offline(true);
-        let owner = app.user_id().unwrap().to_string();
+        let owner = app.engine.user_id().unwrap().to_string();
         let make = |id: &str, name: &str| Playlist {
             id: id.into(),
             uri: format!("spotify:playlist:{id}"),
@@ -5024,7 +5024,7 @@ mod tests {
         use crate::settings::LanguageChoice;
         use egui::accesskit::Role;
         let (ctx, mut app) = accessible_app("language-picker");
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
         ctx.data_mut(|data| {
             data.insert_temp(egui::Id::new("settings-filter"), "Language".to_string())
         });
@@ -5128,7 +5128,7 @@ mod tests {
     #[test]
     fn custom_theme_picker_applies_the_clicked_palette_and_exposes_its_name_and_value() {
         let (ctx, mut app) = accessible_app("custom-theme-picker");
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
         ctx.data_mut(|data| {
             data.insert_temp(egui::Id::new("settings-filter"), "Appearance".to_string())
         });
@@ -5215,7 +5215,7 @@ mod tests {
         );
         assert!(matches!(app.engine.actions.as_slice(), [Action::OpenThemesFolder]));
         app.engine.actions.clear();
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
         ctx.data_mut(|data| {
             data.insert_temp(egui::Id::new("settings-filter"), "Theme".to_string())
         });
@@ -5531,7 +5531,7 @@ mod tests {
             ),
         ] {
             let (ctx, mut app) = accessible_app(&format!("library-card-{section}"));
-            app.open(page);
+            app.engine.open(page);
             fn view(app: &mut App, ui: &mut egui::Ui) {
                 if let Page::Artist(id) = app.engine.page().clone() {
                     crate::ui::artist::show(app, ui, &id);
@@ -5944,7 +5944,7 @@ mod tests {
         app.attach(&ctx);
         populate(&mut app);
         app.engine.settings.zoom = 1.0;
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
 
         let mut placed: Vec<(String, f32, f32)> = Vec::new();
         let input = egui::RawInput {
@@ -6029,7 +6029,7 @@ mod tests {
         // The main window's screen is not MilkDrop's: its dial keeps
         // the rate MilkDrop reported.
         app.screen_hz = 60;
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
 
         // Read labels from the real Settings page.
         let drawn = |app: &mut App, ctx: &egui::Context| -> Vec<String> {
@@ -6110,7 +6110,7 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        app.open(Page::Settings);
+        app.engine.open(Page::Settings);
 
         // Read labels from the real Settings page.
         let drawn = |app: &mut App, ctx: &egui::Context| -> Vec<String> {
@@ -6627,7 +6627,7 @@ mod tests {
             Page::Settings,
         ];
         for page in pages {
-            app.open(page.clone());
+            app.engine.open(page.clone());
             for _ in 0..3 {
                 frame(&ctx, &mut app);
             }
@@ -6647,7 +6647,7 @@ mod tests {
         }
         frame(&ctx, &mut app);
         app.engine.manual_queue.clear();
-        app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
+        app.engine.lyrics_uri = app.engine.now_playing().map(|now| now.uri);
         app.engine.lyrics = Loadable::Loaded(Some(sample_lyrics()));
         app.engine.show_lyrics_panel = true;
         frame(&ctx, &mut app);
@@ -6687,7 +6687,7 @@ mod tests {
         }
         app.engine.settings.theme = crate::settings::ThemeChoice::Light;
         app.engine.actions.push(Action::SettingsChanged);
-        app.open(Page::Home);
+        app.engine.open(Page::Home);
         for _ in 0..3 {
             frame(&ctx, &mut app);
         }
@@ -6746,7 +6746,7 @@ mod tests {
             .collect();
         app.engine.library.albums.next_offset = Some(80);
         app.engine.library.albums.loaded_once = true;
-        app.open(Page::Albums);
+        app.engine.open(Page::Albums);
         app.engine.actions.clear();
         for _ in 0..3 {
             frame(&ctx, &mut app);
@@ -6797,7 +6797,7 @@ mod tests {
             .get_mut()
             .expect("the demo library")
             .retain(|playlist| playlist.id == "pl1");
-        app.open(Page::Playlist("pl1".into()));
+        app.engine.open(Page::Playlist("pl1".into()));
         for _ in 0..3 {
             frame(&ctx, &mut app);
         }
@@ -6876,7 +6876,7 @@ mod tests {
                     accessible_app(&format!("album-selection-drag-{compact}-{sorted}"));
                 app.engine.settings.tracklist_compact = compact;
                 let source = Page::Album("alb0".into());
-                app.open(source.clone());
+                app.engine.open(source.clone());
                 let tracks = &mut app.engine.album_pages.get_mut("alb0").unwrap().tracks;
                 tracks.items.truncate(3);
                 for (index, name) in ["Charlie", "Bravo", "Alpha"].iter().enumerate() {
@@ -6926,7 +6926,7 @@ mod tests {
                     egui::Modifiers::NONE,
                 );
                 assert_eq!(
-                    app.picked_rows(&source)
+                    app.engine.picked_rows(&source)
                         .map(|rows| rows.iter().copied().collect::<Vec<_>>()),
                     Some(vec![2]),
                     "first click at {last:?}, page {:?}",
@@ -6946,7 +6946,7 @@ mod tests {
                 }
                 draw(&mut app, click, modifier);
                 assert_eq!(
-                    app.picked_rows(&source)
+                    app.engine.picked_rows(&source)
                         .unwrap()
                         .iter()
                         .copied()
@@ -7002,7 +7002,7 @@ mod tests {
                     ((bounds.y0 + bounds.y1) / 2.0) as f32,
                 );
                 let before = app.engine.playlist_pages["pl1"].items.items.len();
-                let playing = app.current_track_uri();
+                let playing = app.engine.current_track_uri();
                 draw(
                     &mut app,
                     vec![egui::Event::PointerMoved(target)],
@@ -7029,7 +7029,7 @@ mod tests {
                 assert!(
                     matches!(sent.as_slice(), [crate::backend::ApiRequest::AddToPlaylist { playlist_id, uris, position: None, .. }] if playlist_id == "pl1" && uris == &expected)
                 );
-                assert_eq!(app.current_track_uri(), playing);
+                assert_eq!(app.engine.current_track_uri(), playing);
                 app.engine.backend.shutdown();
             }
         }
@@ -7433,7 +7433,7 @@ mod tests {
     fn seed_queued_songs(app: &mut App) -> Vec<String> {
         app.engine.local_ready = true;
         app.engine.local.track = Some(crate::player::LocalTrack {
-            uri: app.now_playing().unwrap().uri,
+            uri: app.engine.now_playing().unwrap().uri,
             ..Default::default()
         });
         app.engine.local.playback = crate::player::Playback::Paused;
@@ -7926,12 +7926,12 @@ mod tests {
         // but leave "Playing next" empty.
         app.engine.local_ready = true;
         app.engine.local.track = Some(crate::player::LocalTrack {
-            uri: app.now_playing().unwrap().uri,
+            uri: app.engine.now_playing().unwrap().uri,
             ..Default::default()
         });
         app.engine.local.playback = crate::player::Playback::Paused;
         assert!(app.engine.manual_queue.is_empty());
-        assert!(app.queue_locally_reorderable());
+        assert!(app.engine.queue_locally_reorderable());
 
         let source_uri = app.engine.queue
             .get()
@@ -8150,7 +8150,7 @@ mod tests {
         app.engine.show_queue_panel = true;
         let uris = seed_queued_songs(&mut app);
         app.engine.local_ready = false;
-        assert!(!app.queue_locally_reorderable());
+        assert!(!app.engine.queue_locally_reorderable());
         for _ in 0..3 {
             frame_events(&ctx, &mut app, vec![]);
         }
@@ -8544,7 +8544,7 @@ mod tests {
                 }],
             );
             assert_eq!(
-                app.is_saved("spotify:track:trk0"),
+                app.engine.is_saved("spotify:track:trk0"),
                 Some(true),
                 "dropping a song on the relocated row still saves it"
             );
@@ -8562,7 +8562,7 @@ mod tests {
                         accessible_app(&format!("insert-drag-{from_queue}-{compact}-{position}"));
                     app.engine.settings.tracklist_compact = compact;
                     app.engine.show_queue_panel = from_queue;
-                    app.open(Page::Playlist("pl1".into()));
+                    app.engine.open(Page::Playlist("pl1".into()));
                     let items = &mut app.engine.playlist_pages.get_mut("pl1").unwrap().items;
                     items.items.truncate(4);
                     for (index, row) in items.items.iter_mut().enumerate() {
@@ -8583,7 +8583,7 @@ mod tests {
                         .map(|item| item.uri().to_string())
                         .collect();
                     let manual_before = app.engine.manual_queue.clone();
-                    let playing_before = app.current_track_uri();
+                    let playing_before = app.engine.current_track_uri();
                     let source_item = if from_queue {
                         app.engine.queue.get().unwrap().queue[0].clone()
                     } else {
@@ -8664,7 +8664,7 @@ mod tests {
                     assert!(
                         matches!(sent.as_slice(), [crate::backend::ApiRequest::AddToPlaylist { playlist_id, position: Some(at), uris, .. }] if playlist_id == "pl1" && *at == position as u32 && uris == &[source_item.uri()])
                     );
-                    assert_eq!(app.current_track_uri(), playing_before);
+                    assert_eq!(app.engine.current_track_uri(), playing_before);
                     assert_eq!(app.engine.manual_queue, manual_before);
                     assert_eq!(
                         app.engine.queue
@@ -8843,7 +8843,7 @@ mod tests {
             for upwards in [false, true] {
                 let (ctx, mut app) = accessible_app(&format!("drag-scroll-{compact}-{upwards}"));
                 app.engine.settings.tracklist_compact = compact;
-                app.open(Page::Playlist("pl1".into()));
+                app.engine.open(Page::Playlist("pl1".into()));
                 let items = &mut app.engine.playlist_pages.get_mut("pl1").unwrap().items.items;
                 let count = items.len();
                 assert!(count > 20);
@@ -9117,7 +9117,7 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        app.open(Page::Playlist("pl1".into()));
+        app.engine.open(Page::Playlist("pl1".into()));
         for _ in 0..3 {
             frame(&ctx, &mut app);
         }
@@ -9473,7 +9473,7 @@ mod tests {
         // right edge, so the pill reaches past the rect the field reports.
         const FIELD_RIGHT_INSET: f32 = 30.0;
         let (ctx, mut app) = accessible_app("topbar-badges");
-        app.open(Page::Playlist("pl1".into()));
+        app.engine.open(Page::Playlist("pl1".into()));
         for panel in [None, Some("queue"), Some("lyrics")] {
             app.engine.show_queue_panel = panel == Some("queue");
             app.engine.show_lyrics_panel = panel == Some("lyrics");
@@ -9610,7 +9610,7 @@ mod tests {
         for theme in ["dark", "light"] {
             for (place, label, pick) in targets {
                 let (ctx, mut app) = accessible_app(&format!("saved-hover-{theme}"));
-                app.open(Page::Album("alb0".into()));
+                app.engine.open(Page::Album("alb0".into()));
                 app.engine.settings.theme = if theme == "light" {
                     crate::settings::ThemeChoice::Light
                 } else {
@@ -9679,7 +9679,7 @@ mod tests {
     fn side_panels_keep_their_full_height_beside_the_page_toolbar() {
         for theme in ["dark", "light"] {
             let (ctx, mut app) = accessible_app(&format!("full-height-panels-{theme}"));
-            app.open(Page::Playlist("pl1".into()));
+            app.engine.open(Page::Playlist("pl1".into()));
             app.engine.settings.theme = if theme == "light" {
                 crate::settings::ThemeChoice::Light
             } else {
@@ -9782,7 +9782,7 @@ mod tests {
         }
         assert_eq!(app.engine.page(), &Page::Radio(seed.clone()));
         assert_eq!(
-            app.radio_name(&seed),
+            app.engine.radio_name(&seed),
             Some(format!("{} Radio", song.name)),
             "the radio is named after the song"
         );
@@ -9827,7 +9827,7 @@ mod tests {
         );
         assert_eq!(app.engine.page(), &Page::Radio(seed.clone()));
         assert_eq!(
-            app.radio_images(&seed),
+            app.engine.radio_images(&seed),
             song.album.as_ref().unwrap().images,
             "the cover comes from the row's album"
         );

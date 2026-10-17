@@ -55,7 +55,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         )
         .show(ui, |ui| {
             let rect = ui.max_rect();
-            let now = app.now_playing();
+            let now = app.engine.now_playing();
             // The whole bar, margins included, behind everything else.
             let behind = rect.expand2(vec2(16.0, 0.0));
             if visualizer(app, ui, behind, now.as_ref()) {
@@ -420,7 +420,7 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
         cover_rect,
         6.0,
     );
-    let song = app.now_playing_item();
+    let song = app.engine.now_playing_item();
     let drag_sense = if song.is_some() {
         Sense::click_and_drag()
     } else {
@@ -522,7 +522,7 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
     // The playing thing answers the same right-click menu as a table row,
     // from the cover, the empty space around the words, or the words.
     if let Some(item) = song {
-        let context = app.editable_context_playlist();
+        let context = app.engine.editable_context_playlist();
         for response in [&cover_response, &info_response, &title_response] {
             egui::Popup::context_menu(response)
                 .frame(super::widgets::menu_frame(&palette))
@@ -531,7 +531,7 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
     }
 
     if !now.is_episode {
-        let saved = app.is_saved(&now.uri).unwrap_or(false);
+        let saved = app.engine.is_saved(&now.uri).unwrap_or(false);
         // A liked heart stays green under the pointer, like shuffle.
         let (icon, color, hover, tooltip) = if saved {
             (
@@ -586,10 +586,10 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
     // on screen this puts equal breathing room above and beneath the
     // cluster.
     let cy = region.center().y - 8.0;
-    let enabled = now.is_some_and(|now| now.can_control) || app.is_connected();
+    let enabled = now.is_some_and(|now| now.can_control) || app.engine.is_connected();
     let playing = now.is_some_and(|now| now.playing);
     let loading = now.is_some_and(|now| now.loading);
-    let shuffle = now.map_or_else(|| app.playing_context_shuffle(), |now| now.shuffle);
+    let shuffle = now.map_or_else(|| app.engine.playing_context_shuffle(), |now| now.shuffle);
     let repeat = now.map(|now| now.repeat).unwrap_or_default();
     let dim = if enabled {
         palette.secondary
@@ -656,7 +656,7 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
     }
 
     let disc = slot(widths[2]);
-    if loading || app.any_play_pending() {
+    if loading || app.engine.any_play_pending() {
         ui.painter()
             .circle_filled(disc.center(), 18.0, palette.text);
         let mut cell = centered(ui, disc);

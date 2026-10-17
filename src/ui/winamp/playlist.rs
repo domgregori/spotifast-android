@@ -663,13 +663,13 @@ fn rem_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row]) {
         .enumerate()
         .filter(|(row, _)| app.winamp.playlist_selection.contains(row))
         .filter_map(|(_, row)| row.queued.map(|index| (index, row.uri.clone())))
-        .filter(|(index, _)| app.can_remove_from_queue(*index))
+        .filter(|(index, _)| app.engine.can_remove_from_queue(*index))
         .collect();
     let mut remove = ui.add_enabled(
         !removable.is_empty(),
         egui::Button::new(gettext(locale, "Remove selected").as_ref()),
     );
-    if !app.queue_locally_reorderable() {
+    if !app.engine.queue_locally_reorderable() {
         remove = remove.on_disabled_hover_text(
             gettext(locale, "You can only change this computer's queue.").as_ref(),
         );
@@ -683,7 +683,7 @@ fn rem_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row]) {
     }
     if ui
         .add_enabled(
-            app.can_clear_queue(),
+            app.engine.can_clear_queue(),
             egui::Button::new(gettext(locale, "Remove all").as_ref()),
         )
         .on_disabled_hover_text(
@@ -803,7 +803,7 @@ fn list_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row], queue_uris: &[Strin
             .collect();
         uris.extend(queue_uris.iter().cloned());
         app.engine.actions.push(Action::CreatePlaylist {
-            name: app.queue_playlist_name(),
+            name: app.engine.queue_playlist_name(),
             public: false,
             add_uris: uris,
         });
@@ -865,7 +865,7 @@ mod tests {
             },
         );
         crate::demo::populate(&mut app);
-        let now = app.now_playing();
+        let now = app.engine.now_playing();
         app.engine.local_ready = true;
         app.engine.local.track = Some(crate::player::LocalTrack {
             uri: now.as_ref().unwrap().uri.clone(),

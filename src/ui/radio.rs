@@ -23,17 +23,16 @@ pub fn radio(app: &mut App, ui: &mut egui::Ui, seed: &str) {
         return;
     };
     if !app.engine.radio_pages.contains_key(seed) {
-        app.ensure_loaded(key.clone());
+        app.engine.ensure_loaded(key.clone());
     }
     let Some(page) = app.engine.radio_pages.get(seed) else {
         return;
     };
     let locale = app.engine.locale;
-    let name = app
-        .radio_name(seed)
+    let name = app.engine.radio_name(seed)
         .or_else(|| page.name.clone())
         .unwrap_or_else(|| gettext(locale, "Radio").into_owned());
-    let mut images = app.radio_images(seed);
+    let mut images = app.engine.radio_images(seed);
     if images.is_empty() {
         images.clone_from(&page.images);
     }

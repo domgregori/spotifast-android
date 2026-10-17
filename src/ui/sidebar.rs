@@ -83,7 +83,7 @@ fn cover_play_button(
     // The control pauses only while this context is actually playing; a
     // paused one keeps the play glyph, but pressing it resumes in place
     // instead of restarting the context.
-    let playing = current_context && app.believed_playing();
+    let playing = current_context && app.engine.believed_playing();
     let play = ui.interact(
         cover_rect,
         ui.id().with(("library-cover-play", index)),
@@ -168,7 +168,7 @@ fn grid_play_button(
     let rect = grid_play_rect(cover_rect);
     let size = rect.width();
     let button = ui.interact(rect, ui.id().with("library-grid-play"), Sense::click());
-    let playing = playing_here && app.believed_playing();
+    let playing = playing_here && app.engine.believed_playing();
     let label = if playing {
         // Translators: The play button on a Library card. {name} is the playlist, album, artist, or podcast.
         gettext(app.engine.locale, "Pause {name}")
@@ -442,8 +442,7 @@ fn order_entries(app: &App, shelf: Filter, sort: LibrarySort, entries: &mut [Ent
         }
         LibrarySort::RecentlyPlayed => {
             let ranks = first_ranks(app.engine.recent_contexts.iter().map(String::as_str));
-            let liked_uri = app
-                .user_id()
+            let liked_uri = app.engine.user_id()
                 .map(|id| format!("spotify:user:{id}:collection"));
             entries.sort_by_cached_key(|entry| {
                 let key = if entry.liked {
@@ -595,8 +594,7 @@ fn paint_grid_art_mask(app: &App, ui: &egui::Ui, rect: Rect) {
 
 fn has_expanded_art(app: &App) -> bool {
     app.engine.settings.art_expanded
-        && app
-            .now_playing()
+        && app.engine.now_playing()
             .is_some_and(|now| now.art_url.is_some() || now.art_small.is_some())
 }
 
@@ -608,7 +606,7 @@ fn expanded_art_side(ui: &egui::Ui) -> f32 {
 }
 
 fn paint_expanded_art(app: &mut App, ui: &mut egui::Ui, rect: Rect) {
-    let Some(now) = app.now_playing() else {
+    let Some(now) = app.engine.now_playing() else {
         return;
     };
     let Some(url) = now.art_url.clone().or_else(|| now.art_small.clone()) else {
@@ -678,7 +676,7 @@ fn playlist_rows(app: &App, sort: LibrarySort, needle: &str, entries: &mut Vec<E
     if needle.is_empty() || liked.name.to_lowercase().contains(needle) {
         entries.push(liked);
     }
-    let user_id = app.user_id().filter(|id| !id.is_empty());
+    let user_id = app.engine.user_id().filter(|id| !id.is_empty());
     if sort == LibrarySort::Spotify && needle.is_empty() && !app.engine.settings.library_by_you {
         folder_rows(app, user_id.unwrap_or(""), entries);
     } else if let Some(playlists) = app.engine.library.playlists.get() {
@@ -694,7 +692,7 @@ fn playlist_rows(app: &App, sort: LibrarySort, needle: &str, entries: &mut Vec<E
                 playlist,
                 index,
                 user_id.unwrap_or(""),
-                app.can_edit_playlist(playlist),
+                app.engine.can_edit_playlist(playlist),
                 0,
                 EntryArt::of(app),
             ));
@@ -772,7 +770,7 @@ fn folder_rows(app: &App, user_id: &str, entries: &mut Vec<Entry>) {
                     playlist,
                     *index,
                     user_id,
-                    app.can_edit_playlist(playlist),
+                    app.engine.can_edit_playlist(playlist),
                     depth,
                     EntryArt::of(app),
                 ));
@@ -788,7 +786,7 @@ fn folder_rows(app: &App, user_id: &str, entries: &mut Vec<Entry>) {
                 playlist,
                 index,
                 user_id,
-                app.can_edit_playlist(playlist),
+                app.engine.can_edit_playlist(playlist),
                 0,
                 EntryArt::of(app),
             ));
@@ -1159,7 +1157,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                     image: pick_image(&album.images, art.row).map(str::to_string),
                     grid_image: pick_image(&album.images, art.grid).map(str::to_string),
                     name: album.name.clone(),
-                    subtitle: format!("{} • {artists}", app.album_kind_label(album)),
+                    subtitle: format!("{} • {artists}", app.engine.album_kind_label(album)),
                     grid_subtitle: artists,
                     page: Page::Album(album.id.clone()),
                     uri: album.uri.clone(),
@@ -1253,8 +1251,8 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
         .iter()
         .take_while(|entry| pins.iter().any(|key| key == entry.ordering_key()))
         .count();
-    let playing_context = app.playing_context_uri();
-    let context_playing = app.believed_playing();
+    let playing_context = app.engine.playing_context_uri();
+    let context_playing = app.engine.believed_playing();
     let current_page = app.engine.page().clone();
 
     crate::autoscroll::show(
@@ -1680,8 +1678,8 @@ fn library_grid(
     }
     let palette = app.palette;
     let pins = app.engine.settings.library_pins();
-    let playing_context = app.playing_context_uri();
-    let context_playing = app.believed_playing();
+    let playing_context = app.engine.playing_context_uri();
+    let context_playing = app.engine.believed_playing();
     let current_page = app.engine.page().clone();
     let layout = grid_layout(ui.available_width());
     let origin = ui.cursor().min;
@@ -2036,7 +2034,7 @@ fn full_playlist_order(app: &App) -> Vec<String> {
                 app.engine.locale,
                 playlist,
                 index,
-                app.user_id().unwrap_or(""),
+                app.engine.user_id().unwrap_or(""),
                 false,
                 0,
                 EntryArt::of(app),
@@ -2223,7 +2221,7 @@ mod ordering_tests {
     /// playlist, and an unknown owner, retaining their original library indices.
     fn ownership_app(name: &str) -> App {
         let mut app = app(name);
-        let id = app.user_id().unwrap().to_string();
+        let id = app.engine.user_id().unwrap().to_string();
         let playlists = app.engine.library.playlists.get_mut().unwrap();
         playlists[0].owner.id = Some(id.clone());
         playlists[1].owner.id = Some("someone-else".into());
@@ -2370,7 +2368,7 @@ mod ordering_tests {
     fn flat_by_you_spotify_order_keeps_first_occurrences_missing_rows_and_pins() {
         use crate::player::RootlistEntry;
         let mut app = ownership_app("by-you-rootlist-index");
-        let owner = app.user_id().unwrap().to_string();
+        let owner = app.engine.user_id().unwrap().to_string();
         app.engine.library.playlists.get_mut().unwrap()[3].owner.id = Some(owner);
         app.engine.settings.library_by_you = true;
         app.engine.settings.liked_songs_pinned = false;
@@ -2854,7 +2852,7 @@ mod ordering_tests {
         app.engine.settings.liked_songs_pinned = false;
         app.engine.recent_contexts = vec![
             uri("a"),
-            format!("spotify:user:{}:collection", app.user_id().unwrap()),
+            format!("spotify:user:{}:collection", app.engine.user_id().unwrap()),
             uri("c"),
         ];
         app.engine.settings

@@ -239,7 +239,7 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                         },
                     );
                 }
-                let active_id = match app.target() {
+                let active_id = match app.engine.target() {
                     crate::app::Target::Local => local_id.clone(),
                     crate::app::Target::Remote(id) => id,
                 };

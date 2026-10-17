@@ -530,13 +530,13 @@ pub(crate) fn run() -> eframe::Result<()> {
     }
     app.update_receipt = launch.receipt;
     if let Some(error) = launch.error {
-        app.report_update_failure(error);
+        app.engine.report_update_failure(error);
     }
     if let Some(guard) = &instance {
         app.set_remote_control(guard);
     }
     if let Some(uri) = link {
-        app.open_link(uri);
+        app.engine.open_link(uri);
     }
     #[cfg(feature = "demo")]
     if demo {
@@ -1504,7 +1504,7 @@ impl eframe::App for Shell {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         let app = &mut *self.app;
         app.save_state();
-        app.flush_files();
+        app.engine.flush_files();
     }
 }
 

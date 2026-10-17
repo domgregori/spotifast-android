@@ -20,12 +20,12 @@ const EPISODE_ART: f32 = 96.0;
 
 pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
     if !app.engine.show_pages.contains_key(id) {
-        app.ensure_loaded(Page::Show(id.to_string()));
+        app.engine.ensure_loaded(Page::Show(id.to_string()));
     }
     let Some(page) = app.engine.show_pages.remove(id) else {
         return;
     };
-    let preview = super::loading_preview(ui.ctx(), id, &page.show, || app.known_show(id).cloned());
+    let preview = super::loading_preview(ui.ctx(), id, &page.show, || app.engine.known_show(id).cloned());
     let palette = app.palette;
     let locale = app.engine.locale;
     match &page.show {
@@ -193,11 +193,11 @@ fn show_hero(app: &mut App, ui: &mut egui::Ui, show: &Show, preview: Option<&Sho
 fn show_actions(app: &mut App, ui: &mut egui::Ui, show: &Show, latest: Option<&Episode>) {
     let palette = app.palette;
     let locale = app.engine.locale;
-    let saved = app.is_saved(&show.uri).unwrap_or(false);
+    let saved = app.engine.is_saved(&show.uri).unwrap_or(false);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 18.0;
         if let Some(latest) = latest {
-            if app.play_pending(&latest.uri) {
+            if app.engine.play_pending(&latest.uri) {
                 theme::circle_spinner(
                     ui,
                     56.0,
@@ -297,7 +297,7 @@ pub fn episode_row(
         pos2(inner.right() - 40.0, inner.bottom()),
     );
     let painter = ui.painter().with_clip_rect(text_rect);
-    let now_playing = app.now_playing();
+    let now_playing = app.engine.now_playing();
     let is_current = now_playing
         .as_ref()
         .is_some_and(|now| now.uri == episode.uri);
@@ -349,7 +349,7 @@ pub fn episode_row(
     } else {
         Icon::PlayFilled
     };
-    if app.play_pending(&episode.uri) {
+    if app.engine.play_pending(&episode.uri) {
         theme::circle_spinner(
             &mut child,
             32.0,

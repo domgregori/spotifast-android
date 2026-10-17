@@ -233,7 +233,7 @@ fn all(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
                     Some(playlist.uri.clone()),
                     Page::Playlist(playlist.id.clone()),
                     |ui, app| {
-                        let owned = app.user_id().is_some_and(|id| playlist.owned_by(id));
+                        let owned = app.engine.user_id().is_some_and(|id| playlist.owned_by(id));
                         widgets::context_menu_items(
                             ui,
                             app,
@@ -481,8 +481,8 @@ fn songs(app: &mut App, ui: &mut egui::Ui, results: &SearchResults, limit: usize
 }
 
 fn artist_card(app: &mut App, ui: &mut egui::Ui, artist: &Artist) {
-    let context_here = app.playing_context_uri().as_deref() == Some(artist.uri.as_str());
-    let playing_here = context_here && app.believed_playing();
+    let context_here = app.engine.playing_context_uri().as_deref() == Some(artist.uri.as_str());
+    let playing_here = context_here && app.engine.believed_playing();
     let card_art = app.art_px(widgets::CARD_ART);
     let card = widgets::card(
         ui,
@@ -549,8 +549,8 @@ fn album_card(app: &mut App, ui: &mut egui::Ui, album: &crate::api::models::Albu
         album.year().unwrap_or(""),
         crate::api::models::join_names(album.artists.iter().map(|a| a.name.as_str()))
     );
-    let context_here = app.playing_context_uri().as_deref() == Some(album.uri.as_str());
-    let playing_here = context_here && app.believed_playing();
+    let context_here = app.engine.playing_context_uri().as_deref() == Some(album.uri.as_str());
+    let playing_here = context_here && app.engine.believed_playing();
     let card_art = app.art_px(widgets::CARD_ART);
     let card = widgets::card(
         ui,
@@ -612,8 +612,8 @@ fn albums_grid(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
 }
 
 fn playlist_card(app: &mut App, ui: &mut egui::Ui, playlist: &crate::api::models::Playlist) {
-    let context_here = app.playing_context_uri().as_deref() == Some(playlist.uri.as_str());
-    let playing_here = context_here && app.believed_playing();
+    let context_here = app.engine.playing_context_uri().as_deref() == Some(playlist.uri.as_str());
+    let playing_here = context_here && app.engine.believed_playing();
     let card_art = app.art_px(widgets::CARD_ART);
     let card = widgets::card(
         ui,
@@ -643,7 +643,7 @@ fn playlist_card(app: &mut App, ui: &mut egui::Ui, playlist: &crate::api::models
         .id(ui.make_persistent_id(("search-playlist-menu", &playlist.uri)))
         .frame(widgets::menu_frame(&app.palette))
         .show(|ui| {
-            let owned = app.user_id().is_some_and(|id| playlist.owned_by(id));
+            let owned = app.engine.user_id().is_some_and(|id| playlist.owned_by(id));
             widgets::context_menu_items(
                 ui,
                 app,

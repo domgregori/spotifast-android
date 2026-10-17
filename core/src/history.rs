@@ -53,6 +53,23 @@ impl History {
         }
     }
 
+    /// The play history serialized, if it changed since the last save. A
+    /// failed write is retried on the next save.
+    pub fn take_serialized(&mut self) -> Option<Vec<u8>> {
+        let failed = self.failed_flag().swap(false, std::sync::atomic::Ordering::SeqCst);
+        if !self.take_dirty() && !failed {
+            return None;
+        }
+        match serde_json::to_vec(self.plays()) {
+            Ok(bytes) => Some(bytes),
+            Err(error) => {
+                self.mark_dirty();
+                log::warn!("could not write the play history: {error}");
+                None
+            }
+        }
+    }
+
     pub fn plays(&self) -> &[PlayHistory] {
         &self.plays
     }

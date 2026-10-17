@@ -91,8 +91,7 @@ fn quick_access_tiles(app: &App) -> Vec<Tile> {
                 page: Page::Playlist(playlist.id.clone()),
                 uri: Some(playlist.uri.clone()),
                 liked: false,
-                owned_playlist: app
-                    .user_id()
+                owned_playlist: app.engine.user_id()
                     .is_some_and(|id| playlist.owned_by(id))
                     .then(|| playlist.clone()),
             });
@@ -164,8 +163,8 @@ fn quick_access(app: &mut App, ui: &mut egui::Ui) {
                     );
                     if hovered && let Some(uri) = uri {
                         let context_here =
-                            app.playing_context_uri().as_deref() == Some(uri.as_str());
-                        let playing_here = context_here && app.believed_playing();
+                            app.engine.playing_context_uri().as_deref() == Some(uri.as_str());
+                        let playing_here = context_here && app.engine.believed_playing();
                         let button = Rect::from_center_size(
                             pos2(rect.right() - 28.0, rect.center().y),
                             Vec2::splat(40.0),
@@ -258,8 +257,8 @@ fn made_for_you(app: &mut App, ui: &mut egui::Ui) {
                         gettext(app.engine.locale, "By {owner}").replace("{owner}", playlist.owner_name())
                     });
                 let context_here =
-                    app.playing_context_uri().as_deref() == Some(playlist.uri.as_str());
-                let playing_here = context_here && app.believed_playing();
+                    app.engine.playing_context_uri().as_deref() == Some(playlist.uri.as_str());
+                let playing_here = context_here && app.engine.believed_playing();
                 let card_art = app.art_px(widgets::CARD_ART);
                 let card = widgets::card(
                     ui,
@@ -288,7 +287,7 @@ fn made_for_you(app: &mut App, ui: &mut egui::Ui) {
                     .id(ui.make_persistent_id(("home-made_for_you-menu", &playlist.uri)))
                     .frame(widgets::menu_frame(&palette))
                     .show(|ui| {
-                        let owned = app.user_id().is_some_and(|id| playlist.owned_by(id));
+                        let owned = app.engine.user_id().is_some_and(|id| playlist.owned_by(id));
                         widgets::context_menu_items(
                             ui,
                             app,
@@ -475,7 +474,7 @@ fn podcasts(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     let episodes = podcast_episodes(
         &app.engine.home.podcasts,
-        |show| app.engine.audiobook_shows.contains(&show.uri) || app.is_saved(&show.uri) == Some(false),
+        |show| app.engine.audiobook_shows.contains(&show.uri) || app.engine.is_saved(&show.uri) == Some(false),
         jiff::Zoned::now().date(),
     );
     if episodes.is_empty() {
@@ -577,8 +576,8 @@ fn top_artists(app: &mut App, ui: &mut egui::Ui) {
         |ui| {
             for artist in &artists {
                 let context_here =
-                    app.playing_context_uri().as_deref() == Some(artist.uri.as_str());
-                let playing_here = context_here && app.believed_playing();
+                    app.engine.playing_context_uri().as_deref() == Some(artist.uri.as_str());
+                let playing_here = context_here && app.engine.believed_playing();
                 let card_art = app.art_px(widgets::CARD_ART);
                 let card = widgets::card(
                     ui,
