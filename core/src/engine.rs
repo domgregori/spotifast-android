@@ -8682,3 +8682,817 @@ impl Engine {
     }
 }
 
+impl Engine {
+    pub fn apply(&mut self, action: Action) {
+        match action {
+
+            Action::Open(page) => self.open(page),
+            Action::OpenSongRadio { uri, track } => self.open_song_radio(&uri, &track),
+            Action::PrepareTint(url) => {
+                if self.settings.accent_from_art {
+                    self.tint_for(Some(&url));
+                }
+            }
+            Action::OpenUri(uri) => {
+                if let Some(page) = Page::from_uri(&uri) {
+                    self.open(page);
+                }
+            }
+            Action::OpenLink(uri) => {
+                // The window first: a link is the user asking for the
+                // app, signed in or not, and the page follows when it can.
+                self.prerelease_request = None;
+                self.pending_link = Some(uri);
+                self.open_pending_link();
+                self.actions.push(Action::ShowWindow);
+            }
+            Action::Back => {
+                if self.can_go_back() {
+                    self.pending_link = None;
+                    self.prerelease_request = None;
+                    self.history_index -= 1;
+                    let page = self.page().clone();
+                    self.touch_page(&page);
+                    self.ensure_loaded(page.clone());
+                    self.retain_table_rows(&page);
+                    self.evict_stale_pages();
+                }
+            }
+            Action::Forward => {
+                if self.can_go_forward() {
+                    self.pending_link = None;
+                    self.prerelease_request = None;
+                    self.history_index += 1;
+                    let page = self.page().clone();
+                    self.touch_page(&page);
+                    self.ensure_loaded(page.clone());
+                    self.retain_table_rows(&page);
+                    self.evict_stale_pages();
+                }
+            }
+            Action::PlayContext {
+                uri,
+                offset_uri,
+                offset_index,
+            } => {
+                let mut request = PlayRequest::context(uri);
+                request.offset_uri = offset_uri;
+                request.offset_position = offset_index;
+                self.play_request(request, false);
+            }
+            // Answered by the search's response, which plays the match.
+            // Taking the serial here, not when the command arrives, keeps
+            // a play queued before it from superseding it.
+            Action::PlaySearch { kind, query } => {
+                self.play_search_serial = self.play_search_serial.wrapping_add(1);
+                self.backend.api(ApiRequest::PlaySearch {
+                    kind,
+                    query,
+                    serial: self.play_search_serial,
+                });
+            }
+            Action::PlaySearchMatch { uri, serial } => {
+                if serial == self.play_search_serial {
+                    self.play_request(PlayRequest::context(uri), false);
+                }
+            }
+            Action::PlayUris { uris, index } => {
+                if uris.is_empty() {
+                    return;
+                }
+                let (uris, index) = cap_uris(&uris, index);
+                let request = PlayRequest::tracks(uris).starting_at_index(index);
+                self.play_request(request, false);
+            }
+            Action::PlayEpisode { uri, resume_ms } => {
+                // A started episode continues from the place the row or card
+                // showed as time left. The playing episode is left where it
+                // is playing, not sent back to a saved position older than it.
+                let mut request = PlayRequest::tracks(vec![uri.clone()]).starting_at_index(0);
+                if self.now_playing().is_none_or(|now| now.uri != uri)
+                    && let Some(position_ms) = resume_ms
+                {
+                    request.position_ms = position_ms;
+                }
+                self.play_request(request, false);
+            }
+            Action::PlayFromRow {
+                context,
+                uri,
+                index,
+            } => match context {
+                RowContext::Context {
+                    uri: context_uri, ..
+                } => {
+                    let request = PlayRequest::context(context_uri).starting_at_uri(uri);
+                    self.play_request(request, false);
+                }
+                RowContext::Uris(uris) => {
+                    // The click names a song. A row that plays a list of its
+                    // own, as each Recent row does, still hands over its
+                    // place in the list on screen; when that place holds
+                    // another song, the song wins, as it does in Next up.
+                    let index = if uris.get(index as usize).is_some_and(|held| *held == uri) {
+                        index
+                    } else {
+                        uris.iter()
+                            .position(|held| *held == uri)
+                            .map_or(index, |position| position as u32)
+                    };
+                    let (uris, index) = cap_uris(uris.as_ref(), index);
+                    let request = PlayRequest::tracks(uris).starting_at_index(index);
+                    self.play_request(request, false);
+                }
+                RowContext::Queue => self.play_queue_item(index as usize, uri),
+                RowContext::View {
+                    uris, context_uri, ..
+                } => {
+                    let (uris, index) = cap_uris(uris.as_ref(), index);
+                    if let Some(uri) = uris.get(index as usize) {
+                        self.cache_track_from_context(&context_uri, uri);
+                    }
+                    let request = PlayRequest::tracks(uris).starting_at_index(index);
+                    self.play_request(request, false);
+                    self.note_recent_context(&context_uri);
+                    self.assumed_context = Some(AssumedContext {
+                        uri: context_uri,
+                        shuffle: self.shuffle_wanted.then_some(true),
+                        at: Instant::now(),
+                    });
+                }
+            },
+            Action::ShufflePlay(uri) => {
+                // The random starting song is picked in `play_request`,
+                // which every shuffled play goes through.
+                self.play_request(PlayRequest::context(uri), true);
+            }
+            Action::TogglePlay => self.toggle_play(),
+            Action::Next if self.resume_only() => {
+                self.step_resume(true);
+            }
+            Action::Next => {
+                // Move the queue head to the playing row immediately. Do not
+                // pop when there is no active playback target.
+                let target = self.target();
+                if !matches!(target, Target::Remote(None)) || self.remote_fresh().is_some() {
+                    self.pop_queue_head();
+                }
+                match target {
+                    Target::Local => self.backend.player(PlayerCommand::Next),
+                    Target::Remote(device_id) => self.remote(RemoteAction::Next, device_id),
+                }
+            }
+            // Previous restarts after three seconds and otherwise steps back,
+            // matching librespot.
+            Action::Previous if self.resume_only() => {
+                if self.resume_position_ms > RESTART_BEFORE_PREVIOUS {
+                    self.resume_position_ms = 0;
+                    self.session_dirty = true;
+                } else {
+                    self.step_resume(false);
+                }
+            }
+            Action::Previous => {
+                // Next names its expected destination so the row moves before
+                // the engine does. Previous has no forward queue row to name;
+                // discard that expectation or a quick Next, Previous leaves
+                // the row marker stuck on the skipped-to song.
+                self.intent_track = None;
+                self.queue_start_pending = Some(self.target());
+                match self.target() {
+                    Target::Local => self.backend.player(PlayerCommand::Previous),
+                    Target::Remote(device_id) => self.remote(RemoteAction::Previous, device_id),
+                }
+            }
+            Action::Seek(position_ms) => self.seek(position_ms),
+            Action::SeekBy(offset) => {
+                if let Some(now) = self.now_playing() {
+                    let target = (i64::from(now.position_ms) + offset)
+                        .clamp(0, i64::from(now.duration_ms))
+                        as u32;
+                    self.seek(target);
+                }
+            }
+            Action::SetVolume(percent) => {
+                self.volume_before_mute = None;
+                self.set_volume(percent, true);
+            }
+            Action::PreviewVolume(percent) => self.set_volume(percent, false),
+            Action::VolumeBy(delta) => {
+                if let Some(now) = self.now_playing() {
+                    let next =
+                        (i16::from(now.volume_percent) + i16::from(delta)).clamp(0, 100) as u8;
+                    self.volume_before_mute = None;
+                    self.set_volume(next, true);
+                } else if self.is_connected() {
+                    let current = volume_to_percent(self.local.volume);
+                    let next = (i16::from(current) + i16::from(delta)).clamp(0, 100) as u8;
+                    self.set_volume(next, true);
+                }
+            }
+            Action::ToggleMute => {
+                if !self.can_set_volume() {
+                    return;
+                }
+                let current = self.now_playing()
+                    .map(|now| now.volume_percent)
+                    .unwrap_or_else(|| volume_to_percent(self.local.volume));
+                if current == 0 {
+                    let restore = self.volume_before_mute.take().unwrap_or(50).max(5);
+                    self.set_volume(restore, true);
+                } else {
+                    self.volume_before_mute = Some(current);
+                    self.set_volume(0, true);
+                }
+            }
+            Action::ToggleShuffle => {
+                let shuffle = self.now_playing()
+                    .map_or(self.shuffle_wanted, |now| now.shuffle);
+                self.set_shuffle(!shuffle);
+            }
+            Action::SetShuffle(shuffle) => self.set_shuffle(shuffle),
+            Action::CycleRepeat => {
+                let mode = self.now_playing().map(|now| now.repeat).unwrap_or_default();
+                self.set_repeat(mode.next());
+            }
+            Action::SetRepeat(mode) => self.set_repeat(mode),
+            Action::AddToQueue { uri, label } => self.add_to_queue(uri, label),
+            Action::QueueMany { songs } => self.queue_many(songs),
+            Action::MoveInQueue { from, to } => {
+                if !self.queue_locally_reorderable() {
+                    return;
+                }
+                let queued_len = self.queued_rows_len();
+                if from >= queued_len || to > queued_len || from == to || to == from + 1 {
+                    return;
+                }
+                if from < self.manual_queue.len() {
+                    let uri = self.manual_queue.remove(from);
+                    let at = (if to > from { to - 1 } else { to }).min(self.manual_queue.len());
+                    self.manual_queue.insert(at, uri);
+                    // Pending additions are tracked by manual_queue index;
+                    // shift them the same way the move just shifted the row
+                    // they point at, or they end up naming a different song.
+                    for addition in &mut self.pending_queue_adds {
+                        if addition.manual_index == from {
+                            addition.manual_index = at;
+                        } else if from < addition.manual_index && addition.manual_index <= at {
+                            addition.manual_index -= 1;
+                        } else if at <= addition.manual_index && addition.manual_index < from {
+                            addition.manual_index += 1;
+                        }
+                    }
+                    self.show_manual_queue_order(queued_len);
+                }
+                self.session_dirty = true;
+                self.resync_local_queue();
+            }
+            Action::RemoveFromQueue { rows } => self.remove_from_queue(rows),
+            Action::InsertInQueue { items, position } => {
+                if !self.queue_locally_reorderable() {
+                    let songs = items
+                        .into_iter()
+                        .map(|item| (item.uri().to_string(), item.name().to_string()))
+                        .collect();
+                    self.queue_many(songs);
+                    return;
+                }
+                let position = position.min(self.queued_rows_len());
+                let repeats: Vec<bool> = items
+                    .iter()
+                    .map(|item| self.queued_moments_ago(item.uri()))
+                    .collect();
+                let mut inserted = 0;
+                for (item, repeat) in items.into_iter().zip(repeats) {
+                    if repeat {
+                        continue;
+                    }
+                    let uri = item.uri().to_string();
+                    let at = (position + inserted).min(self.manual_queue.len());
+                    // Inserting here shifts every later manual_queue row
+                    // right by one; keep pending additions pointing at their
+                    // own song rather than the one now sitting in their slot.
+                    for addition in &mut self.pending_queue_adds {
+                        if addition.manual_index >= at {
+                            addition.manual_index += 1;
+                        }
+                    }
+                    self.pending_queue_adds.push(PendingQueueAdd {
+                        item: item.clone(),
+                        at: Instant::now(),
+                        manual_index: at,
+                        write: None,
+                    });
+                    if let Loadable::Loaded(queue) = &mut self.queue {
+                        queue.queue.insert(at.min(queue.queue.len()), item);
+                    }
+                    self.manual_queue.insert(at, uri);
+                    inserted += 1;
+                }
+                if inserted > 0 {
+                    self.session_dirty = true;
+                    self.queued_toast(inserted);
+                    self.resync_local_queue();
+                }
+            }
+            Action::SetSavedMany { uris, saved } => {
+                let mut changed_tracks = false;
+                for uri in &uris {
+                    self.set_saved_state(uri.clone(), saved);
+                    self.saved_writes.insert(uri.clone(), saved);
+                    changed_tracks |= self.change_liked_song(uri, saved);
+                }
+                if changed_tracks {
+                    self.sync_liked_songs();
+                    self.ensure_liked_songs();
+                }
+                if !uris.is_empty() {
+                    self.backend.api(ApiRequest::SetSaved { uris, saved });
+                }
+            }
+            Action::ToggleSaved(uri) => {
+                let saved = self.is_saved(&uri).unwrap_or(false);
+                let targets = if saved {
+                    self.saved_toggle_targets(&uri)
+                } else {
+                    vec![uri]
+                };
+                for target in targets {
+                    self.set_saved(target, !saved);
+                }
+            }
+            Action::AddToPlaylist {
+                playlist_id,
+                playlist_name,
+                items,
+            } => {
+                self.request_playlist_add(playlist_id, playlist_name, items, None);
+            }
+            Action::InsertInPlaylist {
+                playlist_id,
+                position,
+                items,
+            } => {
+                let name = self.playlist_pages
+                    .get(&playlist_id)
+                    .and_then(|page| page.playlist.get())
+                    .filter(|playlist| self.can_edit_playlist(playlist))
+                    .map(|playlist| playlist.name.clone());
+                if let Some(name) = name {
+                    self.request_playlist_add(playlist_id, name, items, Some(position));
+                }
+            }
+            Action::ConfirmAddToPlaylist {
+                playlist_id,
+                playlist_name,
+                items,
+                position,
+            } => {
+                self.add_to_playlist_now(playlist_id, playlist_name, items, position);
+            }
+            Action::RemoveFromPlaylist { playlist_id, uris } => {
+                let snapshot_id = self.playlist_pages
+                    .get(&playlist_id)
+                    .and_then(|page| page.playlist.get())
+                    .and_then(|playlist| playlist.snapshot_id.clone());
+                self.prepare_playlist_mutation(&playlist_id);
+                if let Some(page) = self.playlist_pages.get_mut(&playlist_id) {
+                    page.local_additions
+                        .retain(|uri| !uris.iter().any(|removed| removed == uri));
+                    let before = page.items.items.len();
+                    page.items.retain(|item| {
+                        item.playable()
+                            .is_none_or(|playable| !uris.iter().any(|uri| uri == playable.uri()))
+                    });
+                    let removed = (before - page.items.items.len()) as u32;
+                    page.items.total = page.items.total.map(|total| total.saturating_sub(removed));
+                    page.items.next_offset = page
+                        .items
+                        .next_offset
+                        .map(|offset| offset.saturating_sub(removed));
+                    if let Loadable::Loaded(playlist) = &mut page.playlist
+                        && let Some(count) =
+                            playlist.items_count.as_mut().or(playlist.tracks.as_mut())
+                    {
+                        count.total = count.total.saturating_sub(removed);
+                    }
+                }
+                self.playlist_busy = true;
+                self.backend.api(ApiRequest::RemoveFromPlaylist {
+                    playlist_id,
+                    uris,
+                    snapshot_id,
+                });
+            }
+            Action::MoveInPlaylist {
+                playlist_id,
+                from,
+                to,
+            } => {
+                let snapshot_id = self.playlist_pages
+                    .get(&playlist_id)
+                    .and_then(|page| page.playlist.get())
+                    .and_then(|playlist| playlist.snapshot_id.clone());
+                self.prepare_playlist_mutation(&playlist_id);
+                if let Some(page) = self.playlist_pages.get_mut(&playlist_id) {
+                    let base = page.items.base_offset;
+                    if from >= base && to >= base {
+                        page.items
+                            .reorder((from - base) as usize, (to - base) as usize);
+                    }
+                }
+                self.playlist_busy = true;
+                self.backend.api(ApiRequest::ReorderPlaylist {
+                    playlist_id,
+                    range_start: from,
+                    insert_before: to,
+                    snapshot_id,
+                });
+            }
+            Action::UploadPlaylistCover(id) => {
+                if self.cover_uploads.contains_key(&id) {
+                    return;
+                }
+                let previous_urls = self.uploaded_covers
+                    .get(&id)
+                    .map(|pending| pending.previous_urls.clone())
+                    .unwrap_or_else(|| {
+                        self.playlist_pages
+                            .get(&id)
+                            .and_then(|page| page.playlist.get())
+                            .into_iter()
+                            .chain(
+                                self.library
+                                    .playlists
+                                    .get()
+                                    .into_iter()
+                                    .flatten()
+                                    .filter(|playlist| playlist.id == id),
+                            )
+                            .flat_map(|playlist| {
+                                playlist.images.iter().map(|image| image.url.clone())
+                            })
+                            .collect()
+                    });
+                if let Some(Dialog::EditPlaylist {
+                    id: current, cover, ..
+                }) = &mut self.dialog
+                    && *current == id
+                    && cover.uploading.is_none()
+                    && cover.request.is_none()
+                    && let Some(selected) = cover.selection.clone()
+                {
+                    self.cover_request = self.cover_request.wrapping_add(1);
+                    cover.uploading = Some(self.cover_request);
+                    self.cover_uploads.insert(id.clone(), self.cover_request);
+                    cover.error = None;
+                    self.backend.api(ApiRequest::UploadPlaylistCover {
+                        id,
+                        request: self.cover_request,
+                        previous_urls,
+                        cover: selected,
+                    });
+                }
+            }
+            Action::ShowDialog(mut dialog) => {
+                if let Dialog::EditPlaylist { id, cover, .. } = &mut dialog
+                    && let Some(request) = self.cover_uploads.get(id)
+                {
+                    cover.uploading = Some(*request);
+                }
+                self.dialog = Some(dialog);
+            }
+            Action::CloseDialog => {
+                if matches!(self.dialog, Some(Dialog::PersonalAppIntro)) {
+                    self.settings.personal_app_intro_seen = true;
+                    self.settings_dirty = true;
+                }
+                self.dialog = None;
+            }
+            Action::CreatePlaylist {
+                name,
+                public,
+                add_uris,
+            } => {
+                self.playlist_busy = true;
+                self.dialog = Some(Dialog::CreatePlaylist {
+                    name: name.clone(),
+                    public,
+                    add_uris,
+                });
+                self.backend.api(ApiRequest::CreatePlaylist {
+                    name,
+                    public,
+                    description: String::new(),
+                });
+            }
+            Action::UpdatePlaylist {
+                id,
+                name,
+                description,
+                public,
+            } => {
+                self.dialog = None;
+                let changes = self.changed_playlist_details(&id, name, description, public);
+                if changes.kept_description {
+                    self.toast_error(self.localize.t(
+                        self.locale,
+                        "Spotify doesn't let apps remove a playlist description, so it was kept",
+                    ));
+                }
+                if changes.name.is_some()
+                    || changes.description.is_some()
+                    || changes.public.is_some()
+                {
+                    self.playlist_busy = true;
+                    self.backend.api(ApiRequest::UpdatePlaylist {
+                        id,
+                        name: changes.name,
+                        description: changes.description,
+                        public: changes.public,
+                    });
+                }
+            }
+            Action::DeletePlaylist(id) => {
+                self.dialog = None;
+                let uri = format!("spotify:playlist:{id}");
+                self.saved.insert(uri.clone(), false);
+                self.edit_playlists(PlaylistEdit {
+                    uri,
+                    added: None,
+                    settled_by: None,
+                });
+                self.backend
+                    .api(ApiRequest::FollowPlaylist { id, follow: false });
+            }
+            Action::Transfer(device_id) => self.transfer(device_id),
+            Action::ActivateReceiver(receiver) => {
+                if self.activating_receiver.is_none() {
+                    self.activating_receiver = Some(receiver.name.clone());
+                    self.activating_play = self.now_playing().is_some_and(|now| now.playing);
+                    self.backend.send(Command::ActivateReceiver(receiver));
+                }
+            }
+            Action::RefreshDevices => {
+                self.devices_fetched_at = None;
+                self.refresh_devices();
+                self.backend.send(Command::DiscoverReceivers);
+            }
+            Action::ClearQueue => self.clear_queue(),
+            Action::SaveQueueAsPlaylist => self.save_queue_as_playlist(),
+            Action::SaveRadio(seed) => self.save_radio(&seed),
+            Action::RefreshQueue => self.refresh_queue(true),
+            Action::PasteSongs { playlist_id, text } => self.paste_songs(playlist_id, &text),
+            Action::Search(query) => {
+                // Enter submits what was typed; a recent search or a link
+                // starts afresh.
+                let typed = query == self.search.query;
+                self.search.query = query.clone();
+                self.search.typed_at = None;
+                self.open(Page::Search);
+                if typed {
+                    self.submit_typed_search(query.trim().to_string());
+                } else {
+                    self.search.edit_run += 1;
+                    self.run_search(query.trim().to_string());
+                }
+            }
+            Action::EndSearchRun => self.search.edit_run += 1,
+            Action::ForgetSearch(query) => {
+                self.settings.search_history.retain(|entry| entry != &query);
+                self.settings_dirty = true;
+            }
+            Action::SetSearchFilter(filter) => self.search.filter = filter,
+            Action::FocusSearch => {
+                self.search.focus_requested = true;
+                if !matches!(self.page(), Page::Search) {
+                    self.open(Page::Search);
+                }
+            }
+            Action::LoadMore(page) => self.load_more(page),
+            Action::LoadWindow { page, position } => self.load_window(page, position),
+            Action::RetryWindow(page) => self.retry_window(page),
+            Action::LoadMoreRecents => self.load_more_recents(),
+            Action::ReloadRecents => self.reload_recents(),
+            Action::SetQueueTab(tab) => {
+                self.queue_tab = tab;
+                self.session_dirty = true;
+                if tab == QueueTab::Recents
+                    && self.recents.items.is_empty()
+                    && !self.recents.loading
+                {
+                    self.load_recents(false);
+                }
+            }
+            Action::LoadMoreArtistAlbums(id) => {
+                let Some(page) = self.artist_pages.get_mut(&id) else {
+                    return;
+                };
+                let groups = page.filter.groups().to_string();
+                let list = page.albums.entry(groups.clone()).or_default();
+                if let Some(offset) = list.next_offset.filter(|_| list.can_load_more()) {
+                    list.loading = true;
+                    self.backend
+                        .api(ApiRequest::ArtistAlbums { id, groups, offset });
+                }
+            }
+            Action::SetDiscographyFilter { artist_id, filter } => {
+                if let Some(page) = self.artist_pages.get_mut(&artist_id) {
+                    page.filter = filter;
+                }
+                self.load_artist_albums(&artist_id, filter);
+            }
+            Action::ToggleShowAllTop(id) => {
+                if let Some(page) = self.artist_pages.get_mut(&id) {
+                    page.show_all_top = !page.show_all_top;
+                }
+            }
+            Action::Reload(page) => self.reload(page),
+            Action::ProxyEdited => self.proxy_form_edited = true,
+            Action::CancelSignIn => {
+                self.backend.send(Command::CancelSignIn);
+                self.sign_in_url = None;
+                self.auth = AuthStatus::SignedOut;
+            }
+            Action::SignOut => {
+                self.backend.send(Command::SignOut);
+                self.history = vec![Page::Home];
+                self.history_index = 0;
+            }
+            Action::ToggleSidebar => {
+                self.settings.sidebar_visible = !self.settings.sidebar_visible;
+                self.settings_dirty = true;
+            }
+            Action::ToggleQueuePanel => {
+                self.show_queue_panel = !self.show_queue_panel;
+                if self.show_queue_panel {
+                    self.show_lyrics_panel = false;
+                    self.refresh_queue(true);
+                }
+            }
+            Action::LyricsLineShown(line) => {
+                // Escape or navigation may already have left the view earlier
+                // in this frame. The returning panel still needs to reposition.
+                if self.lyrics_fullscreen.is_some() {
+                    self.lyrics_line_shown = Some(line);
+                }
+            }
+            Action::FollowLyrics => {
+                self.lyrics_following = true;
+                self.lyrics_line_shown = None;
+            }
+            Action::PauseLyricsFollow => self.lyrics_following = false,
+            Action::RetryLyrics => self.request_lyrics(),
+            Action::ToggleDevicesPopup => {
+                self.show_devices = !self.show_devices;
+                if self.show_devices {
+                    self.refresh_devices();
+                    // Receivers waiting on the network are invisible to the
+                    // Web API, so look for them ourselves.
+                    self.backend.send(Command::DiscoverReceivers);
+                }
+            }
+            Action::SetLibraryByYou(by_you) => {
+                self.settings.library_by_you = by_you;
+                self.mark_settings_dirty();
+            }
+            Action::SetLibrarySort { shelf, sort } => {
+                if sort.supports(shelf) {
+                    self.settings.library_sort.insert(shelf, sort);
+                    match shelf {
+                        crate::settings::LibraryShelf::Albums => self.library.albums.error = None,
+                        crate::settings::LibraryShelf::Artists => self.library.artists.error = None,
+                        crate::settings::LibraryShelf::Podcasts => self.library.shows.error = None,
+                        crate::settings::LibraryShelf::Playlists => {}
+                    }
+                    self.mark_settings_dirty();
+                }
+            }
+            Action::SetLibraryGrid(grid) => {
+                self.settings.sidebar_grid = grid;
+                self.mark_settings_dirty();
+            }
+            Action::ToggleLibraryFolder(id) => {
+                if self.collapsed_folders.contains(&id) {
+                    self.collapsed_folders.retain(|held| held != &id);
+                } else {
+                    self.collapsed_folders.push(id);
+                }
+                self.session_dirty = true;
+            }
+            Action::OpenThemesFolder => {
+                self.backend.send(Command::OpenThemesFolder);
+            }
+            Action::EnablePlayback => {
+                let free = self.user
+                    .as_ref()
+                    .and_then(|user| user.product.as_deref())
+                    .is_some_and(|product| product != "premium");
+                if free {
+                    self.toast_error(self.localize.t(self.locale, "Local playback needs Spotify Premium"));
+                } else if !self.local_ready
+                    && !matches!(
+                        self.local_playback,
+                        LocalPlayback::Authorizing
+                            | LocalPlayback::Connecting
+                            | LocalPlayback::WaitingForNetwork
+                    )
+                {
+                    self.settings.playback_authorized = true;
+                    self.settings_dirty = true;
+                    // The backend tries a saved grant first; the browser
+                    // toast follows `LocalPlayback::Authorizing` (#818).
+                    self.backend.send(Command::AuthorizePlayback);
+                }
+            }
+            Action::SetPrereleaseSaved { uri, saved } => {
+                if self.local_ready {
+                    for page in self.album_pages.values_mut() {
+                        if let Some(data) = &mut page.prerelease
+                            && data.uri == uri
+                            && data.saved.is_some()
+                            && !data.saving
+                        {
+                            data.saved = Some(saved);
+                            data.saving = true;
+                            data.save_error = None;
+                            self.backend.send(Command::SetPrereleaseSaved {
+                                uri: data.album.uri.clone(),
+                                saved,
+                                generation: page.generation,
+                            });
+                            break;
+                        }
+                    }
+                }
+            }
+            Action::OpenUrl(url) => {
+                // Open links off the UI thread with the platform-specific
+                // launcher used elsewhere in the app.
+                std::thread::spawn(move || {
+                    if let Err(error) = crate::opener::open(&url) {
+                        log::warn!("unable to open {url}: {error}");
+                    }
+                });
+            }
+            Action::ClearPlayHistory => {
+                self.plays.clear();
+                if let Some(bytes) = self.plays.take_serialized() { self.files.write_private(&self.dirs.history_file(), bytes); }
+                self.rebuild_recents();
+                self.toast(self.localize.t(self.locale, "Play history cleared"));
+            }
+            Action::SetSkin(name) => {
+                self.settings.skin = name;
+                self.settings.random_skin = false;
+                self.settings_dirty = true;
+            }
+            Action::SetRandomSkin(random) => {
+                self.settings.random_skin = random;
+                self.settings_dirty = true;
+            }
+            Action::SetSkinScale(scale) => {
+                self.settings.skin_scale = Some(scale);
+                self.settings_dirty = true;
+            }
+            Action::ToggleWinampPlaylist => {
+                self.settings.playlist_open = !self.settings.playlist_open;
+                self.settings_dirty = true;
+                if self.settings.playlist_open {
+                    self.refresh_queue(false);
+                }
+            }
+            Action::ToggleWinampEq => {
+                self.settings.eq_open = !self.settings.eq_open;
+                self.settings_dirty = true;
+            }
+            Action::ToggleWinampShade => {
+                self.settings.winamp_shaded = !self.settings.winamp_shaded;
+                self.settings_dirty = true;
+            }
+            Action::ToggleWinampPlaylistShade => {
+                self.settings.playlist_shaded = !self.settings.playlist_shaded;
+                self.settings_dirty = true;
+            }
+            Action::ToggleWinampEqShade => {
+                self.settings.eq_shaded = !self.settings.eq_shaded;
+                self.settings_dirty = true;
+            }
+            // The same request the window's own close button makes, so the
+            // close-to-tray setting decides what follows.
+            Action::CyclePlayerBarVis => {
+                self.settings.player_bar_vis = self.settings.player_bar_vis.next();
+                self.settings_dirty = true;
+            }
+            Action::SetMilkdropSeconds(seconds) => {
+                self.settings.milkdrop_seconds = seconds.clamp(1, 3600);
+                self.settings_dirty = true;
+            }
+            Action::SetMilkdropScale(scale) => {
+                self.settings.milkdrop_scale = scale.clamp(1, 4);
+                self.settings_dirty = true;
+            }
+            _ => {}
+        }
+    }
+}
+
