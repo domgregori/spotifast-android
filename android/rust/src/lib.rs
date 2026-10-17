@@ -62,12 +62,13 @@ pub struct CoreHandle {
     wake_rx: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
     credential_store: Arc<Mutex<Option<Arc<dyn CredentialStore>>>>,
     library_generation: AtomicU64,
+    web_client_id: String,
 }
 
 #[uniffi::export]
 impl CoreHandle {
     #[uniffi::constructor]
-    pub fn new() -> Arc<Self> {
+    pub fn new(web_client_id: String) -> Arc<Self> {
         let dirs = AppDirs::discover();
         let _ = dirs.ensure();
         let settings = Settings::default();
@@ -91,7 +92,7 @@ impl CoreHandle {
         let backend = Backend::spawn(
             dirs,
             engine_config,
-            None,
+            Some(web_client_id.clone()),
             waker,
             services,
             redirect.clone(),
@@ -109,6 +110,7 @@ impl CoreHandle {
             wake_rx: Mutex::new(Some(wake_rx)),
             credential_store,
             library_generation: AtomicU64::new(0),
+            web_client_id,
         })
     }
 
@@ -117,13 +119,13 @@ impl CoreHandle {
         env!("CARGO_PKG_VERSION").to_string()
     }
 
-    /// Start the Web API sign-in in the browser. The browser URL arrives via
-    /// `on_auth_status(WaitingForBrowser, url)`.
+    /// Start the Web API sign-in in the browser, using the configured client
+    /// id (whose `spotifast://callback` redirect is registered). The browser
+    /// URL arrives via `on_auth_status(WaitingForBrowser, url)`.
     pub fn sign_in(&self) {
-        self.backend.lock().unwrap().send(Command::SignIn {
-            request: 0,
-            config: ProxyConfig::Off,
-        });
+        self.backend.lock().unwrap().send(Command::ConfigurePersonalWebApp(
+            Some(self.web_client_id.clone()),
+        ));
     }
 
     /// Kotlin calls this from `onNewIntent` with the captured `code`.

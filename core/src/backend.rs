@@ -2848,7 +2848,10 @@ impl Worker {
         self.cancel_signin = Some(cancel_tx);
         self.authorizing_source = Some(source);
         self.api.set_state(source, SessionState::Authorizing);
-        if source == ApiSource::Shared {
+        // The desktop's personal sign-in opens the browser without the
+        // "waiting" screen, but Android needs the URL for its Custom Tab on
+        // every source (the shared and personal grants share one redirect).
+        if source == ApiSource::Shared || cfg!(target_os = "android") {
             self.emit(Event::Auth(AuthStatus::WaitingForBrowser {
                 url: flow.url.clone(),
             }));

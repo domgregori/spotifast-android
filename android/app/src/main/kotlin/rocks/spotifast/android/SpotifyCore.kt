@@ -27,6 +27,12 @@ data class LibraryItem(val id: String, val name: String)
  */
 object SpotifyCore {
 
+    /**
+     * The Spotify Web API client id whose `spotifast://callback` redirect is
+     * registered, so the browser can return to the app.
+     */
+    private const val CLIENT_ID = "34f75901adbf40d9ad1b5b25c2d666ca"
+
     private val _authState = MutableStateFlow<AuthState>(AuthState.SignedOut)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
 
@@ -68,7 +74,7 @@ object SpotifyCore {
     @Synchronized
     fun init(context: Context) {
         if (handle == null) {
-            handle = CoreHandle()
+            handle = CoreHandle(CLIENT_ID)
             handle?.setCredentialStore(EncryptedCredentialStore(context.applicationContext))
             handle?.setListener(listener)
         }
