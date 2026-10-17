@@ -355,7 +355,7 @@ impl Engine {
         #[cfg(target_os = "android")]
         let (sink_builder, volume) = {
             let sink_builder: Box<dyn FnOnce() -> Box<dyn Sink> + Send> =
-                Box::new(|| Box::new(crate::sink::NoopSink));
+                Box::new(|| Box::new(crate::sink::AndroidSink::new()));
             let volume: Box<dyn VolumeGetter + Send> = Box::new(NoOpVolume);
             (sink_builder, volume)
         };

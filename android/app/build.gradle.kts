@@ -12,7 +12,7 @@ android {
 
     defaultConfig {
         applicationId = "rocks.spotifast.android"
-        minSdk = 24
+        minSdk = 26
         targetSdk = 35
         versionCode = 1
         versionName = "0.13.3"
@@ -68,6 +68,8 @@ val cargoNdkBuild = tasks.register<Exec>("cargoNdkBuild") {
     val jniLibs = layout.buildDirectory.dir("generated/rust/jniLibs").get().asFile
     val args = mutableListOf("cargo", "ndk")
     rustAbis.forEach { args += listOf("-t", it) }
+    // AAudio (the Android audio backend) needs API 26.
+    args += listOf("-P", "26")
     args += listOf(
         "-o", jniLibs.absolutePath,
         "build", "-p", "spotifast-android",

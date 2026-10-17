@@ -6209,6 +6209,7 @@ dependencies = [
  "anyhow",
  "apple-native-keyring-store",
  "base64",
+ "cpal",
  "ctr",
  "directories",
  "fastframe-audio",

@@ -1621,20 +1621,105 @@ mod tests {
     }
 }
 
-/// Android has no audio output until the cpal/Oboe sink lands (Phase C).
-/// This sink reports the missing device so playback fails gracefully.
+/// The Android audio output, backed by cpal's AAudio backend.
+///
+/// `write` converts the decoded samples and pushes them into a shared buffer;
+/// the cpal output callback drains it into the device. The buffer decouples
+/// librespot's push from the audio thread's pull, and silence (0.0) fills any
+/// underrun.
 #[cfg(target_os = "android")]
-pub struct NoopSink;
+pub struct AndroidSink {
+    stream: Option<cpal::Stream>,
+    buffer: Arc<Mutex<std::collections::VecDeque<f32>>>,
+}
 
 #[cfg(target_os = "android")]
-impl Sink for NoopSink {
+impl AndroidSink {
+    pub fn new() -> Self {
+        Self {
+            stream: None,
+            buffer: Arc::new(Mutex::new(std::collections::VecDeque::new())),
+        }
+    }
+}
+
+#[cfg(target_os = "android")]
+impl Sink for AndroidSink {
     fn start(&mut self) -> SinkResult<()> {
+        use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+
+        let host = cpal::default_host();
+        let device = host
+            .default_output_device()
+            .ok_or_else(|| SinkError::OnWrite(NO_DEVICE.to_string()))?;
+        let config = device
+            .default_output_config()
+            .map_err(|error| SinkError::OnWrite(error.to_string()))?;
+        let sample_format = config.sample_format();
+        let buffer = Arc::clone(&self.buffer);
+        let stream = match sample_format {
+            cpal::SampleFormat::F32 => build_android_stream::<f32>(&device, &config, buffer)?,
+            cpal::SampleFormat::I16 => build_android_stream::<i16>(&device, &config, buffer)?,
+            cpal::SampleFormat::U16 => build_android_stream::<u16>(&device, &config, buffer)?,
+            other => {
+                return Err(SinkError::OnWrite(format!(
+                    "unsupported sample format {other:?}"
+                )));
+            }
+        };
+        stream
+            .play()
+            .map_err(|error| SinkError::OnWrite(error.to_string()))?;
+        self.stream = Some(stream);
         Ok(())
     }
+
+    fn write(&mut self, packet: AudioPacket, converter: &mut Converter) -> SinkResult<()> {
+        let AudioPacket::Samples(samples) = packet else {
+            return Ok(());
+        };
+        let samples = converter.f64_to_f32(&samples);
+        self.buffer
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .extend(samples);
+        Ok(())
+    }
+
     fn stop(&mut self) -> SinkResult<()> {
+        self.stream.take();
         Ok(())
     }
-    fn write(&mut self, _packet: AudioPacket, _converter: &mut Converter) -> SinkResult<()> {
-        Err(SinkError::OnWrite(NO_DEVICE.to_string()))
-    }
+}
+
+/// Builds the output stream for one sample format, sharing the PCM buffer.
+#[cfg(target_os = "android")]
+fn build_android_stream<T>(
+    device: &cpal::Device,
+    config: &cpal::SupportedStreamConfig,
+    buffer: Arc<Mutex<std::collections::VecDeque<f32>>>,
+) -> SinkResult<cpal::Stream>
+where
+    T: cpal::SizedSample + cpal::FromSample<f32>,
+{
+    use cpal::traits::DeviceTrait;
+
+    device
+        .build_output_stream(
+            config.config(),
+            move |data: &mut [T], _| {
+                let mut buffer = buffer
+                    .lock()
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                for sample in data.iter_mut() {
+                    let value = buffer.pop_front().unwrap_or(0.0);
+                    *sample = T::from_sample(value);
+                }
+            },
+            |error| {
+                log::debug!("audio output stream error: {error}");
+            },
+            None,
+        )
+        .map_err(|error| SinkError::OnWrite(error.to_string()))
 }

@@ -90,6 +90,11 @@ apple-native-keyring-store = { version = "1.0.2", features = ["keychain"] }
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-native-keyring-store = { version = "1.1", default-features = false }
 
+# The Android audio output, via cpal's Oboe/AAudio backend. Gated so the
+# desktop build never pulls cpal's Android-specific dependencies.
+[target.'cfg(target_os = "android")'.dependencies]
+cpal = "0.18"
+
 [dev-dependencies]
 # auth.rs's tests pause the tokio clock (start_paused).
 tokio = { version = "1", features = ["test-util"] }
