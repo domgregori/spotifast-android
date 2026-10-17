@@ -1,30 +1,171 @@
 //! Spotifast's portable core, exposed to Kotlin over UniFFI.
 
-uniffi::include_scaffolding!("spotifast");
+mod auth_redirect;
+mod wake;
 
-/// The long-lived core handle: owns the tokio runtime and the backend.
-pub struct CoreHandle {
-    _runtime: tokio::runtime::Runtime,
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+
+use spotifast_core::backend::{AuthStatus, Backend, Command, Event};
+use spotifast_core::config;
+use spotifast_core::http::Http;
+use spotifast_core::paths::AppDirs;
+use spotifast_core::proxy::ProxyConfig;
+use spotifast_core::services::{NoServices, Services};
+use spotifast_core::settings::Settings;
+use spotifast_core::vis::AudioTap;
+use spotifast_core::wake::Wake;
+
+use auth_redirect::AndroidAuthRedirect;
+use wake::AndroidWake;
+
+uniffi::setup_scaffolding!("spotifast");
+
+/// Outbound state changes, implemented by Kotlin and pushed into a flow that
+/// Compose collects.
+#[uniffi::export(foreign)]
+pub trait PlaybackStateListener: Send + Sync {
+    /// The sign-in state: one of `Starting`, `SignedOut`, `WaitingForBrowser`,
+    /// `Connecting`, `Connected`, or `Failed`. `detail` carries the browser
+    /// URL, the username, or the failure message as appropriate.
+    fn on_auth_status(&self, status: String, detail: String);
+
+    /// A user-facing error, shown as a toast.
+    fn on_error(&self, message: String);
 }
 
+/// The long-lived core handle: owns the backend (and its tokio runtime) for
+/// the process lifetime.
+#[derive(uniffi::Object)]
+pub struct CoreHandle {
+    backend: Arc<Mutex<Backend>>,
+    redirect: Arc<AndroidAuthRedirect>,
+    listener: Mutex<Option<Arc<dyn PlaybackStateListener>>>,
+    pump_started: AtomicBool,
+    wake_rx: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+}
+
+#[uniffi::export]
 impl CoreHandle {
-    pub fn new() -> Self {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        let dirs = AppDirs::discover();
+        let _ = dirs.ensure();
+        let settings = Settings::default();
+        let proxy = ProxyConfig::Off;
+        let tap = AudioTap::new();
+        let eq = spotifast_core::eq::shared();
+        let engine_config = config::engine_config(&dirs, &settings, proxy.clone(), tap, eq);
+        let http = Http::from_proxy(&proxy).unwrap_or_else(Http::unavailable);
+        let redirect = Arc::new(AndroidAuthRedirect::default());
+        let (wake_tx, wake_rx) = std::sync::mpsc::channel();
+        let waker: Arc<dyn Wake> = Arc::new(AndroidWake { signal: wake_tx });
+        let services: Arc<dyn Services> = Arc::new(NoServices);
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("spotifast-android")
             .enable_all()
             .build()
             .expect("unable to start the tokio runtime");
-        CoreHandle { _runtime: runtime }
+
+        let backend = Backend::spawn(
+            dirs,
+            engine_config,
+            None,
+            waker,
+            services,
+            redirect.clone(),
+            runtime,
+            http,
+            false,
+        );
+
+        Arc::new(Self {
+            backend: Arc::new(Mutex::new(backend)),
+            redirect,
+            listener: Mutex::new(None),
+            pump_started: AtomicBool::new(false),
+            wake_rx: Mutex::new(Some(wake_rx)),
+        })
     }
 
+    /// The core version, for smoke tests.
     pub fn version(&self) -> String {
         env!("CARGO_PKG_VERSION").to_string()
     }
+
+    /// Start the Web API sign-in in the browser. The browser URL arrives via
+    /// `on_auth_status(WaitingForBrowser, url)`.
+    pub fn sign_in(&self) {
+        self.backend.lock().unwrap().send(Command::SignIn {
+            request: 0,
+            config: ProxyConfig::Off,
+        });
+    }
+
+    /// Kotlin calls this from `onNewIntent` with the captured `code`.
+    pub fn complete_redirect(&self, code: String) {
+        self.redirect.complete(code);
+    }
+
+    /// Cancel the in-flight browser sign-in.
+    pub fn cancel_sign_in(&self) {
+        self.backend.lock().unwrap().send(Command::CancelSignIn);
+    }
+
+    pub fn sign_out(&self) {
+        self.backend.lock().unwrap().send(Command::SignOut);
+    }
+
+    /// Register the outbound-state listener and start the event pump. Calling
+    /// this again replaces the listener.
+    pub fn set_listener(&self, listener: Arc<dyn PlaybackStateListener>) {
+        *self.listener.lock().unwrap() = Some(listener.clone());
+
+        if self.pump_started.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        let backend = self.backend.clone();
+        let wake_rx = self
+            .wake_rx
+            .lock()
+            .unwrap()
+            .take()
+            .expect("the wake receiver is taken once");
+        std::thread::Builder::new()
+            .name("spotifast-android-events".to_string())
+            .spawn(move || {
+                loop {
+                    // Drain and forward every queued event, then wait for the
+                    // backend to signal the next change.
+                    let events = backend.lock().unwrap().poll();
+                    for event in events {
+                        match event {
+                            Event::Auth(status) => {
+                                let (status, detail) = auth_status_parts(status);
+                                listener.on_auth_status(status, detail);
+                            }
+                            Event::Error(message) => listener.on_error(message),
+                            _ => {}
+                        }
+                    }
+                    if wake_rx.recv().is_err() {
+                        return;
+                    }
+                }
+            })
+            .expect("unable to start the event pump");
+    }
 }
 
-impl Default for CoreHandle {
-    fn default() -> Self {
-        Self::new()
+/// Splits an [`AuthStatus`] into a tag and its optional detail for Kotlin.
+fn auth_status_parts(status: AuthStatus) -> (String, String) {
+    match status {
+        AuthStatus::Starting => ("Starting".into(), String::new()),
+        AuthStatus::SignedOut => ("SignedOut".into(), String::new()),
+        AuthStatus::WaitingForBrowser { url } => ("WaitingForBrowser".into(), url),
+        AuthStatus::Connecting => ("Connecting".into(), String::new()),
+        AuthStatus::Connected { username } => ("Connected".into(), username),
+        AuthStatus::Failed(message) => ("Failed".into(), message),
     }
 }
