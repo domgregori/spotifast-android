@@ -1,0 +1,12 @@
+# Gradle
+.gradle/
+.kotlin/
+build/
+
+# Android Studio / local SDK path
+local.properties
+.idea/
+*.iml
+captures/
+
+# NDK build artifacts are produced under app/build/ (ignored via build/).
