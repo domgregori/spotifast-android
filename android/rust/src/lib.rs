@@ -37,6 +37,10 @@ pub trait PlaybackStateListener: Send + Sync {
 
     /// The account's playlists, as a JSON array of `{ "id", "name" }`.
     fn on_library(&self, playlists: String);
+
+    /// One playlist's tracks, as a JSON array of
+    /// `{ "uri", "name", "artist", "duration_ms" }`.
+    fn on_playlist_tracks(&self, playlist_id: String, tracks: String);
 }
 
 /// Credential storage, implemented by Kotlin over EncryptedSharedPreferences.
@@ -60,7 +64,7 @@ pub struct CoreHandle {
     listener: Mutex<Option<Arc<dyn PlaybackStateListener>>>,
     pump_started: AtomicBool,
     wake_rx: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
-    library_generation: AtomicU64,
+    generation: AtomicU64,
     web_client_id: String,
 }
 
@@ -107,7 +111,7 @@ impl CoreHandle {
             listener: Mutex::new(None),
             pump_started: AtomicBool::new(false),
             wake_rx: Mutex::new(Some(wake_rx)),
-            library_generation: AtomicU64::new(0),
+            generation: AtomicU64::new(0),
             web_client_id,
         })
     }
@@ -143,8 +147,18 @@ impl CoreHandle {
     /// Request the account's playlist list; the result arrives via
     /// `on_library`.
     pub fn library(&self) {
-        let generation = self.library_generation.fetch_add(1, Ordering::Relaxed);
+        let generation = self.generation.fetch_add(1, Ordering::Relaxed);
         self.backend.lock().unwrap().api(ApiRequest::MyPlaylists {
+            offset: 0,
+            generation,
+        });
+    }
+
+    /// Request a playlist's tracks; the result arrives via `on_playlist_tracks`.
+    pub fn playlist(&self, id: String) {
+        let generation = self.generation.fetch_add(1, Ordering::Relaxed);
+        self.backend.lock().unwrap().api(ApiRequest::PlaylistItems {
+            id,
             offset: 0,
             generation,
         });
@@ -179,8 +193,8 @@ impl CoreHandle {
                                 listener.on_auth_status(status, detail);
                             }
                             Event::Error(message) => listener.on_error(message),
-                            Event::Api(api) => {
-                                if let ApiResponse::MyPlaylists { result, .. } = *api {
+                            Event::Api(api) => match *api {
+                                ApiResponse::MyPlaylists { result, .. } => {
                                     let entries: Vec<LibraryEntry> = match result {
                                         Ok(page) => page
                                             .items
@@ -196,7 +210,29 @@ impl CoreHandle {
                                         listener.on_library(json);
                                     }
                                 }
-                            }
+                                ApiResponse::PlaylistItems { id, result, .. } => {
+                                    let entries: Vec<TrackEntry> = match result {
+                                        Ok(page) => page
+                                            .items
+                                            .iter()
+                                            .filter_map(|item| {
+                                                let playable = item.playable()?;
+                                                Some(TrackEntry {
+                                                    uri: playable.uri().to_string(),
+                                                    name: playable.name().to_string(),
+                                                    artist: playable.subtitle(),
+                                                    duration_ms: playable.duration_ms(),
+                                                })
+                                            })
+                                            .collect(),
+                                        Err(_) => Vec::new(),
+                                    };
+                                    if let Ok(json) = serde_json::to_string(&entries) {
+                                        listener.on_playlist_tracks(id, json);
+                                    }
+                                }
+                                _ => {}
+                            },
                             _ => {}
                         }
                     }
@@ -226,4 +262,13 @@ fn auth_status_parts(status: AuthStatus) -> (String, String) {
 struct LibraryEntry {
     id: String,
     name: String,
+}
+
+/// One track in a playlist, serialized to Kotlin as JSON.
+#[derive(serde::Serialize)]
+struct TrackEntry {
+    uri: String,
+    name: String,
+    artist: String,
+    duration_ms: u32,
 }

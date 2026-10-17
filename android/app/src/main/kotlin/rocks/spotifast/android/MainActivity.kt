@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -53,11 +55,19 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun App() {
     val authState by SpotifyCore.authState.collectAsState()
+    val selectedPlaylist by SpotifyCore.selectedPlaylist.collectAsState()
 
     when (val state = authState) {
         is AuthState.WaitingForBrowser -> BrowserRedirect(state.url)
         is AuthState.Connecting -> Connecting()
-        is AuthState.Connected -> Library(state.username)
+        is AuthState.Connected -> {
+            val playlistId = selectedPlaylist
+            if (playlistId != null) {
+                Playlist(playlistId)
+            } else {
+                Library(state.username)
+            }
+        }
         else -> Login()
     }
 }
@@ -112,8 +122,44 @@ private fun Library(username: String) {
                             style = MaterialTheme.typography.bodyLarge,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .clickable { SpotifyCore.openPlaylist(playlist.id) }
                                 .padding(vertical = 8.dp),
                         )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Playlist(playlistId: String) {
+    val tracks by SpotifyCore.tracks.collectAsState()
+    val playlistTracks = tracks[playlistId] ?: emptyList()
+
+    Scaffold { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+        ) {
+            TextButton(onClick = { SpotifyCore.closePlaylist() }) {
+                Text("Back")
+            }
+            if (playlistTracks.isEmpty()) {
+                Text("No tracks in this playlist.")
+            } else {
+                LazyColumn {
+                    items(playlistTracks, key = { it.uri }) { track ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                        ) {
+                            Text(track.name, style = MaterialTheme.typography.bodyLarge)
+                            Text(track.artist, style = MaterialTheme.typography.bodySmall)
+                        }
                     }
                 }
             }

@@ -20,6 +20,9 @@ sealed interface AuthState {
 /** One playlist in the library list. */
 data class LibraryItem(val id: String, val name: String)
 
+/** One track in a playlist. */
+data class TrackItem(val uri: String, val name: String, val artist: String, val durationMs: Long)
+
 /**
  * Process-wide holder for the single `CoreHandle`. The Activity binds to this
  * (Phase C moves it into a foreground `Service`); Compose collects the state
@@ -41,6 +44,12 @@ object SpotifyCore {
 
     private val _library = MutableStateFlow<List<LibraryItem>>(emptyList())
     val library: StateFlow<List<LibraryItem>> = _library.asStateFlow()
+
+    private val _tracks = MutableStateFlow<Map<String, List<TrackItem>>>(emptyMap())
+    val tracks: StateFlow<Map<String, List<TrackItem>>> = _tracks.asStateFlow()
+
+    private val _selectedPlaylist = MutableStateFlow<String?>(null)
+    val selectedPlaylist: StateFlow<String?> = _selectedPlaylist.asStateFlow()
 
     private var handle: CoreHandle? = null
 
@@ -69,6 +78,22 @@ object SpotifyCore {
                 }
             }.getOrDefault(emptyList())
         }
+
+        override fun onPlaylistTracks(playlistId: String, tracks: String) {
+            val items = runCatching {
+                val array = JSONArray(tracks)
+                (0 until array.length()).map { index ->
+                    val item = array.getJSONObject(index)
+                    TrackItem(
+                        item.getString("uri"),
+                        item.getString("name"),
+                        item.getString("artist"),
+                        item.getLong("duration_ms"),
+                    )
+                }
+            }.getOrDefault(emptyList())
+            _tracks.value = _tracks.value + (playlistId to items)
+        }
     }
 
     @Synchronized
@@ -86,4 +111,15 @@ object SpotifyCore {
     fun signOut() = handle?.signOut()
 
     fun library() = handle?.library()
+
+    fun playlist(id: String) = handle?.playlist(id)
+
+    fun openPlaylist(id: String) {
+        _selectedPlaylist.value = id
+        handle?.playlist(id)
+    }
+
+    fun closePlaylist() {
+        _selectedPlaylist.value = null
+    }
 }
