@@ -12,7 +12,7 @@ crate-type = ["cdylib", "lib"]
 
 [dependencies]
 spotifast-core = { path = "../../core" }
-uniffi = { version = "0.32", features = ["cli"] }
+uniffi = "0.32"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }

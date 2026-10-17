@@ -21,6 +21,8 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // Sideloadable test builds: sign with the debug key.
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -69,6 +71,7 @@ val cargoNdkBuild = tasks.register<Exec>("cargoNdkBuild") {
     args += listOf(
         "-o", jniLibs.absolutePath,
         "build", "-p", "spotifast-android",
+        "--profile", "release-android",
     )
     commandLine(args)
     workingDir = rustRoot
