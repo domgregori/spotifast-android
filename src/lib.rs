@@ -57,6 +57,7 @@ pub mod skin;
 pub use spotifast_core::sonos;
 pub mod system_fonts;
 pub mod theme;
+pub mod ui_context;
 pub mod thumbbar;
 pub mod ui;
 pub use spotifast_core::updates;

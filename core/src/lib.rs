@@ -12,6 +12,7 @@ pub mod account_cache;
 pub mod backend;
 pub mod cast;
 pub mod config;
+pub mod engine;
 pub mod credentials;
 pub mod eq;
 pub mod file;
