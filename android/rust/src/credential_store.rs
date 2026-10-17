@@ -7,19 +7,16 @@ use spotifast_core::credentials::{Error, ProtectedStore};
 use crate::CredentialStore;
 
 /// Backs the core's credential persistence with the Kotlin `CredentialStore`
-/// callback (EncryptedSharedPreferences). The callback is set after the
-/// backend is up, so reads and writes before then report the store
-/// unavailable.
+/// callback (EncryptedSharedPreferences).
 pub struct AndroidProtectedStore {
     store: Arc<Mutex<Option<Arc<dyn CredentialStore>>>>,
 }
 
 impl AndroidProtectedStore {
-    /// Returns the store plus a handle the `CoreHandle` shares so
-    /// `set_credential_store` can install the callback later.
-    pub fn new() -> (Self, Arc<Mutex<Option<Arc<dyn CredentialStore>>>>) {
-        let store = Arc::new(Mutex::new(None));
-        (Self { store: store.clone() }, store)
+    pub fn new(store: Arc<dyn CredentialStore>) -> Self {
+        Self {
+            store: Arc::new(Mutex::new(Some(store))),
+        }
     }
 }
 

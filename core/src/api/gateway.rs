@@ -116,6 +116,12 @@ fn session_serves(operation: Operation, personal_ready: bool) -> bool {
 /// A playlist with unknown access dispatches to the shared app, which can
 /// serve anything; later requests move once a response reveals the owner.
 fn plan(operation: Operation, personal_ready: bool) -> ApiSource {
+    // Android signs in with a single Web API app (the registered client id),
+    // so every operation routes there rather than to the absent shared app.
+    #[cfg(target_os = "android")]
+    if personal_ready {
+        return ApiSource::Personal;
+    }
     use Operation::*;
     match operation {
         CanonicalAccount

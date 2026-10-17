@@ -74,8 +74,7 @@ object SpotifyCore {
     @Synchronized
     fun init(context: Context) {
         if (handle == null) {
-            handle = CoreHandle(CLIENT_ID)
-            handle?.setCredentialStore(EncryptedCredentialStore(context.applicationContext))
+            handle = CoreHandle(CLIENT_ID, EncryptedCredentialStore(context.applicationContext))
             handle?.setListener(listener)
         }
     }

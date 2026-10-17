@@ -60,7 +60,6 @@ pub struct CoreHandle {
     listener: Mutex<Option<Arc<dyn PlaybackStateListener>>>,
     pump_started: AtomicBool,
     wake_rx: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
-    credential_store: Arc<Mutex<Option<Arc<dyn CredentialStore>>>>,
     library_generation: AtomicU64,
     web_client_id: String,
 }
@@ -68,7 +67,7 @@ pub struct CoreHandle {
 #[uniffi::export]
 impl CoreHandle {
     #[uniffi::constructor]
-    pub fn new(web_client_id: String) -> Arc<Self> {
+    pub fn new(web_client_id: String, credential_store: Arc<dyn CredentialStore>) -> Arc<Self> {
         let dirs = AppDirs::discover();
         let _ = dirs.ensure();
         let settings = Settings::default();
@@ -81,7 +80,7 @@ impl CoreHandle {
         let (wake_tx, wake_rx) = std::sync::mpsc::channel();
         let waker: Arc<dyn Wake> = Arc::new(AndroidWake { signal: wake_tx });
         let services: Arc<dyn Services> = Arc::new(NoServices);
-        let (protected_store, credential_store) = AndroidProtectedStore::new();
+        let protected_store = AndroidProtectedStore::new(credential_store);
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("spotifast-android")
@@ -99,7 +98,7 @@ impl CoreHandle {
             Some(Box::new(protected_store)),
             runtime,
             http,
-            false,
+            true,
         );
 
         Arc::new(Self {
@@ -108,7 +107,6 @@ impl CoreHandle {
             listener: Mutex::new(None),
             pump_started: AtomicBool::new(false),
             wake_rx: Mutex::new(Some(wake_rx)),
-            credential_store,
             library_generation: AtomicU64::new(0),
             web_client_id,
         })
@@ -150,12 +148,6 @@ impl CoreHandle {
             offset: 0,
             generation,
         });
-    }
-
-    /// Install the Kotlin credential store (EncryptedSharedPreferences) that
-    /// the backend persists grants into. Call once at startup, before sign-in.
-    pub fn set_credential_store(&self, store: Arc<dyn CredentialStore>) {
-        *self.credential_store.lock().unwrap() = Some(store);
     }
 
     /// Register the outbound-state listener and start the event pump. Calling
