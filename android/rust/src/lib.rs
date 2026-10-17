@@ -4,10 +4,10 @@ mod auth_redirect;
 mod credential_store;
 mod wake;
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use spotifast_core::backend::{AuthStatus, Backend, Command, Event};
+use spotifast_core::backend::{ApiRequest, ApiResponse, AuthStatus, Backend, Command, Event};
 use spotifast_core::config;
 use spotifast_core::http::Http;
 use spotifast_core::paths::AppDirs;
@@ -34,6 +34,9 @@ pub trait PlaybackStateListener: Send + Sync {
 
     /// A user-facing error, shown as a toast.
     fn on_error(&self, message: String);
+
+    /// The account's playlists, as a JSON array of `{ "id", "name" }`.
+    fn on_library(&self, playlists: String);
 }
 
 /// Credential storage, implemented by Kotlin over EncryptedSharedPreferences.
@@ -58,6 +61,7 @@ pub struct CoreHandle {
     pump_started: AtomicBool,
     wake_rx: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
     credential_store: Arc<Mutex<Option<Arc<dyn CredentialStore>>>>,
+    library_generation: AtomicU64,
 }
 
 #[uniffi::export]
@@ -104,6 +108,7 @@ impl CoreHandle {
             pump_started: AtomicBool::new(false),
             wake_rx: Mutex::new(Some(wake_rx)),
             credential_store,
+            library_generation: AtomicU64::new(0),
         })
     }
 
@@ -133,6 +138,16 @@ impl CoreHandle {
 
     pub fn sign_out(&self) {
         self.backend.lock().unwrap().send(Command::SignOut);
+    }
+
+    /// Request the account's playlist list; the result arrives via
+    /// `on_library`.
+    pub fn library(&self) {
+        let generation = self.library_generation.fetch_add(1, Ordering::Relaxed);
+        self.backend.lock().unwrap().api(ApiRequest::MyPlaylists {
+            offset: 0,
+            generation,
+        });
     }
 
     /// Install the Kotlin credential store (EncryptedSharedPreferences) that
@@ -170,6 +185,24 @@ impl CoreHandle {
                                 listener.on_auth_status(status, detail);
                             }
                             Event::Error(message) => listener.on_error(message),
+                            Event::Api(api) => {
+                                if let ApiResponse::MyPlaylists { result, .. } = *api {
+                                    let entries: Vec<LibraryEntry> = match result {
+                                        Ok(page) => page
+                                            .items
+                                            .into_iter()
+                                            .map(|playlist| LibraryEntry {
+                                                id: playlist.id,
+                                                name: playlist.name,
+                                            })
+                                            .collect(),
+                                        Err(_) => Vec::new(),
+                                    };
+                                    if let Ok(json) = serde_json::to_string(&entries) {
+                                        listener.on_library(json);
+                                    }
+                                }
+                            }
                             _ => {}
                         }
                     }
@@ -192,4 +225,11 @@ fn auth_status_parts(status: AuthStatus) -> (String, String) {
         AuthStatus::Connected { username } => ("Connected".into(), username),
         AuthStatus::Failed(message) => ("Failed".into(), message),
     }
+}
+
+/// One playlist in the bare library list, serialized to Kotlin as JSON.
+#[derive(serde::Serialize)]
+struct LibraryEntry {
+    id: String,
+    name: String,
 }

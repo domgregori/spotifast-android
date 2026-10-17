@@ -4,6 +4,7 @@ import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.json.JSONArray
 import uniffi.spotifast.CoreHandle
 import uniffi.spotifast.PlaybackStateListener
 
@@ -15,6 +16,9 @@ sealed interface AuthState {
     data class Connected(val username: String) : AuthState
     data class Failed(val message: String) : AuthState
 }
+
+/** One playlist in the library list. */
+data class LibraryItem(val id: String, val name: String)
 
 /**
  * Process-wide holder for the single `CoreHandle`. The Activity binds to this
@@ -28,6 +32,9 @@ object SpotifyCore {
 
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
+
+    private val _library = MutableStateFlow<List<LibraryItem>>(emptyList())
+    val library: StateFlow<List<LibraryItem>> = _library.asStateFlow()
 
     private var handle: CoreHandle? = null
 
@@ -46,6 +53,16 @@ object SpotifyCore {
         override fun onError(message: String) {
             _error.value = message
         }
+
+        override fun onLibrary(playlists: String) {
+            _library.value = runCatching {
+                val array = JSONArray(playlists)
+                (0 until array.length()).map { index ->
+                    val item = array.getJSONObject(index)
+                    LibraryItem(item.getString("id"), item.getString("name"))
+                }
+            }.getOrDefault(emptyList())
+        }
     }
 
     @Synchronized
@@ -62,4 +79,6 @@ object SpotifyCore {
     fun completeRedirect(code: String) = handle?.completeRedirect(code)
 
     fun signOut() = handle?.signOut()
+
+    fun library() = handle?.library()
 }

@@ -10,8 +10,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -87,6 +90,9 @@ private fun Login() {
 
 @Composable
 private fun Library(username: String) {
+    val library by SpotifyCore.library.collectAsState()
+    LaunchedEffect(Unit) { SpotifyCore.library() }
+
     Scaffold { padding ->
         Column(
             modifier = Modifier
@@ -96,9 +102,21 @@ private fun Library(username: String) {
         ) {
             Text("Signed in as $username", style = MaterialTheme.typography.titleMedium)
             Spacer(Modifier.height(16.dp))
-            // The bare library list lands here once the core exposes its
-            // playlist data over the FFI (Phase B).
-            Text("Your library will appear here.")
+            if (library.isEmpty()) {
+                Text("Your library is empty.")
+            } else {
+                LazyColumn {
+                    items(library, key = { it.id }) { playlist ->
+                        Text(
+                            text = playlist.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                        )
+                    }
+                }
+            }
         }
     }
 }

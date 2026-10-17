@@ -6194,6 +6194,8 @@ name = "spotifast-android"
 version = "0.13.3"
 dependencies = [
  "anyhow",
+ "serde",
+ "serde_json",
  "spotifast-core",
  "tokio",
  "uniffi",
