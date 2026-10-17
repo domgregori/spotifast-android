@@ -1,6 +1,5 @@
 //! The application: state, event handling, and the actions views ask for.
 
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
@@ -9,22 +8,19 @@ use egui::Color32;
 
 use crate::api::PlayRequest;
 use crate::api::models::{
-    Album, Artist, PlayableItem, Playlist, PlaylistItem, Queue,
-    Show, Track, TrackCount, UserRef, pick_image,
+    PlayableItem, Queue, Track, pick_image,
 };
 #[cfg(test)]
 use crate::api::models::{Device, PlaybackState, User};
 use crate::backend::{
-    ApiRequest, ApiResponse, AuthStatus, Backend, Command, Event, LocalPlayback, LyricsRequest,
-    PLAYLIST_PAGE_SIZE, PlaylistCacheRows, RecentsFor, RemoteAction,
+    ApiRequest, ApiResponse, AuthStatus, Backend, Command, Event, LocalPlayback, LyricsRequest, RecentsFor, RemoteAction,
 };
 use crate::wake::Waker;
-use crate::i18n::{Locale, gettext};
+use crate::i18n::gettext;
 use crate::model::QueueTab;
 use crate::model::*;
 use crate::paths::AppDirs;
 use crate::backend_ext::BackendExt;
-use crate::history_ext::HistoryExt;
 use crate::http::Http;
 use crate::images::ArtLoader;
 use crate::player::{LoadSpec, LocalState, Playback, PlayerCommand, RepeatMode};
@@ -198,8 +194,6 @@ pub struct App {
     winamp_level_reassert: u8,
     /// What the window's title bar says, as last set.
     window_title: String,
-    /// Writes settings, session and history off the UI thread.
-    files: fastframe_file::Writer,
     pub accents: HashMap<String, Color32>,
     pub lyrics_backdrop: crate::images::LyricsBackdrop,
     pub softened_covers: crate::images::SoftenedCovers,
@@ -296,7 +290,8 @@ impl fastframe_shell::Resident for App {
     }
 
     fn shutdown(&mut self) {
-        App::shutdown(self);
+        self.save_state();
+        self.engine.flush_files();
     }
 }
 
@@ -544,7 +539,6 @@ impl App {
             custom_themes: theme::Catalog::default(),
             winamp_level_reassert: 0,
             window_title: String::new(),
-            files: fastframe_file::Writer::new(),
             accents: HashMap::new(),
             lyrics_backdrop: Default::default(),
             softened_covers: Default::default(),
@@ -1426,6 +1420,7 @@ impl App {
         }
     }
 
+    #[allow(dead_code)]
     fn learn_screen_hz(&mut self, hz: u32) {
         if !crate::milkdrop::is_screen_rate(hz) || self.engine.settings.milkdrop_screen_hz == hz {
             return;
@@ -3369,6 +3364,7 @@ impl App {
         }
     }
 
+    #[allow(dead_code)]
     fn sync_notch_widget(&mut self, _ctx: &egui::Context) {
         let is_background = _ctx.input(|i| i.viewport().minimized.unwrap_or(false))
             || self.window_hidden
@@ -8134,7 +8130,7 @@ mod tests {
         );
         app.save_state();
         app.engine.flush_files();
-        app.engine.plays.save(&app.files, &app.engine.dirs.history_file());
+        if let Some(bytes) = app.engine.plays.take_serialized() { app.engine.files.write_private(&app.engine.dirs.history_file(), bytes); }
         assert!(app.engine.flush_files());
         assert_eq!(
             Settings::load(&app.engine.dirs.settings_file()).theme,

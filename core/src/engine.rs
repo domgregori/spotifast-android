@@ -12,12 +12,12 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
-use crate::api::models::{Album, Artist, Device, PlayableItem, PlaybackState, Playlist, PlaylistItem, Queue, Show, Track, TrackCount, User, UserRef, pick_image};
+use crate::api::models::{Album, Artist, Device, PlayableItem, PlaybackState, Playlist, PlaylistItem, Queue, Show, Track, TrackCount, User, UserRef};
 use crate::locale::Locale;
 use crate::api::PlayRequest;
-use crate::backend::{AuthStatus, Backend, LocalPlayback, LyricsRequest};
+use crate::backend::{AuthStatus, Backend, LocalPlayback};
 use crate::model::{
-    Action, AlbumPage, ArtistPage, BackgroundActivity, Dialog, DiscographyFilter, HomeData,
+    Action, AlbumPage, ArtistPage, Dialog, DiscographyFilter, HomeData,
     HomeSnapshot, Library, Loadable, Page, PagedList, PlayingFrom, PlaylistCache, PlaylistEdit,
     PlaylistCachePending, PlaylistPage, QueueTab, RadioPage, RowContext, RowPick, RowSelection, SearchState, ShowPage,
     TableRowsCache, TableSort, Toast, ToastKind,
@@ -27,7 +27,7 @@ use crate::paths::AppDirs;
 use crate::settings::Settings;
 use std::time::Duration;
 
-use crate::backend::{ApiRequest, ApiResponse, Command, Event, PLAYLIST_PAGE_SIZE, PlaylistCacheRows, RecentsFor, RemoteAction};
+use crate::backend::{ApiRequest, Command, PLAYLIST_PAGE_SIZE, PlaylistCacheRows, RecentsFor, RemoteAction};
 use crate::player::{LoadSpec, LocalState, Playback, PlayerCommand, RepeatMode};
 use crate::util;
 use crate::util::{percent_to_volume, volume_to_percent};
