@@ -378,7 +378,7 @@ impl Store {
         let backend: Box<dyn ProtectedStore> = Box::new(NativeStore::default());
         #[cfg(target_os = "android")]
         let backend: Box<dyn ProtectedStore> = Box::new(NoopStore);
-        Self::with_backend(dirs, backend)
+        Self::from_backend(dirs, backend)
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -386,7 +386,9 @@ impl Store {
         tests::memory_store(dirs)
     }
 
-    fn with_backend(dirs: AppDirs, mut backend: Box<dyn ProtectedStore>) -> Self {
+    /// Build the store over a caller-supplied [`ProtectedStore`], so the
+    /// Android front end can back it with its own credential store.
+    pub fn from_backend(dirs: AppDirs, mut backend: Box<dyn ProtectedStore>) -> Self {
         let (jobs, receiver) = mpsc::sync_channel::<Job>(16);
         let runtime = tokio::runtime::Handle::try_current().ok();
         let _ = std::thread::Builder::new()
@@ -863,7 +865,7 @@ mod tests {
         release: Option<mpsc::Receiver<()>>,
     }
     pub(super) fn memory_store(dirs: AppDirs) -> Store {
-        Store::with_backend(
+        Store::from_backend(
             dirs,
             Box::new(Backend(Arc::new(Mutex::new(Fake::default())))),
         )
@@ -927,11 +929,11 @@ mod tests {
             };
             dirs.ensure().unwrap();
             let fake = Arc::new(Mutex::new(Fake::default()));
-            let store = Store::with_backend(dirs.clone(), Box::new(Backend(fake.clone())));
+            let store = Store::from_backend(dirs.clone(), Box::new(Backend(fake.clone())));
             Self { dirs, fake, store }
         }
         fn restart(&self) -> Store {
-            Store::with_backend(self.dirs.clone(), Box::new(Backend(self.fake.clone())))
+            Store::from_backend(self.dirs.clone(), Box::new(Backend(self.fake.clone())))
         }
     }
     impl Drop for Fixture {
@@ -978,7 +980,7 @@ mod tests {
             &fixture.store.inner.profile,
         )
         .unwrap();
-        let store = Store::with_backend(renamed, Box::new(Backend(fixture.fake.clone())));
+        let store = Store::from_backend(renamed, Box::new(Backend(fixture.fake.clone())));
         assert_eq!(store.inner.profile, fixture.store.inner.profile);
         assert!(store.lease(Slot::Shared).load().await.unwrap().grant == Some(grant));
         assert!(
@@ -1409,7 +1411,7 @@ mod tests {
     async fn profiles_are_isolated_and_invalid_records_are_rejected() {
         let f = Fixture::new();
         let other = Fixture::new();
-        let isolated = Store::with_backend(other.dirs.clone(), Box::new(Backend(f.fake.clone())));
+        let isolated = Store::from_backend(other.dirs.clone(), Box::new(Backend(f.fake.clone())));
         f.store
             .lease(Slot::Shared)
             .save(web(crate::auth::DEFAULT_WEB_CLIENT_ID))

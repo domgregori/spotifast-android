@@ -1,6 +1,7 @@
 //! Spotifast's portable core, exposed to Kotlin over UniFFI.
 
 mod auth_redirect;
+mod credential_store;
 mod wake;
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -17,6 +18,7 @@ use spotifast_core::vis::AudioTap;
 use spotifast_core::wake::Wake;
 
 use auth_redirect::AndroidAuthRedirect;
+use credential_store::AndroidProtectedStore;
 use wake::AndroidWake;
 
 uniffi::setup_scaffolding!("spotifast");
@@ -34,6 +36,18 @@ pub trait PlaybackStateListener: Send + Sync {
     fn on_error(&self, message: String);
 }
 
+/// Credential storage, implemented by Kotlin over EncryptedSharedPreferences.
+#[uniffi::export(foreign)]
+pub trait CredentialStore: Send + Sync {
+    /// `None` when the key holds no credential.
+    fn read(&self, key: String) -> Option<Vec<u8>>;
+
+    /// Stores the credential under `key`; `false` when the store failed.
+    fn write(&self, key: String, value: Vec<u8>) -> bool;
+
+    fn delete(&self, key: String) -> bool;
+}
+
 /// The long-lived core handle: owns the backend (and its tokio runtime) for
 /// the process lifetime.
 #[derive(uniffi::Object)]
@@ -43,6 +57,7 @@ pub struct CoreHandle {
     listener: Mutex<Option<Arc<dyn PlaybackStateListener>>>,
     pump_started: AtomicBool,
     wake_rx: Mutex<Option<std::sync::mpsc::Receiver<()>>>,
+    credential_store: Arc<Mutex<Option<Arc<dyn CredentialStore>>>>,
 }
 
 #[uniffi::export]
@@ -61,6 +76,7 @@ impl CoreHandle {
         let (wake_tx, wake_rx) = std::sync::mpsc::channel();
         let waker: Arc<dyn Wake> = Arc::new(AndroidWake { signal: wake_tx });
         let services: Arc<dyn Services> = Arc::new(NoServices);
+        let (protected_store, credential_store) = AndroidProtectedStore::new();
         let runtime = tokio::runtime::Builder::new_multi_thread()
             .worker_threads(2)
             .thread_name("spotifast-android")
@@ -75,6 +91,7 @@ impl CoreHandle {
             waker,
             services,
             redirect.clone(),
+            Some(Box::new(protected_store)),
             runtime,
             http,
             false,
@@ -86,6 +103,7 @@ impl CoreHandle {
             listener: Mutex::new(None),
             pump_started: AtomicBool::new(false),
             wake_rx: Mutex::new(Some(wake_rx)),
+            credential_store,
         })
     }
 
@@ -115,6 +133,12 @@ impl CoreHandle {
 
     pub fn sign_out(&self) {
         self.backend.lock().unwrap().send(Command::SignOut);
+    }
+
+    /// Install the Kotlin credential store (EncryptedSharedPreferences) that
+    /// the backend persists grants into. Call once at startup, before sign-in.
+    pub fn set_credential_store(&self, store: Arc<dyn CredentialStore>) {
+        *self.credential_store.lock().unwrap() = Some(store);
     }
 
     /// Register the outbound-state listener and start the event pump. Calling

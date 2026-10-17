@@ -1031,6 +1031,7 @@ impl Backend {
         waker: Arc<dyn Wake>,
         services: Arc<dyn Services>,
         redirect: Arc<dyn AuthRedirectHandler>,
+        credential_store: Option<Box<dyn crate::credentials::ProtectedStore>>,
         runtime: tokio::runtime::Runtime,
         http: Http,
         restore_sign_in: bool,
@@ -1058,6 +1059,7 @@ impl Backend {
                         event_tx,
                         worker_commands,
                         waker,
+                        credential_store,
                     );
                     if restore_sign_in {
                         worker.restore_session();
@@ -1652,10 +1654,13 @@ impl Worker {
         events: std::sync::mpsc::Sender<Event>,
         commands: mpsc::UnboundedSender<Command>,
         waker: Arc<dyn Wake>,
+        credential_store: Option<Box<dyn crate::credentials::ProtectedStore>>,
     ) -> Self {
         Self {
             #[cfg(not(any(test, feature = "test-support")))]
-            credentials: CredentialStore::new(dirs.clone()),
+            credentials: credential_store
+                .map(|store| CredentialStore::from_backend(dirs.clone(), store))
+                .unwrap_or_else(|| CredentialStore::new(dirs.clone())),
             #[cfg(any(test, feature = "test-support"))]
             credentials: CredentialStore::in_memory(dirs.clone()),
             web_tokens: [None, None],
@@ -7144,6 +7149,7 @@ mod authorization_tests {
             sender,
             commands,
             Arc::new(crate::wake::NoWake),
+            None,
         );
         (runtime, worker, events)
     }

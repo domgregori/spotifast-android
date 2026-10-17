@@ -451,6 +451,7 @@ impl App {
             std::sync::Arc::new(waker.clone()),
             services,
             redirect,
+            None,
             runtime,
             http,
             options.restore_sign_in,
