@@ -57,8 +57,8 @@ struct Cli {
     /// Interface language, in place of the saved setting and the system's.
     /// Requires demo mode.
     #[cfg(feature = "demo")]
-    #[arg(long, value_enum)]
-    demo_language: Option<spotifast::i18n::Locale>,
+    #[arg(long, value_name = "TAG")]
+    demo_language: Option<String>,
 
     /// Write a PNG of the demo window to this path and exit. Implies
     /// `--demo`. Without `--demo-size`, the shot is the window's own frame
@@ -558,9 +558,11 @@ pub(crate) fn run() -> eframe::Result<()> {
             }
             app.actions.push(spotifast::model::Action::CheckForUpdates);
         }
-        if let Some(locale) = cli.demo_language {
-            app.settings.language = spotifast::settings::LanguageChoice::Locale(locale);
-            app.locale = locale;
+        if let Some(tag) = &cli.demo_language {
+            if let Some(locale) = spotifast::i18n::Locale::from_tag(tag) {
+                app.settings.language = spotifast::settings::LanguageChoice::Locale(locale);
+                app.locale = locale;
+            }
         }
     }
     #[cfg(feature = "demo")]
