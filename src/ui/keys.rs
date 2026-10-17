@@ -129,7 +129,7 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
             key(
                 Modifiers::NONE,
                 Key::F,
-                Action::SetLyricsFullscreen(app.lyrics_fullscreen.is_none()),
+                Action::SetLyricsFullscreen(app.engine.lyrics_fullscreen.is_none()),
             );
         }
     });
@@ -147,19 +147,19 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
                     .now_playing()
                     .and_then(|now| now.artists.first().and_then(|artist| artist.id.clone()))
                 {
-                    app.actions.push(Action::Open(Page::Artist(id)));
+                    app.engine.actions.push(Action::Open(Page::Artist(id)));
                 }
             }
             Action::OpenUri(kind) if kind == "album" => {
                 if let Some(now) = app.now_playing() {
                     if let Some(id) = now.album_id {
-                        app.actions.push(Action::Open(Page::Album(id)));
+                        app.engine.actions.push(Action::Open(Page::Album(id)));
                     } else if let Some(id) = now.show_id {
-                        app.actions.push(Action::Open(Page::Show(id)));
+                        app.engine.actions.push(Action::Open(Page::Show(id)));
                     }
                 }
             }
-            other => app.actions.push(other),
+            other => app.engine.actions.push(other),
         }
     }
     // Map mouse back and forward buttons to navigation.
@@ -170,18 +170,18 @@ pub fn handle(app: &mut App, ctx: &egui::Context) {
         )
     });
     if back {
-        app.actions.push(Action::Back);
+        app.engine.actions.push(Action::Back);
     }
     if forward {
-        app.actions.push(Action::Forward);
+        app.engine.actions.push(Action::Forward);
     }
     if ctx.input(|input| input.key_pressed(Key::Escape)) {
-        if app.dialog.is_some() {
-            app.actions.push(Action::CloseDialog);
-        } else if app.show_devices {
-            app.show_devices = false;
-        } else if app.lyrics_fullscreen.is_some() {
-            app.actions.push(Action::SetLyricsFullscreen(false));
+        if app.engine.dialog.is_some() {
+            app.engine.actions.push(Action::CloseDialog);
+        } else if app.engine.show_devices {
+            app.engine.show_devices = false;
+        } else if app.engine.lyrics_fullscreen.is_some() {
+            app.engine.actions.push(Action::SetLyricsFullscreen(false));
         }
     }
 }
@@ -358,7 +358,7 @@ mod tests {
         let end = text.chars().count();
         // Shortcuts first, then the page, as `ui::show` draws a frame.
         let frame = |app: &mut App, text: &mut String, events: Vec<egui::Event>| {
-            app.actions.clear();
+            app.engine.actions.clear();
             let mut output = ctx.run_ui(
                 egui::RawInput {
                     events,
@@ -378,12 +378,12 @@ mod tests {
                         )
                         .clicked()
                     {
-                        app.actions.push(Action::Open(Page::Home));
+                        app.engine.actions.push(Action::Open(Page::Home));
                     }
                 },
             );
             output.textures_delta.clear();
-            format!("{:?}", app.actions)
+            format!("{:?}", app.engine.actions)
         };
         let press = |key: Key, modifiers: Modifiers| {
             vec![egui::Event::Key {
@@ -477,7 +477,7 @@ mod tests {
             frame(&mut app, &mut text, press(Key::ArrowRight, command)),
             format!("{:?}", [Action::Next])
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -567,10 +567,10 @@ mod tests {
         output.textures_delta.clear();
 
         assert!(matches!(
-            app.actions.as_slice(),
+            app.engine.actions.as_slice(),
             [Action::ToggleSaved(uri)] if uri == "spotify:track:trk0"
         ));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -610,7 +610,7 @@ mod tests {
         };
         let ctx = egui::Context::default();
         let press = |app: &mut App, key: Key, modifiers: Modifiers| {
-            app.actions.clear();
+            app.engine.actions.clear();
             let input = egui::RawInput {
                 events: vec![egui::Event::Key {
                     key,
@@ -623,7 +623,7 @@ mod tests {
             };
             let mut output = ctx.run_ui(input, |ui| handle(app, ui.ctx()));
             output.textures_delta.clear();
-            format!("{:?}", app.actions)
+            format!("{:?}", app.engine.actions)
         };
 
         let shift = command | Modifiers::SHIFT;
@@ -660,13 +660,13 @@ mod tests {
             format!("{:?}", [Action::SetLyricsFullscreen(true)]),
             "F enters lyrics full screen"
         );
-        app.lyrics_fullscreen = Some(false);
+        app.engine.lyrics_fullscreen = Some(false);
         assert_eq!(
             press(&mut app, Key::F, Modifiers::NONE),
             format!("{:?}", [Action::SetLyricsFullscreen(false)]),
             "F leaves lyrics full screen"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 }

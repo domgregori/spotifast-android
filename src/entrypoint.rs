@@ -556,11 +556,11 @@ pub(crate) fn run() -> eframe::Result<()> {
                 app.update_restart_arguments
                     .extend(["--demo-data".into(), base.to_string_lossy().into_owned()]);
             }
-            app.actions.push(spotifast::model::Action::CheckForUpdates);
+            app.engine.actions.push(spotifast::model::Action::CheckForUpdates);
         }
         if let Some(tag) = &cli.demo_language {
             if let Some(locale) = spotifast::i18n::Locale::from_tag(tag) {
-                app.settings.language = spotifast::settings::LanguageChoice::Locale(locale);
+                app.engine.settings.language = spotifast::settings::LanguageChoice::Locale(locale);
                 app.locale = locale;
             }
         }
@@ -580,7 +580,7 @@ pub(crate) fn run() -> eframe::Result<()> {
     #[cfg(feature = "demo")]
     spotifast::window::set_fixed_size(demo_inner.is_some());
     #[cfg(feature = "demo")]
-    let demo_storage = app.dirs.cache.join("demo-window.ron");
+    let demo_storage = app.engine.dirs.cache.join("demo-window.ron");
     let shell = fastframe_shell::Shell::new(app, &waker.0);
     // The menu-bar item answers only while AppKit's loop runs. Elsewhere
     // nothing needs the main thread between headless ticks, so the shell
@@ -729,15 +729,15 @@ struct MiniWindow {
 
 impl MiniWindow {
     fn wanted(app: &app::App) -> Option<Self> {
-        app.settings.winamp_window.then(|| Self {
-            size: spotifast::ui::winamp::initial_size(&app.settings),
+        app.engine.settings.winamp_window.then(|| Self {
+            size: spotifast::ui::winamp::initial_size(&app.engine.settings),
             geometry: Geometry {
                 position: app.winamp.geometry.position,
                 ..Geometry::default()
             },
-            on_top: app.settings.winamp_on_top,
-            taskbar: app.settings.winamp_show_taskbar,
-            storage_path: app.dirs.cache.join("winamp.ron"),
+            on_top: app.engine.settings.winamp_on_top,
+            taskbar: app.engine.settings.winamp_show_taskbar,
+            storage_path: app.engine.dirs.cache.join("winamp.ron"),
         })
     }
 }
@@ -745,7 +745,7 @@ impl MiniWindow {
 /// The main window's remembered geometry. A demo run opens at its default
 /// size, wherever the window manager puts it.
 fn main_geometry(app: &app::App) -> Geometry {
-    if app.offline {
+    if app.engine.offline {
         Geometry::default()
     } else {
         app.window_geometry
@@ -1325,12 +1325,12 @@ impl Shell {
                     continue;
                 }
             };
-            app.actions.push(action);
+            app.engine.actions.push(action);
         }
         #[cfg(windows)]
         for command in self.thumbbar.drain_commands() {
             if let Some(action) = command.action(&app.thumb_state(false)) {
-                app.actions.push(action);
+                app.engine.actions.push(action);
             }
         }
         app.background_frame(ctx);
@@ -1494,7 +1494,7 @@ impl eframe::App for Shell {
     /// The mini player's window is see-through where the skin leaves it
     /// out; the big window paints itself over eframe's own ground.
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
-        if self.app.settings.winamp_window {
+        if self.app.engine.settings.winamp_window {
             [0.0; 4]
         } else {
             egui::Color32::from_rgba_unmultiplied(12, 12, 12, 180).to_normalized_gamma_f32()

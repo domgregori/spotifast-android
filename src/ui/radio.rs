@@ -22,10 +22,10 @@ pub fn radio(app: &mut App, ui: &mut egui::Ui, seed: &str) {
     let Some(station) = util::station_uri(seed) else {
         return;
     };
-    if !app.radio_pages.contains_key(seed) {
+    if !app.engine.radio_pages.contains_key(seed) {
         app.ensure_loaded(key.clone());
     }
-    let Some(page) = app.radio_pages.get(seed) else {
+    let Some(page) = app.engine.radio_pages.get(seed) else {
         return;
     };
     let locale = app.locale;
@@ -95,7 +95,7 @@ pub fn radio(app: &mut App, ui: &mut egui::Ui, seed: &str) {
                 )
             });
             if matches!(
-                app.local_playback,
+                app.engine.local_playback,
                 LocalPlayback::Unavailable | LocalPlayback::Failed(_)
             ) {
                 widgets::error_row(
@@ -125,12 +125,11 @@ pub fn radio(app: &mut App, ui: &mut egui::Ui, seed: &str) {
             return;
         }
     }
-    let names = app.user_names_revision;
+    let names = app.engine.user_names_revision;
     let items = match table_items_hit(app, &key, generation, generation, names) {
         Some(items) => items,
         None => {
-            let rows = app
-                .radio_pages
+            let rows = app.engine.radio_pages
                 .get(seed)
                 .and_then(|page| page.songs.get())
                 .into_iter()

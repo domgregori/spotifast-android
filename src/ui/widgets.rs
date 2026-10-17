@@ -415,7 +415,7 @@ pub fn load_more_when_near_end(ui: &Ui, app: &mut App, page: Page, can_load: boo
     let clip = ui.clip_rect();
     let cursor = ui.cursor().top();
     if cursor - clip.bottom() < 900.0 {
-        app.actions.push(Action::LoadMore(page));
+        app.engine.actions.push(Action::LoadMore(page));
     }
 }
 
@@ -710,7 +710,7 @@ pub fn picked_menu(
         Some(Icon::ListEnd),
         &gettext(locale, "Add to queue"),
     ) {
-        app.actions.push(Action::QueueMany {
+        app.engine.actions.push(Action::QueueMany {
             songs: songs
                 .iter()
                 .map(|item| (item.uri().to_string(), item.name().to_string()))
@@ -728,7 +728,7 @@ pub fn picked_menu(
         (Icon::Heart, gettext(locale, "Save to Liked Songs"))
     };
     if menu_item(ui, &palette, Some(icon), &text) {
-        app.actions.push(Action::SetSavedMany {
+        app.engine.actions.push(Action::SetSavedMany {
             uris: uris.clone(),
             saved: !all_saved,
         });
@@ -744,7 +744,7 @@ pub fn picked_menu(
             &gettext(locale, "Remove from this playlist"),
         )
     {
-        app.actions.push(Action::RemoveFromPlaylist {
+        app.engine.actions.push(Action::RemoveFromPlaylist {
             playlist_id: playlist_id.clone(),
             uris: uris.clone(),
         });
@@ -857,7 +857,7 @@ pub(crate) fn playlist_picker(
         Some(Icon::Plus),
         &gettext(locale, "New playlist"),
     ) {
-        app.actions.push(Action::ShowDialog(Dialog::CreatePlaylist {
+        app.engine.actions.push(Action::ShowDialog(Dialog::CreatePlaylist {
             name: String::new(),
             public: false,
             add_uris: items.iter().map(|item| item.uri().to_string()).collect(),
@@ -872,7 +872,7 @@ pub(crate) fn playlist_picker(
     highlighted = highlighted.filter(|index| *index < matches.len());
     ui.data_mut(|data| data.insert_temp(highlight_id, (frame, highlighted, query.clone())));
     if enter && let Some((id, name)) = highlighted.and_then(|index| matches.get(index)) {
-        app.actions.push(Action::AddToPlaylist {
+        app.engine.actions.push(Action::AddToPlaylist {
             playlist_id: id.clone(),
             playlist_name: name.clone(),
             items: items.to_vec(),
@@ -911,7 +911,7 @@ pub(crate) fn playlist_picker(
                         row.scroll_to_me(None);
                     }
                     if clicked {
-                        app.actions.push(Action::AddToPlaylist {
+                        app.engine.actions.push(Action::AddToPlaylist {
                             playlist_id: id.clone(),
                             playlist_name: name.clone(),
                             items: items.to_vec(),
@@ -943,7 +943,7 @@ pub fn item_menu(
         Some(Icon::ListEnd),
         &gettext(locale, "Add to queue"),
     ) {
-        app.actions.push(Action::AddToQueue {
+        app.engine.actions.push(Action::AddToQueue {
             uri: uri.clone(),
             label: label.clone(),
         });
@@ -959,7 +959,7 @@ pub fn item_menu(
             &gettext(locale, "Remove from queue"),
         )
     {
-        app.actions.push(Action::RemoveFromQueue {
+        app.engine.actions.push(Action::RemoveFromQueue {
             rows: vec![(index, uri.clone())],
         });
     }
@@ -974,7 +974,7 @@ pub fn item_menu(
             (Icon::Heart, gettext(locale, "Save to Liked Songs"))
         };
         if menu_item(ui, &palette, Some(icon), &text) {
-            app.actions.push(Action::ToggleSaved(uri.clone()));
+            app.engine.actions.push(Action::ToggleSaved(uri.clone()));
         }
         add_to_playlist_menu(ui, app, std::slice::from_ref(item));
     } else if menu_item(
@@ -983,7 +983,7 @@ pub fn item_menu(
         Some(Icon::Bookmark),
         &gettext(locale, "Save episode"),
     ) {
-        app.actions.push(Action::ToggleSaved(uri.clone()));
+        app.engine.actions.push(Action::ToggleSaved(uri.clone()));
     }
     // Removal is URI-based, so it stays available on a sorted or
     // filtered view. Moves are positional, so they stay on the unsorted
@@ -1009,7 +1009,7 @@ pub fn item_menu(
                     &gettext(locale, "Move up"),
                 )
             {
-                app.actions.push(Action::MoveInPlaylist {
+                app.engine.actions.push(Action::MoveInPlaylist {
                     playlist_id: playlist_id.clone(),
                     from: index as u32,
                     to: index as u32 - 1,
@@ -1021,7 +1021,7 @@ pub fn item_menu(
                 Some(Icon::ChevronDown),
                 &gettext(locale, "Move down"),
             ) {
-                app.actions.push(Action::MoveInPlaylist {
+                app.engine.actions.push(Action::MoveInPlaylist {
                     playlist_id: playlist_id.clone(),
                     from: index as u32,
                     to: index as u32 + 2,
@@ -1034,7 +1034,7 @@ pub fn item_menu(
             Some(Icon::Minus),
             &gettext(locale, "Remove from this playlist"),
         ) {
-            app.actions.push(Action::RemoveFromPlaylist {
+            app.engine.actions.push(Action::RemoveFromPlaylist {
                 playlist_id: playlist_id.clone(),
                 uris: vec![uri.clone()],
             });
@@ -1049,7 +1049,7 @@ pub fn item_menu(
                 Some(Icon::Radio),
                 &gettext(locale, "Go to song radio"),
             ) {
-                app.actions.push(Action::OpenSongRadio {
+                app.engine.actions.push(Action::OpenSongRadio {
                     uri: uri.clone(),
                     track: Box::new(track.clone()),
                 });
@@ -1066,7 +1066,7 @@ pub fn item_menu(
                     Some(Icon::User),
                     &gettext(locale, "Go to artist"),
                 ) {
-                    app.actions.push(Action::Open(Page::Artist(
+                    app.engine.actions.push(Action::Open(Page::Artist(
                         artists[0].id.clone().unwrap_or_default(),
                     )));
                 }
@@ -1076,7 +1076,7 @@ pub fn item_menu(
                     ui.set_min_width(200.0);
                     for artist in &artists {
                         if menu_item(ui, &palette, Some(Icon::User), &artist.name) {
-                            app.actions.push(Action::Open(Page::Artist(
+                            app.engine.actions.push(Action::Open(Page::Artist(
                                 artist.id.clone().unwrap_or_default(),
                             )));
                         }
@@ -1092,7 +1092,7 @@ pub fn item_menu(
                     &gettext(locale, "Go to album"),
                 )
             {
-                app.actions
+                app.engine.actions
                     .push(Action::Open(Page::Album(album.id.clone())));
             }
         }
@@ -1105,7 +1105,7 @@ pub fn item_menu(
                     &gettext(locale, "Go to podcast"),
                 )
             {
-                app.actions.push(Action::Open(Page::Show(show.id.clone())));
+                app.engine.actions.push(Action::Open(Page::Show(show.id.clone())));
             }
         }
     }
@@ -1116,7 +1116,7 @@ pub fn item_menu(
         Some(Icon::Copy),
         &gettext(locale, "Copy link"),
     ) {
-        app.actions.push(Action::CopyLink(uri.clone()));
+        app.engine.actions.push(Action::CopyLink(uri.clone()));
     }
     if menu_item(
         ui,
@@ -1124,7 +1124,7 @@ pub fn item_menu(
         Some(Icon::ExternalLink),
         &gettext(locale, "Open in Spotify"),
     ) {
-        app.actions.push(Action::OpenInSpotify(uri));
+        app.engine.actions.push(Action::OpenInSpotify(uri));
     }
 }
 
@@ -1142,7 +1142,7 @@ pub fn context_menu_items(
     ui.set_max_width(300.0);
     let kind = util::uri_kind(uri).unwrap_or("");
     if menu_item(ui, &palette, Some(Icon::Play), &gettext(locale, "Play")) {
-        app.actions.push(Action::PlayContext {
+        app.engine.actions.push(Action::PlayContext {
             uri: uri.to_string(),
             offset_uri: None,
             offset_index: None,
@@ -1156,7 +1156,7 @@ pub fn context_menu_items(
             &gettext(locale, "Shuffle play"),
         )
     {
-        app.actions.push(Action::ShufflePlay(uri.to_string()));
+        app.engine.actions.push(Action::ShufflePlay(uri.to_string()));
     }
     if kind == "album"
         && menu_item(
@@ -1166,7 +1166,7 @@ pub fn context_menu_items(
             &gettext(locale, "Add to queue"),
         )
     {
-        app.actions.push(Action::AddToQueue {
+        app.engine.actions.push(Action::AddToQueue {
             uri: uri.to_string(),
             label: name.to_string(),
         });
@@ -1179,7 +1179,7 @@ pub fn context_menu_items(
         (_, false) => (Icon::CirclePlus, gettext(locale, "Add to Your Library")),
     };
     if owned_playlist.is_none() && menu_item(ui, &palette, Some(icon), &text) {
-        app.actions.push(Action::ToggleSaved(uri.to_string()));
+        app.engine.actions.push(Action::ToggleSaved(uri.to_string()));
     }
     if let Some(playlist) = owned_playlist {
         if menu_item(
@@ -1188,7 +1188,7 @@ pub fn context_menu_items(
             Some(Icon::Pencil),
             &gettext(locale, "Edit details"),
         ) {
-            app.actions.push(Action::ShowDialog(Dialog::EditPlaylist {
+            app.engine.actions.push(Action::ShowDialog(Dialog::EditPlaylist {
                 cover: Default::default(),
                 id: playlist.id.clone(),
                 name: playlist.name.clone(),
@@ -1201,7 +1201,7 @@ pub fn context_menu_items(
             }));
         }
         if menu_item(ui, &palette, Some(Icon::Trash), &gettext(locale, "Delete")) {
-            app.actions
+            app.engine.actions
                 .push(Action::ShowDialog(Dialog::ConfirmDeletePlaylist {
                     id: playlist.id.clone(),
                     name: playlist.name.clone(),
@@ -1220,7 +1220,7 @@ pub fn context_menu_items(
         && util::station_uri(uri).is_some()
         && menu_item(ui, &palette, Some(Icon::Radio), &label)
     {
-        app.actions.push(Action::Open(Page::Radio(uri.to_string())));
+        app.engine.actions.push(Action::Open(Page::Radio(uri.to_string())));
     }
     if menu_item(
         ui,
@@ -1228,7 +1228,7 @@ pub fn context_menu_items(
         Some(Icon::Copy),
         &gettext(locale, "Copy link"),
     ) {
-        app.actions.push(Action::CopyLink(uri.to_string()));
+        app.engine.actions.push(Action::CopyLink(uri.to_string()));
     }
     if menu_item(
         ui,
@@ -1236,7 +1236,7 @@ pub fn context_menu_items(
         Some(Icon::ExternalLink),
         &gettext(locale, "Open in Spotify"),
     ) {
-        app.actions.push(Action::OpenInSpotify(uri.to_string()));
+        app.engine.actions.push(Action::OpenInSpotify(uri.to_string()));
     }
 }
 
@@ -1299,7 +1299,7 @@ pub(crate) fn artist_links(
         }
         if let Some(id) = &artist.id {
             if theme::link(ui, &artist.name, font.clone(), color).clicked() {
-                app.actions.push(Action::Open(Page::Artist(id.clone())));
+                app.engine.actions.push(Action::Open(Page::Artist(id.clone())));
                 clicked = true;
             }
         } else {
@@ -1678,7 +1678,7 @@ fn track_row_contents(
                     if response.clicked()
                         && let Some(id) = show_id
                     {
-                        app.actions.push(Action::Open(Page::Show(id)));
+                        app.engine.actions.push(Action::Open(Page::Show(id)));
                     }
                 }
                 if let Some(added) = row.added_at.filter(|a| !a.starts_with("1970-01-01"))
@@ -1758,7 +1758,7 @@ fn track_row_contents(
                     if response.clicked()
                         && let Some(id) = show_id
                     {
-                        app.actions.push(Action::Open(Page::Show(id)));
+                        app.engine.actions.push(Action::Open(Page::Show(id)));
                     }
                     if let Some(added) = row.added_at.filter(|a| !a.starts_with("1970-01-01"))
                         && cols.added == 0.0
@@ -1805,7 +1805,7 @@ fn track_row_contents(
                 subtitle_color,
             );
             if response.clicked() && !album.id.is_empty() {
-                app.actions
+                app.engine.actions
                     .push(Action::Open(Page::Album(album.id.clone())));
             }
         }
@@ -1886,7 +1886,7 @@ fn track_row_contents(
                 gettext(app.locale, "Save to Liked Songs")
             };
             if theme::icon_button(&mut child, icon, 16.0, color, hover, &tooltip).clicked() {
-                app.actions
+                app.engine.actions
                     .push(Action::ToggleSaved(row.item.uri().to_string()));
             }
         }
@@ -1940,7 +1940,7 @@ fn track_row_contents(
     let mut pick = None;
     let accessible_click = response.clicked() && response.interact_pointer_pos().is_none();
     if ui.is_enabled() && (response.double_clicked() || accessible_click) && !unavailable {
-        app.actions.push(Action::PlayFromRow {
+        app.engine.actions.push(Action::PlayFromRow {
             context: row.context.clone(),
             uri: row.item.uri().to_string(),
             index: row.index as u32,
@@ -1963,9 +1963,9 @@ fn track_row_contents(
         });
         if on_control && !unavailable {
             if is_current {
-                app.actions.push(Action::TogglePlay);
+                app.engine.actions.push(Action::TogglePlay);
             } else {
-                app.actions.push(Action::PlayFromRow {
+                app.engine.actions.push(Action::PlayFromRow {
                     context: row.context.clone(),
                     uri: row.item.uri().to_string(),
                     index: row.index as u32,
@@ -2674,7 +2674,7 @@ pub fn error_row(ui: &mut Ui, app: &mut App, message: &str, retry: Option<Page>)
             )
             .clicked()
         {
-            app.actions.push(Action::Reload(page));
+            app.engine.actions.push(Action::Reload(page));
         }
     });
 }
@@ -3862,11 +3862,11 @@ mod tests {
             load_more_when_near_end(ui, &mut app, Page::Albums, true);
         });
         assert!(
-            app.actions
+            app.engine.actions
                 .iter()
                 .any(|action| matches!(action, Action::LoadMore(Page::Albums))),
             "a short list must request the next page: {:?}",
-            app.actions
+            app.engine.actions
         );
     }
 
@@ -3880,9 +3880,9 @@ mod tests {
             load_more_when_near_end(ui, &mut app, Page::Albums, true);
         });
         assert!(
-            app.actions.is_empty(),
+            app.engine.actions.is_empty(),
             "the top of a long list must not page: {:?}",
-            app.actions
+            app.engine.actions
         );
 
         run(
@@ -3895,11 +3895,11 @@ mod tests {
             },
         );
         assert!(
-            app.actions
+            app.engine.actions
                 .iter()
                 .any(|action| matches!(action, Action::LoadMore(Page::Albums))),
             "scrolling near the end must page: {:?}",
-            app.actions
+            app.engine.actions
         );
     }
 
@@ -4009,7 +4009,7 @@ mod tests {
             palette.accent = Color32::from_rgb(255, 0, 90);
             for (picked, focused) in [(true, false), (true, true), (false, true)] {
                 let mut app = test_app();
-                app.backend.shutdown();
+                app.engine.backend.shutdown();
                 app.palette = palette;
                 let ctx = egui::Context::default();
                 theme::install(&ctx);
@@ -4098,7 +4098,7 @@ mod tests {
                     "row selection and focus must not add a border or change the row shape"
                 );
                 assert_eq!(rect.height(), theme::ROW_HEIGHT);
-                assert!(app.actions.is_empty());
+                assert!(app.engine.actions.is_empty());
             }
         }
     }

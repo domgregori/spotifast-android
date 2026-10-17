@@ -181,7 +181,7 @@ pub(super) fn hero(app: &mut App, ui: &mut egui::Ui, hero: Hero<'_>) {
                         Some(page) => {
                             if theme::link(ui, text, theme::semibold(13.5), palette.text).clicked()
                             {
-                                app.actions.push(Action::Open(page.clone()));
+                                app.engine.actions.push(Action::Open(page.clone()));
                             }
                         }
                         None => {
@@ -268,11 +268,11 @@ pub fn actions_row(
                 // The context this page belongs to resumes where it was,
                 // paused or playing; only another context starts over.
                 if context_here {
-                    app.actions.push(Action::TogglePlay);
+                    app.engine.actions.push(Action::TogglePlay);
                 } else if let Some(uris) = actions.view.clone()
                     && play_view
                 {
-                    app.actions.push(Action::PlayFromRow {
+                    app.engine.actions.push(Action::PlayFromRow {
                         context: RowContext::View {
                             uris: Arc::clone(&uris),
                             context_uri: uri.clone(),
@@ -284,7 +284,7 @@ pub fn actions_row(
                         index: 0,
                     });
                 } else {
-                    app.actions.push(Action::PlayContext {
+                    app.engine.actions.push(Action::PlayContext {
                         uri: uri.clone(),
                         offset_uri: None,
                         offset_index: None,
@@ -316,7 +316,7 @@ pub fn actions_row(
             )
             .clicked()
             {
-                app.actions.push(Action::SetShuffle(!shuffle));
+                app.engine.actions.push(Action::SetShuffle(!shuffle));
             }
         }
         if let Some((uri, saved)) = &actions.saved {
@@ -337,7 +337,7 @@ pub fn actions_row(
                 )
             };
             if theme::icon_button(ui, icon, 26.0, color, hover, tooltip).clicked() {
-                app.actions.push(Action::ToggleSaved(uri.clone()));
+                app.engine.actions.push(Action::ToggleSaved(uri.clone()));
             }
         }
         if let Some(seed) = &actions.save_radio
@@ -351,7 +351,7 @@ pub fn actions_row(
             )
             .clicked()
         {
-            app.actions.push(Action::SaveRadio(seed.clone()));
+            app.engine.actions.push(Action::SaveRadio(seed.clone()));
         }
         if let Some(uri) = &actions.play_uri {
             let more = theme::icon_button(
@@ -375,7 +375,7 @@ pub fn actions_row(
                             Some(Icon::CirclePlus),
                             &gettext(locale, "Save as playlist"),
                         ) {
-                            app.actions.push(Action::SaveRadio(seed.clone()));
+                            app.engine.actions.push(Action::SaveRadio(seed.clone()));
                         }
                     } else {
                         widgets::context_menu_items(
@@ -403,7 +403,7 @@ pub fn actions_row(
                             })
                             .inner;
                         if clicked {
-                            app.actions.push(Action::Reload(page.clone()));
+                            app.engine.actions.push(Action::Reload(page.clone()));
                         }
                     }
                 });
@@ -473,7 +473,7 @@ pub fn table_items_hit(
     items_revision: u64,
     user_names_revision: u64,
 ) -> Option<Arc<Vec<TableItem>>> {
-    app.table_rows.get(page).and_then(|cached| {
+    app.engine.table_rows.get(page).and_then(|cached| {
         (cached.generation == generation
             && cached.items_revision == items_revision
             && cached.user_names_revision == user_names_revision)
@@ -490,7 +490,7 @@ pub fn remember_table_items(
     items: Vec<TableItem>,
 ) -> Arc<Vec<TableItem>> {
     let items = Arc::new(items);
-    app.table_rows.insert(
+    app.engine.table_rows.insert(
         page.clone(),
         TableRowsCache {
             generation,
@@ -555,7 +555,7 @@ pub fn prepare_table_view(
         c.sort == sort
             && c.needle == needle
             && c.items_revision == items_revision
-            && c.user_names_revision == app.user_names_revision
+            && c.user_names_revision == app.engine.user_names_revision
     });
 
     if let Some(entry) = cached.filter(|_| is_valid) {
@@ -579,7 +579,7 @@ pub fn prepare_table_view(
             sort,
             needle: needle.to_string(),
             items_revision,
-            user_names_revision: app.user_names_revision,
+            user_names_revision: app.engine.user_names_revision,
             visible: visible.into(),
             view_uris,
             view_positions: view_positions.into(),
@@ -610,7 +610,7 @@ fn view_context(base: &RowContext, view_uris: Option<&Arc<[String]>>) -> RowCont
 pub fn table(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
     let palette = app.palette;
     let locale = app.locale;
-    if table.items.is_empty() && !app.network_reachable {
+    if table.items.is_empty() && !app.engine.network_reachable {
         widgets::empty_state(
             ui,
             &palette,
@@ -623,7 +623,7 @@ pub fn table(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
         );
         return;
     }
-    if !app.network_reachable {
+    if !app.engine.network_reachable {
         ui.add_enabled_ui(false, |ui| {
             ui.multiply_opacity(0.55);
             table_contents(app, ui, table);
@@ -637,7 +637,7 @@ fn table_contents(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
     let palette = app.palette;
     let locale = app.locale;
     let needle = table.filter.trim().to_lowercase();
-    let sort = app.table_sorts.get(&table.page).copied();
+    let sort = app.engine.table_sorts.get(&table.page).copied();
     let entry = prepare_table_view(
         ui,
         app,
@@ -647,7 +647,7 @@ fn table_contents(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
         sort,
         table.items_revision,
     );
-    let thin = app.settings.tracklist_compact;
+    let thin = app.engine.settings.tracklist_compact;
     let show_cover = !thin && table.show_cover;
     let row_height = if thin {
         theme::THIN_ROW_HEIGHT
@@ -690,13 +690,13 @@ fn table_contents(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
         };
         match next {
             Some(sort) => {
-                app.table_sorts.insert(table.page.clone(), sort);
+                app.engine.table_sorts.insert(table.page.clone(), sort);
                 app.note_session_change();
                 // A sort covers the whole list, so the rest must load.
-                app.actions.push(Action::LoadMore(table.page.clone()));
+                app.engine.actions.push(Action::LoadMore(table.page.clone()));
             }
             None => {
-                app.table_sorts.remove(&table.page);
+                app.engine.table_sorts.remove(&table.page);
                 app.note_session_change();
             }
         }
@@ -807,13 +807,13 @@ fn table_contents(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
                 widgets::sanitize_error_message(table.error.unwrap_or_default(), locale)
             } else if table.error.is_some() && !table.loading {
                 Cow::Borrowed("")
-            } else if !app.network_reachable {
+            } else if !app.engine.network_reachable {
                 gettext(locale, "You're offline. Reconnect to load more songs.")
             } else {
                 gettext(locale, "Loading…")
             };
             if placeholder_row(ui, &palette, locale, row_height, &label, retry) {
-                app.actions.push(Action::RetryWindow(table.page.clone()));
+                app.engine.actions.push(Action::RetryWindow(table.page.clone()));
             }
             return;
         };
@@ -874,7 +874,7 @@ fn table_contents(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
             pick = Some((row, asked));
         }
     });
-    if app.dialog.is_none()
+    if app.engine.dialog.is_none()
         && let Some((current, next, extend)) = navigate_song_rows(ui, &row_responses)
     {
         if extend {
@@ -890,7 +890,7 @@ fn table_contents(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
         && !table.loading
         && table.error.is_none()
     {
-        app.actions.push(Action::LoadWindow {
+        app.engine.actions.push(Action::LoadWindow {
             page: table.page.clone(),
             position,
         });
@@ -927,14 +927,14 @@ fn table_contents(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
                 && *origin == playlist_id
             {
                 if to != *from && to != from.saturating_add(1) {
-                    app.actions.push(Action::MoveInPlaylist {
+                    app.engine.actions.push(Action::MoveInPlaylist {
                         playlist_id,
                         from: *from,
                         to,
                     });
                 }
             } else {
-                app.actions.push(Action::InsertInPlaylist {
+                app.engine.actions.push(Action::InsertInPlaylist {
                     playlist_id,
                     position: to,
                     items: track.items.clone(),
@@ -966,7 +966,7 @@ fn table_contents(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
         && !table.loading
     {
         // Filtering a partially loaded list: keep fetching so matches appear.
-        app.actions.push(Action::LoadMore(table.page));
+        app.engine.actions.push(Action::LoadMore(table.page));
     } else if finite.is_none() {
         widgets::load_more_when_near_end(
             ui,
@@ -990,7 +990,7 @@ fn list_shortcuts(
     item_index: &dyn Fn(usize) -> Option<usize>,
     picked_songs: Vec<PlayableItem>,
 ) {
-    if ui.ctx().text_edit_focused() || app.dialog.is_some() {
+    if ui.ctx().text_edit_focused() || app.engine.dialog.is_some() {
         return;
     }
     let editable = match &table.context {
@@ -1057,7 +1057,7 @@ fn list_shortcuts(
             .filter(|(item, _, _)| !item.uri().is_empty())
             .map(|(item, _, _)| item.uri().to_string())
             .collect();
-        app.actions.push(Action::RemoveFromPlaylist {
+        app.engine.actions.push(Action::RemoveFromPlaylist {
             playlist_id: playlist_id.clone(),
             uris,
         });
@@ -1067,16 +1067,16 @@ fn list_shortcuts(
             .iter()
             .map(|song| song.uri().to_string())
             .collect();
-        app.actions.push(Action::CopySongs(picked_songs));
-        app.actions.push(Action::RemoveFromPlaylist {
+        app.engine.actions.push(Action::CopySongs(picked_songs));
+        app.engine.actions.push(Action::RemoveFromPlaylist {
             playlist_id: playlist_id.clone(),
             uris,
         });
     } else if copy {
-        app.actions.push(Action::CopySongs(picked_songs));
+        app.engine.actions.push(Action::CopySongs(picked_songs));
     }
     if let (Some(playlist_id), Some(text)) = (editable, pasted) {
-        app.actions.push(Action::PasteSongs { playlist_id, text });
+        app.engine.actions.push(Action::PasteSongs { playlist_id, text });
     }
 }
 
@@ -1331,14 +1331,14 @@ pub(crate) fn playlist_cached_table_items(
 ) -> (Arc<Vec<TableItem>>, Arc<Vec<usize>>, u64) {
     let key = Page::Playlist(id.to_string());
     let revision = list.revision;
-    let names_revision = app.user_names_revision;
+    let names_revision = app.engine.user_names_revision;
     let same_owner = |cache: &TableRowsCache| {
         cache
             .playlist_owner
             .as_ref()
             .is_some_and(|(id, name)| id.as_deref() == owner_id && name == owner_name)
     };
-    if let Some(cache) = app.table_rows.get(&key)
+    if let Some(cache) = app.engine.table_rows.get(&key)
         && cache.generation == generation
         && cache.items_revision == revision
         && cache.user_names_revision == names_revision
@@ -1354,7 +1354,7 @@ pub(crate) fn playlist_cached_table_items(
         return result;
     }
 
-    let append_from = app.table_rows.get(&key).and_then(|cache| {
+    let append_from = app.engine.table_rows.get(&key).and_then(|cache| {
         (cache.generation == generation
             && cache.user_names_revision == names_revision
             && same_owner(cache)
@@ -1368,9 +1368,9 @@ pub(crate) fn playlist_cached_table_items(
             start,
             owner_id,
             owner_name,
-            &app.user_names,
+            &app.engine.user_names,
         );
-        if let Some(cache) = app.table_rows.get_mut(&key)
+        if let Some(cache) = app.engine.table_rows.get_mut(&key)
             && let Some(positions) = cache.playlist_positions.as_mut()
             && let Some(rows) = Arc::get_mut(&mut cache.items)
             && let Some(old_positions) = Arc::get_mut(positions)
@@ -1392,10 +1392,10 @@ pub(crate) fn playlist_cached_table_items(
     }
 
     let (rows, positions, duration_ms) =
-        playlist_rows(&list.items, 0, owner_id, owner_name, &app.user_names);
+        playlist_rows(&list.items, 0, owner_id, owner_name, &app.engine.user_names);
     let items = remember_table_items(app, key.clone(), generation, revision, names_revision, rows);
     let positions = Arc::new(positions);
-    if let Some(cache) = app.table_rows.get_mut(&key) {
+    if let Some(cache) = app.engine.table_rows.get_mut(&key) {
         cache.playlist_positions = Some(Arc::clone(&positions));
         cache.playlist_raw_count = list.items.len();
         cache.playlist_duration_ms = duration_ms;
@@ -1426,7 +1426,7 @@ pub fn top_songs(app: &mut App, ui: &mut egui::Ui) {
     );
     ui.add_space(18.0);
 
-    let tracks = match &app.home.top_songs {
+    let tracks = match &app.engine.home.top_songs {
         Loadable::Loaded(tracks) => tracks,
         Loadable::Loading | Loadable::NotLoaded => {
             widgets::loading_row(ui, &palette, app.locale);
@@ -1438,8 +1438,8 @@ pub fn top_songs(app: &mut App, ui: &mut egui::Ui) {
             return;
         }
     };
-    let generation = app.home.top_songs_generation;
-    let names = app.user_names_revision;
+    let generation = app.engine.home.top_songs_generation;
+    let names = app.engine.user_names_revision;
     let items =
         if let Some(items) = table_items_hit(app, &Page::TopSongs, generation, generation, names) {
             items
@@ -1469,20 +1469,20 @@ pub fn top_songs(app: &mut App, ui: &mut egui::Ui) {
             show_added: false,
             show_added_by: false,
             page: Page::TopSongs,
-            loading: app.home.top_songs_loading,
+            loading: app.engine.home.top_songs_loading,
             error: None,
             can_load_more: false,
             filter: "",
-            items_revision: app.home.top_songs_generation,
+            items_revision: app.engine.home.top_songs_generation,
         },
     );
 }
 
 pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
-    if !app.playlist_pages.contains_key(id) {
+    if !app.engine.playlist_pages.contains_key(id) {
         app.ensure_loaded(Page::Playlist(id.to_string()));
     }
-    let Some(mut page) = app.playlist_pages.remove(id) else {
+    let Some(mut page) = app.engine.playlist_pages.remove(id) else {
         return;
     };
     let preview = super::loading_preview(ui.ctx(), id, &page.playlist, || {
@@ -1499,7 +1499,7 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
                 playlist.owner.id.as_deref(),
                 playlist.owner_name(),
             );
-            if items.is_empty() && !app.network_reachable {
+            if items.is_empty() && !app.engine.network_reachable {
                 widgets::empty_state(
                     ui,
                     &app.palette,
@@ -1529,7 +1529,7 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
             if !others.is_empty() {
                 let named: Vec<String> = others
                     .iter()
-                    .filter_map(|id| app.user_names.get(*id)?.clone())
+                    .filter_map(|id| app.engine.user_names.get(*id)?.clone())
                     .collect();
                 byline.push((contributors_text(app.locale, &named, others.len()), None));
             }
@@ -1555,8 +1555,7 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
             let owned = playlist.owned_by(&user_id);
             let saved = app.is_saved(&playlist.uri).unwrap_or(false);
             let needle = page.filter.trim().to_lowercase();
-            let sort = app
-                .table_sorts
+            let sort = app.engine.table_sorts
                 .get(&Page::Playlist(id.to_string()))
                 .copied();
             let table_view = prepare_table_view(
@@ -1569,20 +1568,20 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
                 page.items.revision,
             );
             let view_play = table_view.view_uris.as_ref().map(Arc::clone);
-            let reload_action = if app.network_reachable {
+            let reload_action = if app.engine.network_reachable {
                 Some((Page::Playlist(id.to_string()), page.items.loading))
             } else {
                 None
             };
             let actions =
                 playlist_actions(app.locale, playlist, owned, saved, view_play, reload_action);
-            if !app.network_reachable {
+            if !app.engine.network_reachable {
                 disabled_actions_row(app, ui, actions, Some(&mut page.filter));
             } else {
                 actions_row(app, ui, actions, Some(&mut page.filter));
             }
             if page.items.base_offset > 0 && !page.filter.trim().is_empty() {
-                app.actions
+                app.engine.actions
                     .push(Action::LoadMore(Page::Playlist(id.to_string())));
             }
             let editable = app
@@ -1629,7 +1628,7 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
             } else {
                 ui.add_space(40.0);
             }
-            if !app.network_reachable {
+            if !app.engine.network_reachable {
                 widgets::empty_state(
                     ui,
                     &app.palette,
@@ -1652,7 +1651,7 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
             } else {
                 ui.add_space(40.0);
             }
-            if !app.network_reachable
+            if !app.engine.network_reachable
                 || error.contains("network error")
                 || error.contains("Network connection error")
             {
@@ -1671,19 +1670,19 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
             }
         }
     }
-    app.playlist_pages.insert(id.to_string(), page);
+    app.engine.playlist_pages.insert(id.to_string(), page);
 }
 
 pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
-    if !app.album_pages.contains_key(id) {
+    if !app.engine.album_pages.contains_key(id) {
         app.ensure_loaded(Page::Album(id.to_string()));
     }
-    let Some(page) = app.album_pages.remove(id) else {
+    let Some(page) = app.engine.album_pages.remove(id) else {
         return;
     };
     if let Some(data) = &page.prerelease {
         super::prerelease::show(app, ui, data);
-        app.album_pages.insert(id.to_string(), page);
+        app.engine.album_pages.insert(id.to_string(), page);
         return;
     }
     let preview =
@@ -1693,7 +1692,7 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
         Loadable::Loaded(album) => {
             let generation = page.generation;
             let revision = page.tracks.revision;
-            let names = app.user_names_revision;
+            let names = app.engine.user_names_revision;
             let key = Page::Album(id.to_string());
             let items = if let Some(items) = table_items_hit(app, &key, generation, revision, names)
             {
@@ -1719,7 +1718,7 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     .collect();
                 remember_table_items(app, key, generation, revision, names, rows)
             };
-            if items.is_empty() && !app.network_reachable {
+            if items.is_empty() && !app.engine.network_reachable {
                 widgets::empty_state(
                     ui,
                     &palette,
@@ -1734,7 +1733,7 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
             }
             album_hero(app, ui, album, &page.tracks, preview.as_deref());
             let saved = app.is_saved(&album.uri).unwrap_or(false);
-            let sort = app.table_sorts.get(&Page::Album(id.to_string())).copied();
+            let sort = app.engine.table_sorts.get(&Page::Album(id.to_string())).copied();
             let table_view = prepare_table_view(
                 ui,
                 app,
@@ -1746,7 +1745,7 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
             );
             let album_view = table_view.view_uris.as_ref().map(Arc::clone);
             let actions = album_actions(app.locale, album, saved, album_view);
-            if !app.network_reachable {
+            if !app.engine.network_reachable {
                 disabled_actions_row(app, ui, actions, None);
             } else {
                 actions_row(app, ui, actions, None);
@@ -1828,7 +1827,7 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
             } else {
                 ui.add_space(40.0);
             }
-            if !app.network_reachable {
+            if !app.engine.network_reachable {
                 widgets::empty_state(
                     ui,
                     &app.palette,
@@ -1851,7 +1850,7 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
             } else {
                 ui.add_space(40.0);
             }
-            if !app.network_reachable
+            if !app.engine.network_reachable
                 || error.contains("network error")
                 || error.contains("Network connection error")
             {
@@ -1870,7 +1869,7 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
             }
         }
     }
-    app.album_pages.insert(id.to_string(), page);
+    app.engine.album_pages.insert(id.to_string(), page);
 }
 
 fn playlist_loading_hero(app: &mut App, ui: &mut egui::Ui, playlist: &Playlist) {
@@ -1898,7 +1897,7 @@ fn playlist_hero<'a>(
             .owner
             .id
             .as_deref()
-            .and_then(|id| app.user_images.get(id))
+            .and_then(|id| app.engine.user_images.get(id))
             .and_then(|image| image.as_deref())
         {
             Some(url) => Avatar::Url(url.to_string()),
@@ -2065,19 +2064,18 @@ fn liked_row(saved: &crate::api::models::SavedTrack) -> TableItem {
 /// A page that only adds songs after the loaded ones adds their rows to the
 /// cached rows, rather than every row being made again for each page.
 fn extend_liked_rows(app: &mut App, revision: u64, names: u64) -> Option<Arc<Vec<TableItem>>> {
-    let cached = app.table_rows.get(&Page::LikedSongs)?;
+    let cached = app.engine.table_rows.get(&Page::LikedSongs)?;
     if cached.user_names_revision != names || !app.liked_view_extends(cached.items_revision) {
         return None;
     }
-    let rows: Vec<TableItem> = app
-        .library
+    let rows: Vec<TableItem> = app.engine.library
         .liked
         .items
         .get(cached.items.len()..)?
         .iter()
         .map(liked_row)
         .collect();
-    let cached = app.table_rows.get_mut(&Page::LikedSongs)?;
+    let cached = app.engine.table_rows.get_mut(&Page::LikedSongs)?;
     Arc::make_mut(&mut cached.items).extend(rows);
     cached.generation = revision;
     cached.items_revision = revision;
@@ -2088,18 +2086,18 @@ fn extend_liked_rows(app: &mut App, revision: u64, names: u64) -> Option<Arc<Vec
 
 pub fn liked(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    let revision = app.library.liked.revision;
-    let names = app.user_names_revision;
+    let revision = app.engine.library.liked.revision;
+    let names = app.engine.user_names_revision;
     let items =
         if let Some(items) = table_items_hit(app, &Page::LikedSongs, revision, revision, names) {
             items
         } else if let Some(items) = extend_liked_rows(app, revision, names) {
             items
         } else {
-            let rows = app.library.liked.items.iter().map(liked_row).collect();
+            let rows = app.engine.library.liked.items.iter().map(liked_row).collect();
             remember_table_items(app, Page::LikedSongs, revision, revision, names, rows)
         };
-    if items.is_empty() && !app.network_reachable {
+    if items.is_empty() && !app.engine.network_reachable {
         widgets::empty_state(
             ui,
             &palette,
@@ -2112,14 +2110,13 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
         );
         return;
     }
-    let total = app.library.liked.total.unwrap_or(items.len() as u32);
-    let user = app
-        .user
+    let total = app.engine.library.liked.total.unwrap_or(items.len() as u32);
+    let user = app.engine.user
         .as_ref()
         .map(|user| user.name().to_string())
         .unwrap_or_default();
     let locale = app.locale;
-    let count_text = if app.library.liked.is_complete() {
+    let count_text = if app.engine.library.liked.is_complete() {
         songs_and_duration(locale, total, total_duration(&items))
     } else {
         song_count(locale, total)
@@ -2139,8 +2136,7 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
             round: false,
         },
     );
-    let collection_uri = app
-        .user
+    let collection_uri = app.engine.user
         .as_ref()
         .map(|user| format!("spotify:user:{}:collection", user.id));
     let filter_id = egui::Id::new("liked-filter");
@@ -2148,7 +2144,7 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
         .data(|data| data.get_temp::<String>(filter_id))
         .unwrap_or_default();
     let needle = filter.trim().to_lowercase();
-    let sort = app.table_sorts.get(&Page::LikedSongs).copied();
+    let sort = app.engine.table_sorts.get(&Page::LikedSongs).copied();
     let table_view = prepare_table_view(
         ui,
         app,
@@ -2156,7 +2152,7 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
         &items,
         &needle,
         sort,
-        app.library.liked.revision,
+        app.engine.library.liked.revision,
     );
     let liked_view = table_view.view_uris.as_ref().map(Arc::clone);
     let actions = Actions {
@@ -2170,7 +2166,7 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
         name: &liked_title,
         save_radio: None,
     };
-    if !app.network_reachable {
+    if !app.engine.network_reachable {
         disabled_actions_row(app, ui, actions, Some(&mut filter));
     } else {
         actions_row(app, ui, actions, Some(&mut filter));
@@ -2182,15 +2178,15 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
         .collect::<Vec<_>>()
         .into();
     let context = match collection_uri {
-        Some(uri) if app.library.liked.is_complete() => RowContext::Context {
+        Some(uri) if app.engine.library.liked.is_complete() => RowContext::Context {
             uri,
             editable_playlist: None,
         },
         _ => RowContext::Uris(uris),
     };
-    let loading = app.library.liked.loading;
-    let error = app.library.liked.error.clone();
-    let can_load_more = app.library.liked.can_load_more();
+    let loading = app.engine.library.liked.loading;
+    let error = app.engine.library.liked.error.clone();
+    let can_load_more = app.engine.library.liked.can_load_more();
     let _ = &palette;
     table(
         app,
@@ -2209,7 +2205,7 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
             error: error.as_deref(),
             can_load_more,
             filter: &filter,
-            items_revision: app.library.liked.revision,
+            items_revision: app.engine.library.liked.revision,
         },
     );
 }
@@ -2270,7 +2266,7 @@ fn owner_name<'a>(app: &'a App, playlist: &'a Playlist) -> &'a str {
         .as_deref()
         .or_else(|| {
             let id = playlist.owner.id.as_deref()?;
-            app.user_names.get(id)?.as_deref()
+            app.engine.user_names.get(id)?.as_deref()
         })
         .unwrap_or_else(|| playlist.owner_name())
 }
@@ -2335,7 +2331,7 @@ fn contributors_text(locale: Locale, named: &[String], others: usize) -> String 
 
 #[allow(dead_code)]
 fn playlist_dialog(app: &mut App, playlist: &Playlist) {
-    app.actions.push(Action::ShowDialog(Dialog::EditPlaylist {
+    app.engine.actions.push(Action::ShowDialog(Dialog::EditPlaylist {
         cover: Default::default(),
         id: playlist.id.clone(),
         name: playlist.name.clone(),
@@ -2510,8 +2506,8 @@ mod tests {
     #[test]
     fn finite_playlist_reserves_its_height_and_requests_the_visible_window() {
         let mut app = test_app();
-        app.backend.set_offline(true);
-        app.playlist_pages.insert(
+        app.engine.backend.set_offline(true);
+        app.engine.playlist_pages.insert(
             "finite".into(),
             PlaylistPage {
                 playlist: Loadable::Loaded(Playlist {
@@ -2559,7 +2555,7 @@ mod tests {
             height >= theme::ROW_HEIGHT * 1000.0,
             "full height: {height}"
         );
-        assert!(app.actions.iter().any(|action| matches!(action,
+        assert!(app.engine.actions.iter().any(|action| matches!(action,
             Action::LoadWindow { page: Page::Playlist(id), position } if id == "finite" && *position > 650 && *position < 750
         )), "a jump must request the distant rows, not the next sequential page");
     }
@@ -2602,9 +2598,9 @@ mod tests {
             }
         }
         let mut app = test_app();
-        app.backend.set_offline(true);
+        app.engine.backend.set_offline(true);
         let page = Page::Playlist("retry".into());
-        app.playlist_pages.insert(
+        app.engine.playlist_pages.insert(
             "retry".into(),
             PlaylistPage {
                 generation: 7,
@@ -2623,7 +2619,7 @@ mod tests {
         );
         // A failed read must wait for the user's Retry, not loop automatically.
         app.apply(Action::LoadMore(page), &egui::Context::default());
-        assert!(app.backend.take_playlist_item_requests().is_empty());
+        assert!(app.engine.backend.take_playlist_item_requests().is_empty());
         let ctx = egui::Context::default();
         theme::install(&ctx);
         let mut draw = |ui: &mut egui::Ui| {
@@ -2697,21 +2693,21 @@ mod tests {
         );
         output.textures_delta.clear();
         assert_eq!(height, next_height);
-        let actions = std::mem::take(&mut app.actions);
+        let actions = std::mem::take(&mut app.engine.actions);
         for action in actions {
             app.apply(action, &ctx);
         }
         assert_eq!(
-            app.backend.take_playlist_item_requests(),
+            app.engine.backend.take_playlist_item_requests(),
             [("retry".into(), 900, 7)],
             "Retry must request the failed backward window, even at the end of the playlist"
         );
-        let list = &app.playlist_pages["retry"].items;
+        let list = &app.engine.playlist_pages["retry"].items;
         assert_eq!(list.base_offset, 950);
         assert_eq!(list.items.len(), 50);
         assert_eq!(list.total, Some(1000));
         assert!(list.loading);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -2746,7 +2742,7 @@ mod tests {
             )
         });
         output.textures_delta.clear();
-        assert!(app.actions.iter().any(
+        assert!(app.engine.actions.iter().any(
             |action| matches!(action, Action::LoadMore(Page::Playlist(id)) if id == "filtered")
         ));
     }
@@ -3304,7 +3300,7 @@ mod tests {
             }]
         };
         let page = Page::Playlist("test".into());
-        let copied = |table: &KeyboardTable| match table.app.actions.as_slice() {
+        let copied = |table: &KeyboardTable| match table.app.engine.actions.as_slice() {
             [Action::CopySongs(items)] => items
                 .iter()
                 .map(|item| item.uri().to_string())
@@ -3326,7 +3322,7 @@ mod tests {
             table.app.picked_rows(&page).cloned(),
             Some([0].into_iter().collect())
         );
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         table.frame(vec![egui::Event::Copy]);
         assert_eq!(copied(&table), ["spotify:track:t_0"]);
 
@@ -3335,7 +3331,7 @@ mod tests {
         table.frame(vec![]);
         assert_eq!(table.app.picked_rows(&page), None);
         table.frame(select_all());
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         table.frame(vec![egui::Event::Copy]);
 
         // #then every song is copied, in the list's order
@@ -3347,18 +3343,18 @@ mod tests {
         assert_eq!(copied(&table), every);
 
         // #when links are pasted into the editable playlist
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         let links = "https://open.spotify.com/track/abc\nspotify:track:def";
         table.frame(vec![egui::Event::Paste(links.into())]);
 
         // #then the playlist is offered the pasted text
         assert!(matches!(
-            table.app.actions.as_slice(),
+            table.app.engine.actions.as_slice(),
             [Action::PasteSongs { playlist_id, text }] if playlist_id == "test" && text == links
         ));
 
         // #when a text field has focus
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         table
             .ctx
             .memory_mut(|memory| memory.request_focus(egui::Id::new("keyboard-filter")));
@@ -3367,7 +3363,7 @@ mod tests {
         table.frame(vec![egui::Event::Paste("Queen".into())]);
 
         // #then the keys edit the text instead of the list
-        assert!(table.app.actions.is_empty());
+        assert!(table.app.engine.actions.is_empty());
         assert_eq!(table.filter, "Queen");
         table
             .ctx
@@ -3386,19 +3382,19 @@ mod tests {
             .ctx
             .memory_mut(|memory| memory.surrender_focus(egui::Id::new("keyboard-filter")));
         table.frame(vec![]);
-        table.app.dialog = Some(Dialog::Shortcuts);
+        table.app.engine.dialog = Some(Dialog::Shortcuts);
         table.frame(select_all());
 
         // #then the list behind it is left alone
         assert_eq!(table.app.picked_rows(&page), None);
-        table.app.dialog = None;
+        table.app.engine.dialog = None;
 
         // #when the list is not an editable playlist
         table.editable = false;
         table.frame(vec![egui::Event::Paste(links.into())]);
 
         // #then nothing is pasted into it
-        assert!(table.app.actions.is_empty());
+        assert!(table.app.engine.actions.is_empty());
     }
 
     /// Cut copies the picked songs and removes them from a playlist the
@@ -3423,7 +3419,7 @@ mod tests {
         table.editable = true;
         table.frame(vec![]);
         table.frame(select_all.clone());
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
 
         // #when the songs are cut
         table.frame(vec![egui::Event::Cut]);
@@ -3434,7 +3430,7 @@ mod tests {
             .iter()
             .map(|(item, _, _)| item.uri().to_string())
             .collect();
-        match table.app.actions.as_slice() {
+        match table.app.engine.actions.as_slice() {
             [
                 Action::CopySongs(copied),
                 Action::RemoveFromPlaylist { playlist_id, uris },
@@ -3449,15 +3445,15 @@ mod tests {
         }
 
         // #when the list is not an editable playlist
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         table.editable = false;
         table.frame(vec![]);
         table.frame(select_all);
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         table.frame(vec![egui::Event::Cut]);
 
         // #then nothing is copied or removed
-        assert!(table.app.actions.is_empty());
+        assert!(table.app.engine.actions.is_empty());
     }
 
     #[test]
@@ -3475,10 +3471,10 @@ mod tests {
         table.key(egui::Key::ArrowDown);
         assert!(table.focused_label().starts_with("Play Ubermensch,"));
         table.key(egui::Key::ArrowUp);
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         table.key(egui::Key::Enter);
         assert!(
-            matches!(table.app.actions.as_slice(), [Action::PlayFromRow { uri, index: 2, .. }] if uri == "spotify:track:t_2")
+            matches!(table.app.engine.actions.as_slice(), [Action::PlayFromRow { uri, index: 2, .. }] if uri == "spotify:track:t_2")
         );
     }
 
@@ -3491,7 +3487,7 @@ mod tests {
             }
         }
         table.filter = "Shared artist".into();
-        table.app.table_sorts.insert(
+        table.app.engine.table_sorts.insert(
             Page::Playlist("test".into()),
             TableSort {
                 column: SortColumn::Title,
@@ -3501,10 +3497,10 @@ mod tests {
         table.focus_song("Ubermensch");
         table.key(egui::Key::ArrowDown);
         assert!(table.focused_label().starts_with("Play Cancion Animal,"));
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         table.key(egui::Key::Enter);
         assert!(
-            matches!(table.app.actions.as_slice(), [Action::PlayFromRow { context: RowContext::View { uris, .. }, uri, index: 1 }] if uri == "spotify:track:t_1" && uris.as_ref() == ["spotify:track:t_3", "spotify:track:t_1"])
+            matches!(table.app.engine.actions.as_slice(), [Action::PlayFromRow { context: RowContext::View { uris, .. }, uri, index: 1 }] if uri == "spotify:track:t_1" && uris.as_ref() == ["spotify:track:t_3", "spotify:track:t_1"])
         );
         table.filter = "Queen".into();
         table.focus_song("Bohemian Rhapsody");
@@ -3539,7 +3535,7 @@ mod tests {
                 },
             ]);
         }
-        assert!(table.app.actions.is_empty(), "a body click only selects");
+        assert!(table.app.engine.actions.is_empty(), "a body click only selects");
         let page = Page::Playlist("test".into());
         assert_eq!(
             table.app.picked_rows(&page),
@@ -3553,7 +3549,7 @@ mod tests {
         );
         table.key(egui::Key::Enter);
         assert!(matches!(
-            table.app.actions.as_slice(),
+            table.app.engine.actions.as_slice(),
             [Action::PlayFromRow { index: 1, .. }]
         ));
     }
@@ -3562,7 +3558,7 @@ mod tests {
     fn shift_arrows_extend_and_shrink_selection_in_display_order() {
         let mut table = KeyboardTable::new();
         let page = Page::Playlist("test".into());
-        table.app.table_sorts.insert(
+        table.app.engine.table_sorts.insert(
             page.clone(),
             TableSort {
                 column: SortColumn::Title,
@@ -3598,30 +3594,30 @@ mod tests {
         table.focus_song("Bohemian Rhapsody");
         table.key(egui::Key::ArrowDown);
         table.key(egui::Key::Delete);
-        assert!(matches!(table.app.actions.as_slice(),
+        assert!(matches!(table.app.engine.actions.as_slice(),
             [Action::RemoveFromPlaylist { playlist_id, uris }]
                 if playlist_id == "test" && uris == &["spotify:track:t_1"]));
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         table.modified_key(egui::Key::ArrowDown, egui::Modifiers::SHIFT);
         table.key(egui::Key::Delete);
-        assert!(matches!(table.app.actions.as_slice(),
+        assert!(matches!(table.app.engine.actions.as_slice(),
             [Action::RemoveFromPlaylist { playlist_id, uris }]
                 if playlist_id == "test" && uris == &["spotify:track:t_1", "spotify:track:t_2"]));
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         table.editable = false;
         table.key(egui::Key::Delete);
-        assert!(table.app.actions.is_empty());
+        assert!(table.app.engine.actions.is_empty());
         table.editable = true;
-        table.app.dialog = Some(Dialog::Shortcuts);
+        table.app.engine.dialog = Some(Dialog::Shortcuts);
         table.key(egui::Key::Delete);
-        assert!(table.app.actions.is_empty());
-        table.app.dialog = None;
+        assert!(table.app.engine.actions.is_empty());
+        table.app.engine.dialog = None;
         table
             .ctx
             .memory_mut(|memory| memory.request_focus(egui::Id::new("keyboard-filter")));
         table.frame(vec![]);
         table.key(egui::Key::Delete);
-        assert!(table.app.actions.is_empty());
+        assert!(table.app.engine.actions.is_empty());
     }
 
     #[test]
@@ -3633,27 +3629,27 @@ mod tests {
         table.modified_key(egui::Key::ArrowDown, egui::Modifiers::SHIFT);
         table.key(egui::Key::Backspace);
         if cfg!(target_os = "macos") {
-            assert!(matches!(table.app.actions.as_slice(),
+            assert!(matches!(table.app.engine.actions.as_slice(),
                 [Action::RemoveFromPlaylist { playlist_id, uris }]
                     if playlist_id == "test" && uris == &["spotify:track:t_1", "spotify:track:t_2"]));
         } else {
-            assert!(table.app.actions.is_empty());
+            assert!(table.app.engine.actions.is_empty());
         }
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         table.editable = false;
         table.key(egui::Key::Backspace);
-        assert!(table.app.actions.is_empty());
+        assert!(table.app.engine.actions.is_empty());
         table.editable = true;
-        table.app.dialog = Some(Dialog::Shortcuts);
+        table.app.engine.dialog = Some(Dialog::Shortcuts);
         table.key(egui::Key::Backspace);
-        assert!(table.app.actions.is_empty());
-        table.app.dialog = None;
+        assert!(table.app.engine.actions.is_empty());
+        table.app.engine.dialog = None;
         table
             .ctx
             .memory_mut(|memory| memory.request_focus(egui::Id::new("keyboard-filter")));
         table.frame(vec![]);
         table.key(egui::Key::Backspace);
-        assert!(table.app.actions.is_empty());
+        assert!(table.app.engine.actions.is_empty());
     }
 
     #[test]
@@ -3677,7 +3673,7 @@ mod tests {
                 .picked_rows(&Page::Playlist("test".into()))
                 .is_none()
         );
-        assert!(table.app.actions.is_empty());
+        assert!(table.app.engine.actions.is_empty());
     }
 
     #[test]
@@ -3709,9 +3705,9 @@ mod tests {
         }
         assert!(egui::Popup::is_any_open(&table.ctx));
         table.key(egui::Key::Backspace);
-        assert!(table.app.actions.is_empty());
+        assert!(table.app.engine.actions.is_empty());
         table.key(egui::Key::Delete);
-        assert!(table.app.actions.is_empty());
+        assert!(table.app.engine.actions.is_empty());
     }
 
     #[test]
@@ -3732,7 +3728,7 @@ mod tests {
                 .ctx
                 .memory(|memory| memory.has_focus(egui::Id::new("keyboard-filter")))
         );
-        assert!(table.app.actions.is_empty());
+        assert!(table.app.engine.actions.is_empty());
     }
 
     #[test]
@@ -3760,10 +3756,10 @@ mod tests {
             bounds.y0 >= 0.0 && bounds.y1 <= f64::from(table.height),
             "focused row must scroll into view: {bounds:?}"
         );
-        table.app.actions.clear();
+        table.app.engine.actions.clear();
         table.key(egui::Key::Enter);
         assert!(matches!(
-            table.app.actions.as_slice(),
+            table.app.engine.actions.as_slice(),
             [Action::PlayFromRow { index: 25, .. }]
         ));
     }
@@ -3901,7 +3897,7 @@ mod tests {
                 let mut app = test_app();
                 let mut filter = String::new();
                 let mut frame = |loading, events| {
-                    app.actions.clear();
+                    app.engine.actions.clear();
                     let mut output = ctx.run_ui(
                         egui::RawInput {
                             screen_rect: Some(Rect::from_min_size(
@@ -3933,7 +3929,7 @@ mod tests {
                     output.textures_delta.clear();
                     (
                         output.platform_output.accesskit_update.unwrap(),
-                        std::mem::take(&mut app.actions),
+                        std::mem::take(&mut app.engine.actions),
                     )
                 };
                 let locate = |tree: &egui::accesskit::TreeUpdate, label: &str| {
@@ -4017,7 +4013,7 @@ mod tests {
                     actions.is_empty(),
                     "an in-flight refresh cannot be repeated"
                 );
-                app.backend.shutdown();
+                app.engine.backend.shutdown();
             }
         }
     }
@@ -4075,9 +4071,9 @@ mod tests {
         ]);
 
         assert!(
-            matches!(app.actions.as_slice(), [Action::SetShuffle(true)]),
+            matches!(app.engine.actions.as_slice(), [Action::SetShuffle(true)]),
             "shuffle must not start playback: {:?}",
-            app.actions
+            app.engine.actions
         );
     }
 
@@ -4087,7 +4083,7 @@ mod tests {
         theme::install(&ctx);
         let mut app = test_app();
         app.apply(Action::SetShuffle(true), &ctx);
-        app.actions.clear();
+        app.engine.actions.clear();
         let mut draw = |events| {
             let mut output = ctx.run_ui(
                 egui::RawInput {
@@ -4144,7 +4140,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut app = test_app();
         app.apply(Action::SetShuffle(true), &ctx);
-        app.actions.clear();
+        app.engine.actions.clear();
 
         let input_layout = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -4225,7 +4221,7 @@ mod tests {
 
         assert!(
             matches!(
-                app.actions.as_slice(),
+                app.engine.actions.as_slice(),
                 [Action::PlayContext {
                     uri,
                     offset_uri: None,
@@ -4233,7 +4229,7 @@ mod tests {
                 }] if uri == "spotify:playlist:test"
             ),
             "expected PlayContext, got {:?}",
-            app.actions
+            app.engine.actions
         );
     }
 
@@ -4242,7 +4238,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut app = test_app();
         app.apply(Action::SetShuffle(false), &ctx);
-        app.actions.clear();
+        app.engine.actions.clear();
 
         let input_layout = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -4323,7 +4319,7 @@ mod tests {
 
         assert!(
             matches!(
-                app.actions.as_slice(),
+                app.engine.actions.as_slice(),
                 [Action::PlayFromRow {
                     context: RowContext::View { uris, context_uri, .. },
                     index: 0,
@@ -4331,7 +4327,7 @@ mod tests {
                 }] if uris.as_ref() == ["spotify:track:1", "spotify:track:2"] && context_uri == "spotify:playlist:test"
             ),
             "expected PlayFromRow, got {:?}",
-            app.actions
+            app.engine.actions
         );
     }
 
@@ -4340,7 +4336,7 @@ mod tests {
         let ctx = egui::Context::default();
         let mut app = test_app();
         app.apply(Action::SetShuffle(true), &ctx);
-        app.actions.clear();
+        app.engine.actions.clear();
 
         let input_layout = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -4422,7 +4418,7 @@ mod tests {
 
         assert!(
             matches!(
-                app.actions.as_slice(),
+                app.engine.actions.as_slice(),
                 [Action::PlayFromRow {
                     context: RowContext::View { uris, context_uri, .. },
                     index: 0,
@@ -4430,7 +4426,7 @@ mod tests {
                 }] if uris.as_ref() == ["spotify:track:1", "spotify:track:2"] && context_uri == "spotify:playlist:test"
             ),
             "expected PlayFromRow with filtered view, got {:?}",
-            app.actions
+            app.engine.actions
         );
     }
 
@@ -4438,14 +4434,14 @@ mod tests {
     fn table_row_cache_drops_when_the_backing_page_is_evicted() {
         let mut app = test_app();
         let page = Page::Playlist("pl-gone".into());
-        app.playlist_pages
+        app.engine.playlist_pages
             .insert("pl-gone".into(), PlaylistPage::default());
         cached_table_items(&mut app, page.clone(), 1, 0, 0, make_test_tracks);
-        assert!(app.table_rows.contains_key(&page));
-        app.playlist_pages.remove("pl-gone");
+        assert!(app.engine.table_rows.contains_key(&page));
+        app.engine.playlist_pages.remove("pl-gone");
         app.open(Page::LikedSongs);
         assert!(
-            !app.table_rows.contains_key(&page),
+            !app.engine.table_rows.contains_key(&page),
             "evicting the page map must drop the table-row copy"
         );
     }
@@ -4455,15 +4451,15 @@ mod tests {
         let mut app = test_app();
         for i in 0..5 {
             let page = Page::Playlist(format!("pl{i}"));
-            app.playlist_pages
+            app.engine.playlist_pages
                 .insert(format!("pl{i}"), PlaylistPage::default());
-            app.history.push(page.clone());
-            app.history_index = app.history.len() - 1;
+            app.engine.history.push(page.clone());
+            app.engine.history_index = app.engine.history.len() - 1;
             cached_table_items(&mut app, page, 1, 0, 0, make_test_tracks);
         }
-        assert_eq!(app.table_rows.len(), 2);
+        assert_eq!(app.engine.table_rows.len(), 2);
         assert!(
-            app.table_rows.contains_key(&Page::Playlist("pl4".into())),
+            app.engine.table_rows.contains_key(&Page::Playlist("pl4".into())),
             "the open page stays"
         );
     }

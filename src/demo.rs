@@ -274,17 +274,17 @@ fn page<T>(items: Vec<T>) -> ApiPage<T> {
 
 /// Populates the offline app with cards for screenshots and UI tests.
 pub fn populate(app: &mut App) {
-    app.backend.set_offline(true);
-    app.offline = true;
-    app.auth = AuthStatus::Connected {
+    app.engine.backend.set_offline(true);
+    app.engine.offline = true;
+    app.engine.auth = AuthStatus::Connected {
         username: "demo".into(),
     };
-    app.local_device_id = Some("local-demo".into());
-    app.local_ready = true;
-    app.local_playback = crate::backend::LocalPlayback::Ready {
+    app.engine.local_device_id = Some("local-demo".into());
+    app.engine.local_ready = true;
+    app.engine.local_playback = crate::backend::LocalPlayback::Ready {
         device_id: "local-demo".into(),
     };
-    app.user = Some(User {
+    app.engine.user = Some(User {
         id: "demo".into(),
         display_name: Some("Carmine".into()),
         images: image(1),
@@ -295,13 +295,13 @@ pub fn populate(app: &mut App) {
 
     let playlists: Vec<Playlist> = (0..PLAYLISTS.len()).map(playlist).collect();
     for playlist in &playlists {
-        app.saved.insert(playlist.uri.clone(), true);
+        app.engine.saved.insert(playlist.uri.clone(), true);
     }
-    app.library.playlists = Loadable::Loaded(playlists.clone());
+    app.engine.library.playlists = Loadable::Loaded(playlists.clone());
 
     let tracks: Vec<Track> = (0..40).map(track).collect();
     for (index, track) in tracks.iter().enumerate() {
-        app.saved.insert(track.uri.clone(), index % 3 == 0);
+        app.engine.saved.insert(track.uri.clone(), index % 3 == 0);
     }
 
     // Playlist page.
@@ -333,11 +333,11 @@ pub fn populate(app: &mut App) {
     );
     playlist_page.contributors.insert("kasia".into());
     playlist_page.contributors.insert("sam".into());
-    app.playlist_pages.insert("pl1".into(), playlist_page);
-    app.user_names.insert("kasia".into(), Some("Kasia".into()));
-    app.user_names.insert("sam".into(), Some("Sam".into()));
+    app.engine.playlist_pages.insert("pl1".into(), playlist_page);
+    app.engine.user_names.insert("kasia".into(), Some("Kasia".into()));
+    app.engine.user_names.insert("sam".into(), Some("Sam".into()));
     // The playlist owner's picture, as the profile view would answer.
-    app.user_images.insert(
+    app.engine.user_images.insert(
         "demo".into(),
         Some(image(1).first().map(|image| image.url.clone()).unwrap()),
     );
@@ -362,7 +362,7 @@ pub fn populate(app: &mut App) {
                 .collect(),
         ),
     );
-    app.playlist_pages.insert("pl0".into(), discover_page);
+    app.engine.playlist_pages.insert("pl0".into(), discover_page);
 
     // Album page.
     let mut album_page = AlbumPage {
@@ -372,8 +372,8 @@ pub fn populate(app: &mut App) {
     album_page
         .tracks
         .absorb(0, page(tracks.iter().take(12).cloned().collect()));
-    app.album_pages.insert("alb0".into(), album_page);
-    app.saved.insert("spotify:album:alb0".into(), true);
+    app.engine.album_pages.insert("alb0".into(), album_page);
+    app.engine.saved.insert("spotify:album:alb0".into(), true);
 
     // Artist page.
     let mut artist_page = ArtistPage {
@@ -387,8 +387,8 @@ pub fn populate(app: &mut App) {
     artist_page
         .albums
         .insert(DiscographyFilter::All.groups().to_string(), albums);
-    app.artist_pages.insert("art0".into(), artist_page);
-    app.saved.insert("spotify:artist:art0".into(), true);
+    app.engine.artist_pages.insert("art0".into(), artist_page);
+    app.engine.saved.insert("spotify:artist:art0".into(), true);
 
     // Show page.
     let mut show_page = ShowPage {
@@ -398,11 +398,11 @@ pub fn populate(app: &mut App) {
     show_page
         .episodes
         .absorb(0, page((0..15).map(|index| episode(index, 0)).collect()));
-    app.show_pages.insert("sh0".into(), show_page);
+    app.engine.show_pages.insert("sh0".into(), show_page);
 
     // Radio pages, for a song and for a playlist.
     for (seed, first) in [("spotify:track:trk0", 1), ("spotify:playlist:pl1", 8)] {
-        app.radio_pages.insert(
+        app.engine.radio_pages.insert(
             seed.into(),
             RadioPage {
                 songs: Loadable::Loaded(tracks.iter().skip(first).take(30).cloned().collect()),
@@ -412,12 +412,12 @@ pub fn populate(app: &mut App) {
     }
 
     // Library.
-    app.library.liked.absorb(
+    app.engine.library.liked.absorb(
         0,
         page(
             tracks
                 .iter()
-                .filter(|track| app.saved.get(&track.uri) == Some(&true))
+                .filter(|track| app.engine.saved.get(&track.uri) == Some(&true))
                 .map(|track| SavedTrack {
                     added_at: Some("2026-06-12T08:30:00Z".into()),
                     track: track.clone(),
@@ -425,7 +425,7 @@ pub fn populate(app: &mut App) {
                 .collect(),
         ),
     );
-    app.library.albums.absorb(
+    app.engine.library.albums.absorb(
         0,
         page(
             (0..8)
@@ -436,10 +436,10 @@ pub fn populate(app: &mut App) {
                 .collect(),
         ),
     );
-    app.library.artists.items = (0..8).map(artist).collect();
-    app.library.artists.loaded_once = true;
-    app.library.artists.complete = true;
-    app.library.shows.absorb(
+    app.engine.library.artists.items = (0..8).map(artist).collect();
+    app.engine.library.artists.loaded_once = true;
+    app.engine.library.artists.complete = true;
+    app.engine.library.shows.absorb(
         0,
         page(
             (0..4)
@@ -450,7 +450,7 @@ pub fn populate(app: &mut App) {
                 .collect(),
         ),
     );
-    app.library.episodes.absorb(
+    app.engine.library.episodes.absorb(
         0,
         page(
             (0..6)
@@ -463,9 +463,9 @@ pub fn populate(app: &mut App) {
     );
 
     // Home.
-    app.home.requested = true;
-    app.home.loaded_at = Some(Instant::now());
-    app.home.recently_played = Loadable::Loaded(
+    app.engine.home.requested = true;
+    app.engine.home.loaded_at = Some(Instant::now());
+    app.engine.home.recently_played = Loadable::Loaded(
         tracks
             .iter()
             .skip(5)
@@ -479,7 +479,7 @@ pub fn populate(app: &mut App) {
     );
     // Recents tab (queue sidebar) – deduped, timestamped, paginated.
     let recents_now = Timestamp::now();
-    app.recents.items = tracks
+    app.engine.recents.items = tracks
         .iter()
         .skip(2)
         .take(24)
@@ -490,19 +490,19 @@ pub fn populate(app: &mut App) {
             context: None,
         })
         .collect();
-    app.recents.loaded_once = true;
-    app.recents.loading = false;
-    app.recents.error = None;
+    app.engine.recents.loaded_once = true;
+    app.engine.recents.loading = false;
+    app.engine.recents.error = None;
     // Has more to load (before cursor of oldest item).
     let oldest = recents_now - SignedDuration::from_hours(48);
     // Cursor is unix millis; jiff Timestamp exposes seconds + nanos.
     let millis = oldest.as_second() * 1000 + i64::from(oldest.subsec_nanosecond() / 1_000_000);
-    app.recents.after = Some(millis.to_string());
-    app.recents.complete = false;
+    app.engine.recents.after = Some(millis.to_string());
+    app.engine.recents.complete = false;
     // Podcast shelf: episodes to continue and new ones, dated from today so
     // the new ones stay new.
     let today = jiff::Zoned::now().date();
-    app.home.podcasts = (0..4)
+    app.engine.home.podcasts = (0..4)
         .map(|show_index| {
             let episodes = (0..3)
                 .map(|position| {
@@ -529,18 +529,18 @@ pub fn populate(app: &mut App) {
             (show(show_index), episodes)
         })
         .collect();
-    app.home.podcasts_generation = app.home.generation;
-    app.home.top_artists = Loadable::Loaded((0..8).map(artist).collect());
-    app.home.top_tracks = Loadable::Loaded(tracks.iter().skip(10).take(10).cloned().collect());
-    app.home.top_songs = Loadable::Loaded(tracks.iter().skip(10).cloned().collect());
-    app.home.top_songs_complete = true;
-    app.home.recommendations = Loadable::Loaded(tracks.iter().skip(20).take(10).cloned().collect());
-    app.home.made_for_you = Loadable::Loaded(playlists.iter().take(10).cloned().collect());
+    app.engine.home.podcasts_generation = app.engine.home.generation;
+    app.engine.home.top_artists = Loadable::Loaded((0..8).map(artist).collect());
+    app.engine.home.top_tracks = Loadable::Loaded(tracks.iter().skip(10).take(10).cloned().collect());
+    app.engine.home.top_songs = Loadable::Loaded(tracks.iter().skip(10).cloned().collect());
+    app.engine.home.top_songs_complete = true;
+    app.engine.home.recommendations = Loadable::Loaded(tracks.iter().skip(20).take(10).cloned().collect());
+    app.engine.home.made_for_you = Loadable::Loaded(playlists.iter().take(10).cloned().collect());
 
     // Search.
-    app.search.query = "Bonobo".into();
-    app.search.committed = "Bonobo".into();
-    app.search.results = Loadable::Loaded(SearchResults {
+    app.engine.search.query = "Bonobo".into();
+    app.engine.search.committed = "Bonobo".into();
+    app.engine.search.results = Loadable::Loaded(SearchResults {
         tracks: Some(page(tracks.iter().take(10).cloned().collect())),
         artists: Some(page((0..6).map(artist).collect())),
         albums: Some(page((0..6).map(album).collect())),
@@ -548,10 +548,10 @@ pub fn populate(app: &mut App) {
         shows: Some(page((0..4).map(show).collect())),
         episodes: Some(page((0..4).map(|index| episode(index, 1)).collect())),
     });
-    app.settings.search_history = vec!["Khruangbin".into(), "ambient".into(), "Rework".into()];
+    app.engine.settings.search_history = vec!["Khruangbin".into(), "ambient".into(), "Rework".into()];
 
     // Playback: a remote speaker is playing the second playlist.
-    app.queue = Loadable::Loaded(Queue {
+    app.engine.queue = Loadable::Loaded(Queue {
         currently_playing: Some(PlayableItem::Track(tracks[0].clone())),
         queue: tracks
             .iter()
@@ -561,7 +561,7 @@ pub fn populate(app: &mut App) {
             .map(PlayableItem::Track)
             .collect(),
     });
-    app.devices = vec![
+    app.engine.devices = vec![
         Device {
             id: Some("local-demo".into()),
             name: "Spotifast".into(),
@@ -591,7 +591,7 @@ pub fn populate(app: &mut App) {
         },
     ];
     // Include an unsigned ZeroConf receiver in the device picker.
-    app.receivers = vec![crate::zeroconf::Receiver {
+    app.engine.receivers = vec![crate::zeroconf::Receiver {
         name: "House Spotify".into(),
         device_id: Some("house-speaker".into()),
         address: std::net::IpAddr::V4(std::net::Ipv4Addr::new(192, 168, 1, 42)),
@@ -599,9 +599,9 @@ pub fn populate(app: &mut App) {
         path: "/zc".into(),
         cast: false,
     }];
-    app.remote = Some(RemoteSnapshot {
+    app.engine.remote = Some(RemoteSnapshot {
         state: PlaybackState {
-            device: Some(app.devices[1].clone()),
+            device: Some(app.engine.devices[1].clone()),
             repeat_state: "off".into(),
             shuffle_state: true,
             context: Some(Context {
@@ -618,15 +618,15 @@ pub fn populate(app: &mut App) {
     });
     for track in &tracks {
         if let Some(id) = &track.id {
-            app.track_cache.insert(id.clone(), track.clone());
+            app.engine.track_cache.insert(id.clone(), track.clone());
         }
     }
 }
 
 #[cfg(feature = "demo")]
 fn cast_devices(app: &mut App, connecting: bool) {
-    app.show_devices = true;
-    app.receivers.push(crate::zeroconf::Receiver {
+    app.engine.show_devices = true;
+    app.engine.receivers.push(crate::zeroconf::Receiver {
         name: "Living room".into(),
         device_id: Some(crate::cast::device_id("Living room")),
         address: "192.168.1.43".parse().unwrap(),
@@ -635,14 +635,14 @@ fn cast_devices(app: &mut App, connecting: bool) {
         cast: true,
     });
     if connecting {
-        app.activating_receiver = Some("Living room".into());
+        app.engine.activating_receiver = Some("Living room".into());
     }
 }
 
 #[cfg(any(test, feature = "demo"))]
 fn sonos_devices(app: &mut App, active: bool) {
-    app.show_devices = true;
-    app.receivers = vec![crate::zeroconf::Receiver {
+    app.engine.show_devices = true;
+    app.engine.receivers = vec![crate::zeroconf::Receiver {
         name: "Office".into(),
         device_id: Some("office".into()),
         address: "192.168.1.10".parse().unwrap(),
@@ -650,10 +650,10 @@ fn sonos_devices(app: &mut App, active: bool) {
         path: "/spotifyzc".into(),
         cast: false,
     }];
-    app.devices
+    app.engine.devices
         .retain(|device| device.id.as_deref() != Some("office"));
     if active {
-        for device in &mut app.devices {
+        for device in &mut app.engine.devices {
             device.is_active = false;
         }
         let device = Device {
@@ -665,10 +665,10 @@ fn sonos_devices(app: &mut App, active: bool) {
             supports_volume: Some(true),
             kind: "speaker".into(),
         };
-        if let Some(remote) = &mut app.remote {
+        if let Some(remote) = &mut app.engine.remote {
             remote.state.device = Some(device.clone());
         }
-        app.devices.push(device);
+        app.engine.devices.push(device);
     }
 }
 
@@ -710,9 +710,9 @@ fn sample_lyrics() -> crate::lyrics::Lyrics {
 /// metadata, so the player bar draws the same as without it.
 #[cfg(feature = "demo")]
 fn play_here(app: &mut App) {
-    app.local_ready = true;
+    app.engine.local_ready = true;
     let now = app.now_playing();
-    app.local.track = Some(crate::player::LocalTrack {
+    app.engine.local.track = Some(crate::player::LocalTrack {
         uri: now.as_ref().map(|now| now.uri.clone()).unwrap_or_default(),
         title: now
             .as_ref()
@@ -731,9 +731,9 @@ fn play_here(app: &mut App) {
         duration_ms: now.as_ref().map(|now| now.duration_ms).unwrap_or_default(),
         is_episode: now.as_ref().is_some_and(|now| now.show_id.is_some()),
     });
-    app.local.volume = app.settings.volume;
+    app.engine.local.volume = app.engine.settings.volume;
     // Where the displayed song was, so the player bar shows the same time.
-    app.local.position_ms = now.as_ref().map_or(0, |now| now.position_ms);
+    app.engine.local.position_ms = now.as_ref().map_or(0, |now| now.position_ms);
 }
 
 /// Half a second of stereo sound shaped like a busy mix, the same every
@@ -807,7 +807,7 @@ fn demo_sound() -> Vec<f64> {
 #[cfg(feature = "demo")]
 pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
     // Default screenshots to the main window regardless of saved settings.
-    app.settings.winamp_window = false;
+    app.engine.settings.winamp_window = false;
     if page == Some("prerelease") {
         let uri = "spotify:prerelease:0kRaNkRxpO16BjxJU0IQAL";
         if let Ok(mut data) =
@@ -820,7 +820,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
             data.album.total_tracks = Some(total);
             data.saved = Some(false);
             let id = data.album.id.clone();
-            app.album_pages.insert(
+            app.engine.album_pages.insert(
                 id.clone(),
                 AlbumPage {
                     album: Loadable::Loaded(data.album.clone()),
@@ -828,7 +828,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                     ..Default::default()
                 },
             );
-            app.local_ready = true;
+            app.engine.local_ready = true;
             app.open(Page::Album(id));
         }
     }
@@ -838,7 +838,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
     for surface in show.unwrap_or("").split(',').map(str::trim) {
         match surface {
             "presaved" => {
-                for page in app.album_pages.values_mut() {
+                for page in app.engine.album_pages.values_mut() {
                     if let Some(data) = &mut page.prerelease {
                         data.saved = Some(true);
                     }
@@ -850,9 +850,9 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
             | "library-grid"
             | "library-grid-narrow"
             | "library-grid-wide" => {
-                app.settings.sidebar_grid = surface.starts_with("library-grid");
-                app.settings.art_expanded = false;
-                app.settings.sidebar_width = if surface.ends_with("-narrow") {
+                app.engine.settings.sidebar_grid = surface.starts_with("library-grid");
+                app.engine.settings.art_expanded = false;
+                app.engine.settings.sidebar_width = if surface.ends_with("-narrow") {
                     230.0
                 } else if surface.ends_with("-wide") {
                     600.0
@@ -860,16 +860,16 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                     380.0
                 };
             }
-            "library-by-you" => app.settings.library_by_you = true,
+            "library-by-you" => app.engine.settings.library_by_you = true,
             "library-by-you-empty" => {
-                app.settings.library_by_you = true;
-                app.library.filter = "No matching playlist".into();
+                app.engine.settings.library_by_you = true;
+                app.engine.library.filter = "No matching playlist".into();
             }
-            "queue" => app.show_queue_panel = true,
+            "queue" => app.engine.show_queue_panel = true,
             "playing-next" => {
-                app.show_queue_panel = true;
-                if let Loadable::Loaded(queue) = &app.queue {
-                    app.manual_queue = queue
+                app.engine.show_queue_panel = true;
+                if let Loadable::Loaded(queue) = &app.engine.queue {
+                    app.engine.manual_queue = queue
                         .queue
                         .iter()
                         .take(6)
@@ -883,60 +883,60 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 // default, so the player bar and top bar render the same
                 // as without this override.
                 play_here(app);
-                app.local.playback = crate::player::Playback::Paused;
+                app.engine.local.playback = crate::player::Playback::Paused;
             }
             "player-bar-spectrum" | "player-bar-waveform" => {
-                app.settings.player_bar_vis = if surface == "player-bar-spectrum" {
+                app.engine.settings.player_bar_vis = if surface == "player-bar-spectrum" {
                     crate::settings::PlayerBarVis::Spectrum
                 } else {
                     crate::settings::PlayerBarVis::Waveform
                 };
                 play_here(app);
-                app.local.playback = crate::player::Playback::Playing;
+                app.engine.local.playback = crate::player::Playback::Playing;
                 app.winamp.tap.push(&demo_sound(), 1.0);
             }
             // The sign-in card and the card while the session connects.
             "signed-out" => {
-                app.auth = AuthStatus::SignedOut;
-                app.user = None;
+                app.engine.auth = AuthStatus::SignedOut;
+                app.engine.user = None;
             }
             "connecting" => {
-                app.auth = AuthStatus::Connecting;
-                app.user = None;
+                app.engine.auth = AuthStatus::Connecting;
+                app.engine.user = None;
             }
             "recents" => {
-                app.show_queue_panel = true;
-                app.queue_tab = QueueTab::Recents;
+                app.engine.show_queue_panel = true;
+                app.engine.queue_tab = QueueTab::Recents;
             }
             // Deterministic panel states for translation and layout reviews.
             "queue-empty" | "queue-loading" | "queue-error" => {
-                app.show_queue_panel = true;
-                app.queue = match surface {
+                app.engine.show_queue_panel = true;
+                app.engine.queue = match surface {
                     "queue-loading" => Loadable::Loading,
                     "queue-error" => Loadable::Failed("Connection interrupted".into()),
                     _ => Loadable::Loaded(Queue::default()),
                 };
             }
             "recents-empty" | "recents-loading" | "recents-error" => {
-                app.show_queue_panel = true;
-                app.queue_tab = QueueTab::Recents;
-                app.recents.items.clear();
-                app.recents_view.clear();
-                app.recents.complete = true;
-                app.recents.loaded_once = true;
-                app.recents.loading = surface == "recents-loading";
-                app.recents.error =
+                app.engine.show_queue_panel = true;
+                app.engine.queue_tab = QueueTab::Recents;
+                app.engine.recents.items.clear();
+                app.engine.recents_view.clear();
+                app.engine.recents.complete = true;
+                app.engine.recents.loaded_once = true;
+                app.engine.recents.loading = surface == "recents-loading";
+                app.engine.recents.error =
                     (surface == "recents-error").then(|| "Connection interrupted".into());
             }
             "collection-loading" => match app.page().clone() {
                 Page::Playlist(id) => {
-                    app.playlist_pages.get_mut(&id).unwrap().playlist = Loadable::Loading
+                    app.engine.playlist_pages.get_mut(&id).unwrap().playlist = Loadable::Loading
                 }
-                Page::Album(id) => app.album_pages.get_mut(&id).unwrap().album = Loadable::Loading,
+                Page::Album(id) => app.engine.album_pages.get_mut(&id).unwrap().album = Loadable::Loading,
                 Page::Artist(id) => {
-                    app.artist_pages.get_mut(&id).unwrap().artist = Loadable::Loading
+                    app.engine.artist_pages.get_mut(&id).unwrap().artist = Loadable::Loading
                 }
-                Page::Show(id) => app.show_pages.get_mut(&id).unwrap().show = Loadable::Loading,
+                Page::Show(id) => app.engine.show_pages.get_mut(&id).unwrap().show = Loadable::Loading,
                 _ => {}
             },
             "lyrics-follow"
@@ -945,10 +945,10 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
             | "lyrics-error"
             | "lyrics-instrumental"
             | "lyrics-no-playback" => {
-                app.show_lyrics_panel = true;
-                app.lyrics_uri = app.now_playing().map(|now| now.uri);
-                app.lyrics_following = false;
-                app.lyrics = match surface {
+                app.engine.show_lyrics_panel = true;
+                app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
+                app.engine.lyrics_following = false;
+                app.engine.lyrics = match surface {
                     "lyrics-empty" => Loadable::Loaded(None),
                     "lyrics-loading" => Loadable::Loading,
                     "lyrics-error" => Loadable::Failed("Connection interrupted".into()),
@@ -959,21 +959,21 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                     }
                 };
                 if surface == "lyrics-no-playback" {
-                    app.remote = None;
+                    app.engine.remote = None;
                 }
             }
-            "devices" => app.show_devices = true,
+            "devices" => app.engine.show_devices = true,
             "sonos-idle" => sonos_devices(app, false),
             "sonos-active" => sonos_devices(app, true),
             // The phone plays instead of the speaker, for captures of how
             // remote playback names and draws the playing device.
             "phone-playing" => {
-                for device in &mut app.devices {
+                for device in &mut app.engine.devices {
                     device.is_active = device.kind == "smartphone";
                 }
-                if let Some(remote) = &mut app.remote {
+                if let Some(remote) = &mut app.engine.remote {
                     remote.state.device =
-                        app.devices.iter().find(|device| device.is_active).cloned();
+                        app.engine.devices.iter().find(|device| device.is_active).cloned();
                 }
             }
             "cast-idle" => cast_devices(app, false),
@@ -990,7 +990,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 );
             }
             "rtl" => {
-                if let Some(page) = app.playlist_pages.get_mut("pl1") {
+                if let Some(page) = app.engine.playlist_pages.get_mut("pl1") {
                     for (item, &(title, artist, album)) in
                         page.items.items.iter_mut().zip(RTL_TRACKS)
                     {
@@ -1008,7 +1008,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 }
             }
             "german" => {
-                app.settings.language =
+                app.engine.settings.language =
                     crate::settings::LanguageChoice::Locale(crate::i18n::Locale::German);
                 app.locale = crate::i18n::Locale::German;
             }
@@ -1018,20 +1018,20 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                     url: "https://spotifast.rocks/download/".into(),
                 });
             }
-            "personal-app" => app.dialog = Some(Dialog::PersonalAppIntro),
+            "personal-app" => app.engine.dialog = Some(Dialog::PersonalAppIntro),
             "many-devices" => {
-                app.show_devices = true;
-                app.devices.extend((0..40).map(|index| Device {
+                app.engine.show_devices = true;
+                app.engine.devices.extend((0..40).map(|index| Device {
                     id: Some(format!("speaker-{index}")),
                     name: format!("Speaker {index:02}"),
                     kind: "speaker".into(),
                     ..Default::default()
                 }));
             }
-            "shortcuts" => app.dialog = Some(Dialog::Shortcuts),
-            "premium" => app.dialog = Some(Dialog::PremiumNeeded),
+            "shortcuts" => app.engine.dialog = Some(Dialog::Shortcuts),
+            "premium" => app.engine.dialog = Some(Dialog::PremiumNeeded),
             "edit" => {
-                app.dialog = Some(Dialog::EditPlaylist {
+                app.engine.dialog = Some(Dialog::EditPlaylist {
                     id: "pl1".into(),
                     name: "Long Way Home".into(),
                     description: "Songs for the road".into(),
@@ -1040,14 +1040,14 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 });
             }
             "create" => {
-                app.dialog = Some(Dialog::CreatePlaylist {
+                app.engine.dialog = Some(Dialog::CreatePlaylist {
                     name: "Autumn drives".into(),
                     public: false,
                     add_uris: vec!["spotify:track:trk1".into()],
                 })
             }
             "duplicate" => {
-                app.dialog = Some(Dialog::ConfirmPlaylistDuplicates {
+                app.engine.dialog = Some(Dialog::ConfirmPlaylistDuplicates {
                     position: None,
                     playlist_id: "pl1".into(),
                     playlist_name: "Long Way Home".into(),
@@ -1058,27 +1058,27 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
             // A Spotify mix whose songs carry only the epoch Spotify stamps on
             // dates it never recorded.
             "undated-mix" => {
-                if let Some(page) = app.playlist_pages.get_mut("pl0") {
+                if let Some(page) = app.engine.playlist_pages.get_mut("pl0") {
                     for item in &mut page.items.items {
                         item.added_at = Some("1970-01-01T00:00:00Z".into());
                     }
                 }
             }
             "light" => {
-                app.settings.theme = crate::settings::ThemeChoice::Light;
-                app.actions.push(Action::SettingsChanged);
+                app.engine.settings.theme = crate::settings::ThemeChoice::Light;
+                app.engine.actions.push(Action::SettingsChanged);
             }
             "dark" => {
-                app.settings.theme = crate::settings::ThemeChoice::Dark;
-                app.actions.push(Action::SettingsChanged);
+                app.engine.settings.theme = crate::settings::ThemeChoice::Dark;
+                app.engine.actions.push(Action::SettingsChanged);
             }
             "song-top-result" => {
-                if let Loadable::Loaded(results) = &mut app.search.results {
+                if let Loadable::Loaded(results) = &mut app.engine.search.results {
                     results.artists = None;
                 }
             }
             "finite-playlist" => {
-                if let Some(page) = app.playlist_pages.get_mut("pl1") {
+                if let Some(page) = app.engine.playlist_pages.get_mut("pl1") {
                     let seed = page.items.items.clone();
                     page.items.items = seed.iter().cycle().take(50).cloned().collect();
                     page.items.total = Some(1000);
@@ -1089,46 +1089,46 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                     }
                 }
             }
-            "focus" => app.settings.sidebar_visible = false,
+            "focus" => app.engine.settings.sidebar_visible = false,
             // A cold start: no device is playing anything, and all the app
             // has is the song the last session ended on.
             "resume" => {
-                app.remote = None;
-                app.resume_context = Some("spotify:playlist:pl1".into());
-                app.resume_track = Some("spotify:track:trk0".into());
-                app.resume_position_ms = 19_566;
+                app.engine.remote = None;
+                app.engine.resume_context = Some("spotify:playlist:pl1".into());
+                app.engine.resume_track = Some("spotify:track:trk0".into());
+                app.engine.resume_position_ms = 19_566;
             }
             // The same cold start, one press of Next in: the song moved on
             // and nothing started playing.
             "resume-next" => {
-                app.remote = None;
-                app.resume_context = Some("spotify:playlist:pl1".into());
-                app.resume_track = Some("spotify:track:trk0".into());
-                app.resume_position_ms = 19_566;
-                app.actions.push(Action::Next);
+                app.engine.remote = None;
+                app.engine.resume_context = Some("spotify:playlist:pl1".into());
+                app.engine.resume_track = Some("spotify:track:trk0".into());
+                app.engine.resume_position_ms = 19_566;
+                app.engine.actions.push(Action::Next);
             }
             // Use the built-in skin for deterministic screenshots.
             "winamp" => {
-                app.settings.winamp_window = true;
-                app.settings.skin = None;
+                app.engine.settings.winamp_window = true;
+                app.engine.settings.skin = None;
                 // Two screen pixels per skin pixel, whatever the display, so
                 // captures match the pages that show them.
-                app.settings.skin_scale = Some(2);
+                app.engine.settings.skin_scale = Some(2);
             }
-            "playlist" => app.settings.playlist_open = true,
-            "shade" => app.settings.winamp_shaded = true,
-            "playlist-shade" => app.settings.playlist_shaded = true,
+            "playlist" => app.engine.settings.playlist_open = true,
+            "shade" => app.engine.settings.winamp_shaded = true,
+            "playlist-shade" => app.engine.settings.playlist_shaded = true,
             "eq" => {
-                app.settings.eq_open = true;
-                app.settings.eq_on = true;
-                app.settings.eq_bands_db = crate::eq::PRESETS[13].bands_db;
+                app.engine.settings.eq_open = true;
+                app.engine.settings.eq_on = true;
+                app.engine.settings.eq_bands_db = crate::eq::PRESETS[13].bands_db;
             }
             "presets" => app.winamp.open_presets = true,
-            "art" => app.settings.art_expanded = true,
+            "art" => app.engine.settings.art_expanded = true,
             "folders" => {
                 use crate::player::RootlistEntry;
                 let uri = |index: usize| format!("spotify:playlist:pl{index}");
-                app.rootlist = vec![
+                app.engine.rootlist = vec![
                     RootlistEntry::FolderStart {
                         id: "f1".into(),
                         name: "Focus".into(),
@@ -1145,25 +1145,25 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                     RootlistEntry::Playlist(uri(4)),
                     RootlistEntry::Playlist(uri(5)),
                 ];
-                app.collapsed_folders = vec!["f2".into()];
+                app.engine.collapsed_folders = vec!["f2".into()];
             }
-            "small" => app.settings.skin_scale = Some(1),
+            "small" => app.engine.settings.skin_scale = Some(1),
             "windows-taskbar" => app.demo_windows_controls = true,
             "compact" => {
-                app.settings.sidebar_compact = true;
-                app.settings.tracklist_compact = true;
+                app.engine.settings.sidebar_compact = true;
+                app.engine.settings.tracklist_compact = true;
             }
             "eq-shade" => {
-                app.settings.eq_open = true;
-                app.settings.eq_shaded = true;
+                app.engine.settings.eq_open = true;
+                app.engine.settings.eq_shaded = true;
             }
-            "milkdrop" => app.settings.milkdrop_open = true,
+            "milkdrop" => app.engine.settings.milkdrop_open = true,
             "pins" => {
-                app.settings.pinned_contexts =
+                app.engine.settings.pinned_contexts =
                     vec!["spotify:playlist:pl2".into(), "spotify:playlist:pl4".into()];
             }
             "sorted" => {
-                app.table_sorts.insert(
+                app.engine.table_sorts.insert(
                     Page::Playlist("pl1".into()),
                     crate::model::TableSort {
                         column: crate::model::SortColumn::Added,
@@ -1172,24 +1172,24 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 );
             }
             "lyrics" | "lyrics-fullscreen" => {
-                app.lyrics_uri = app.now_playing().map(|now| now.uri);
-                app.lyrics = Loadable::Loaded(Some(sample_lyrics()));
-                app.lyrics_following = true;
-                app.show_lyrics_panel = true;
+                app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
+                app.engine.lyrics = Loadable::Loaded(Some(sample_lyrics()));
+                app.engine.lyrics_following = true;
+                app.engine.show_lyrics_panel = true;
                 if surface == "lyrics-fullscreen" {
-                    app.actions.push(Action::SetLyricsFullscreen(true));
+                    app.engine.actions.push(Action::SetLyricsFullscreen(true));
                 }
             }
             // Full-screen lyrics drawn in the window as it is, for shots at
             // a chosen size, which a real full screen would override.
             "lyrics-fullscreen-view" | "lyrics-fullscreen-instrumental" => {
-                app.lyrics_uri = app.now_playing().map(|now| now.uri);
+                app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
                 let mut lyrics = sample_lyrics();
                 lyrics.instrumental = surface == "lyrics-fullscreen-instrumental";
-                app.lyrics = Loadable::Loaded(Some(lyrics));
-                app.lyrics_following = true;
-                app.show_lyrics_panel = true;
-                app.lyrics_fullscreen = Some(false);
+                app.engine.lyrics = Loadable::Loaded(Some(lyrics));
+                app.engine.lyrics_following = true;
+                app.engine.show_lyrics_panel = true;
+                app.engine.lyrics_fullscreen = Some(false);
             }
             // Emoji in titles, artists, playlist names and lyrics: joined
             // sequences, skin tones, flags and keycaps. Give it after
@@ -1209,7 +1209,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                         first.name = artist.to_string();
                     }
                 };
-                if let Some(page) = app.playlist_pages.get_mut("pl1") {
+                if let Some(page) = app.engine.playlist_pages.get_mut("pl1") {
                     for (entry, names) in page.items.items.iter_mut().zip(titles) {
                         if let Some(PlayableItem::Track(track)) = &mut entry.item {
                             rename(track, names);
@@ -1217,22 +1217,22 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                     }
                     page.items.revision += 1;
                 }
-                if let Loadable::Loaded(queue) = &mut app.queue {
+                if let Loadable::Loaded(queue) = &mut app.engine.queue {
                     for (item, names) in queue.queue.iter_mut().zip(titles) {
                         if let PlayableItem::Track(track) = item {
                             rename(track, names);
                         }
                     }
                 }
-                if let Some(remote) = &mut app.remote
+                if let Some(remote) = &mut app.engine.remote
                     && let Some(PlayableItem::Track(track)) = &mut remote.state.item
                 {
                     rename(track, titles[0]);
                 }
-                if let Some(track) = app.track_cache.get_mut("trk0") {
+                if let Some(track) = app.engine.track_cache.get_mut("trk0") {
                     rename(track, titles[0]);
                 }
-                if let Loadable::Loaded(playlists) = &mut app.library.playlists {
+                if let Loadable::Loaded(playlists) = &mut app.engine.library.playlists {
                     let names = ["☕ Morning", "Gym 💪🏿", "🎄 Christmas"];
                     for (playlist, name) in playlists.iter_mut().skip(3).zip(names) {
                         playlist.name = name.to_string();
@@ -1240,11 +1240,11 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 }
                 // Text fields: the top bar's search and, with `create`, the
                 // new playlist's name.
-                app.search.query = "road trip 🚗".into();
-                if let Some(Dialog::CreatePlaylist { name, .. }) = &mut app.dialog {
+                app.engine.search.query = "road trip 🚗".into();
+                if let Some(Dialog::CreatePlaylist { name, .. }) = &mut app.engine.dialog {
                     *name = "Autumn drives 🍂🚗".into();
                 }
-                if let Loadable::Loaded(Some(lyrics)) = &mut app.lyrics {
+                if let Loadable::Loaded(Some(lyrics)) = &mut app.engine.lyrics {
                     let marks = ["🌃", "🪟", "📻", "🛣️", "⛽", "🗺️", "🌌", "🥰"];
                     for (line, mark) in lyrics.lines.iter_mut().zip(marks.iter().cycle()) {
                         line.text = format!("{} {mark}", line.text);
@@ -1286,29 +1286,29 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                         uri: None,
                     }];
                 };
-                if let Some(page) = app.playlist_pages.get_mut("pl1") {
+                if let Some(page) = app.engine.playlist_pages.get_mut("pl1") {
                     for (entry, names) in page.items.items.iter_mut().zip(titles) {
                         if let Some(PlayableItem::Track(track)) = &mut entry.item {
                             rename(track, names);
                         }
                     }
                 }
-                if let Loadable::Loaded(queue) = &mut app.queue {
+                if let Loadable::Loaded(queue) = &mut app.engine.queue {
                     for (item, names) in queue.queue.iter_mut().zip(titles) {
                         if let PlayableItem::Track(track) = item {
                             rename(track, names);
                         }
                     }
                 }
-                if let Some(remote) = &mut app.remote
+                if let Some(remote) = &mut app.engine.remote
                     && let Some(PlayableItem::Track(track)) = &mut remote.state.item
                 {
                     rename(track, titles[0]);
                 }
-                if let Some(track) = app.track_cache.get_mut("trk0") {
+                if let Some(track) = app.engine.track_cache.get_mut("trk0") {
                     rename(track, titles[0]);
                 }
-                if let Loadable::Loaded(playlists) = &mut app.library.playlists {
+                if let Loadable::Loaded(playlists) = &mut app.engine.library.playlists {
                     let names = [
                         "\u{901a}\u{52e4}\u{306e}BGM",
                         "\u{7761}\u{524d}\u{6b4c}\u{5355}",
@@ -1322,8 +1322,8 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
             // A Spotify app of one's own, in use.
             "faster" => {
                 let id = "8f2c1d0e4a6b4c3d9e7f5a1b2c3d4e5f".to_string();
-                app.settings.web_client_id = Some(id.clone());
-                app.web_app = Some(id);
+                app.engine.settings.web_client_id = Some(id.clone());
+                app.engine.web_app = Some(id);
             }
             _ => {}
         }
@@ -1387,7 +1387,7 @@ mod tests {
             for width in [210.0, 250.0, 420.0] {
                 let (ctx, mut app) = accessible_app("library-heading");
                 app.locale = locale;
-                app.settings.sidebar_width = width;
+                app.engine.settings.sidebar_width = width;
                 let heading = crate::i18n::gettext(locale, "Library").into_owned();
                 let search = crate::i18n::gettext(locale, "Search Your Library").into_owned();
                 let mut last = None;
@@ -1436,7 +1436,7 @@ mod tests {
                         "{locale:?} at {width}: the heading has room"
                     );
                 }
-                app.backend.shutdown();
+                app.engine.backend.shutdown();
             }
         }
     }
@@ -1444,7 +1444,7 @@ mod tests {
     #[test]
     fn change_cover_button_dispatches_the_native_picker_action() {
         let (ctx, mut app) = accessible_app("cover-button");
-        app.dialog = Some(Dialog::EditPlaylist {
+        app.engine.dialog = Some(Dialog::EditPlaylist {
             id: "pl1".into(),
             name: "Test".into(),
             description: String::new(),
@@ -1463,11 +1463,11 @@ mod tests {
                 None,
             )],
         );
-        let Some(Dialog::EditPlaylist { cover, .. }) = &app.dialog else {
+        let Some(Dialog::EditPlaylist { cover, .. }) = &app.engine.dialog else {
             panic!()
         };
         assert!(cover.request.is_some());
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -1476,7 +1476,7 @@ mod tests {
             for light in [false, true] {
                 let (ctx, mut app) = accessible_app("cover-dialog");
                 app.open(Page::Playlist("pl1".into()));
-                app.dialog = Some(Dialog::EditPlaylist {
+                app.engine.dialog = Some(Dialog::EditPlaylist {
                     id: "pl1".into(),
                     name: "Test".into(),
                     description: String::new(),
@@ -1484,10 +1484,10 @@ mod tests {
                     cover: Default::default(),
                 });
                 if light {
-                    app.settings.theme = crate::settings::ThemeChoice::Light;
-                    app.actions.push(Action::SettingsChanged);
+                    app.engine.settings.theme = crate::settings::ThemeChoice::Light;
+                    app.engine.actions.push(Action::SettingsChanged);
                 }
-                if let Some(Dialog::EditPlaylist { cover, .. }) = &mut app.dialog {
+                if let Some(Dialog::EditPlaylist { cover, .. }) = &mut app.engine.dialog {
                     cover.error = Some("Spotify refused this cover. Check that you own the playlist, then sign in again to grant image upload permission.".into());
                 }
                 for _ in 0..3 {
@@ -1506,7 +1506,7 @@ mod tests {
                 let rect = app.dialog_rect.unwrap();
                 assert!(rect.left() >= 0.0 && rect.top() >= 0.0, "{rect:?}");
                 assert!(rect.right() <= width && rect.bottom() <= height, "{rect:?}");
-                app.backend.shutdown();
+                app.engine.backend.shutdown();
             }
         }
     }
@@ -1600,7 +1600,7 @@ mod tests {
             "focused Space must pause once, without firing the global shortcut too"
         );
         assert_eq!(tree.focus, pause);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Drive By You through accessible button actions, verify owned rows remain
@@ -1609,7 +1609,7 @@ mod tests {
     fn by_you_sidebar_filter_can_be_toggled_and_survives_shelf_switches() {
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("by-you");
-        app.settings.art_expanded = false;
+        app.engine.settings.art_expanded = false;
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         accessible_node(&tree, "Discover Weekly", Role::Button);
@@ -1619,7 +1619,7 @@ mod tests {
             &mut app,
             vec![accessible_action(by_you, AccessibleAction::Click, None)],
         );
-        assert!(app.settings.library_by_you);
+        assert!(app.engine.settings.library_by_you);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         accessible_node(&tree, "Liked Songs", Role::Button);
         accessible_node(&tree, "Late night focus", Role::Button);
@@ -1650,16 +1650,16 @@ mod tests {
         );
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let by_you = accessible_node(&tree, "By You", Role::Button);
-        assert!(app.settings.library_by_you);
+        assert!(app.engine.settings.library_by_you);
         accessible_frame(
             &ctx,
             &mut app,
             vec![accessible_action(by_you, AccessibleAction::Click, None)],
         );
-        assert!(!app.settings.library_by_you);
+        assert!(!app.engine.settings.library_by_you);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         accessible_node(&tree, "Discover Weekly", Role::Button);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -1719,7 +1719,7 @@ mod tests {
                 &gettext(locale, "Search in Your Library"),
                 Role::TextInput,
             );
-            app.library.filter = gettext(locale, "Liked Songs").to_uppercase();
+            app.engine.library.filter = gettext(locale, "Liked Songs").to_uppercase();
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             accessible_node(&tree, &gettext(locale, "Liked Songs"), Role::Button);
             assert!(
@@ -1728,7 +1728,7 @@ mod tests {
                     .iter()
                     .any(|(_, node)| node.label() == Some("Discover Weekly"))
             );
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -1779,13 +1779,13 @@ mod tests {
             // A reported pause uses the same control with its new label.
             // Offline demo requests have no backend acknowledgment, so a
             // requested remote pause would keep the pending spinner visible.
-            app.remote.as_mut().unwrap().state.is_playing = false;
+            app.engine.remote.as_mut().unwrap().state.is_playing = false;
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             assert_eq!(
                 accessible_node(&tree, &gettext(locale, "Play"), Role::Button),
                 pause
             );
-            app.remote.as_mut().unwrap().state.is_playing = true;
+            app.engine.remote.as_mut().unwrap().state.is_playing = true;
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let volume = accessible_node(&tree, &gettext(locale, "Volume (%)"), Role::Slider);
             let before = app.now_playing().unwrap().volume_percent;
@@ -1811,7 +1811,7 @@ mod tests {
                 vec![keyboard(egui::Key::Space, egui::Modifiers::NONE)],
             );
             assert!(!app.believed_playing());
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -1845,7 +1845,7 @@ mod tests {
                 accessible_node(&tree, &gettext(locale, next), Role::Button);
             }
 
-            app.remote = None;
+            app.engine.remote = None;
             assert!(app.now_playing().is_none());
             let render = |app: &mut App, ui: &mut egui::Ui| crate::ui::player_bar::show(app, ui);
             view_frame(&ctx, &mut app, vec![], render);
@@ -1858,7 +1858,7 @@ mod tests {
                     "missing translated empty playback label: {source}"
                 );
             }
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -1871,15 +1871,15 @@ mod tests {
         for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-queue-{locale:?}"));
             app.locale = locale;
-            app.show_queue_panel = true;
-            app.local_ready = true;
-            app.local.track = Some(crate::player::LocalTrack {
+            app.engine.show_queue_panel = true;
+            app.engine.local_ready = true;
+            app.engine.local.track = Some(crate::player::LocalTrack {
                 uri: app.now_playing().unwrap().uri,
                 ..Default::default()
             });
-            app.local.playback = crate::player::Playback::Paused;
-            let rows = app.queue.get().unwrap().queue.clone();
-            app.manual_queue = rows[..2]
+            app.engine.local.playback = crate::player::Playback::Paused;
+            let rows = app.engine.queue.get().unwrap().queue.clone();
+            app.engine.manual_queue = rows[..2]
                 .iter()
                 .map(|item| item.uri().to_string())
                 .collect();
@@ -1896,14 +1896,14 @@ mod tests {
                 name,
                 public,
                 add_uris,
-            }) = &app.dialog
+            }) = &app.engine.dialog
             else {
                 panic!("saving the translated queue must open the existing playlist dialog");
             };
             assert_eq!(name, &app.queue_playlist_name());
             assert!(!public);
             assert_eq!(add_uris, &saved_uris);
-            app.dialog = None;
+            app.engine.dialog = None;
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let clear = accessible_node(&tree, &gettext(locale, "Clear queue"), Role::Button);
             accessible_frame(
@@ -1911,8 +1911,8 @@ mod tests {
                 &mut app,
                 vec![accessible_action(clear, AccessibleAction::Click, None)],
             );
-            assert!(app.manual_queue.is_empty());
-            assert_eq!(app.queue.get().unwrap().queue, rows[2..]);
+            assert!(app.engine.manual_queue.is_empty());
+            assert_eq!(app.engine.queue.get().unwrap().queue, rows[2..]);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let recent = accessible_node(&tree, &gettext(locale, "Recent"), Role::Button);
             accessible_frame(
@@ -1920,7 +1920,7 @@ mod tests {
                 &mut app,
                 vec![accessible_action(recent, AccessibleAction::Click, None)],
             );
-            assert_eq!(app.queue_tab, QueueTab::Recents);
+            assert_eq!(app.engine.queue_tab, QueueTab::Recents);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let close = accessible_node(&tree, &gettext(locale, "Close"), Role::Button);
             accessible_frame(
@@ -1928,8 +1928,8 @@ mod tests {
                 &mut app,
                 vec![accessible_action(close, AccessibleAction::Click, None)],
             );
-            assert!(!app.show_queue_panel);
-            app.backend.shutdown();
+            assert!(!app.engine.show_queue_panel);
+            app.engine.backend.shutdown();
         }
     }
 
@@ -1942,10 +1942,10 @@ mod tests {
         for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-lyrics-{locale:?}"));
             app.locale = locale;
-            app.show_lyrics_panel = true;
-            app.lyrics_uri = app.now_playing().map(|now| now.uri);
-            app.lyrics = Loadable::Loaded(Some(sample_lyrics()));
-            app.lyrics_following = false;
+            app.engine.show_lyrics_panel = true;
+            app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
+            app.engine.lyrics = Loadable::Loaded(Some(sample_lyrics()));
+            app.engine.lyrics_following = false;
             accessible_frame(&ctx, &mut app, vec![]);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let follow =
@@ -1955,7 +1955,7 @@ mod tests {
                 &mut app,
                 vec![accessible_action(follow, AccessibleAction::Click, None)],
             );
-            assert!(app.lyrics_following);
+            assert!(app.engine.lyrics_following);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let expand =
                 accessible_node(&tree, &gettext(locale, "Full screen lyrics"), Role::Button);
@@ -1964,8 +1964,8 @@ mod tests {
                 &mut app,
                 vec![accessible_action(expand, AccessibleAction::Click, None)],
             );
-            assert!(app.lyrics_fullscreen.is_some());
-            app.lyrics_following = false;
+            assert!(app.engine.lyrics_fullscreen.is_some());
+            app.engine.lyrics_following = false;
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let follow =
                 accessible_node(&tree, &pgettext(locale, "lyrics", "Follow"), Role::Button);
@@ -1974,7 +1974,7 @@ mod tests {
                 &mut app,
                 vec![accessible_action(follow, AccessibleAction::Click, None)],
             );
-            assert!(app.lyrics_following);
+            assert!(app.engine.lyrics_following);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let leave = accessible_node(
                 &tree,
@@ -1986,10 +1986,10 @@ mod tests {
                 &mut app,
                 vec![accessible_action(leave, AccessibleAction::Click, None)],
             );
-            assert!(app.lyrics_fullscreen.is_none());
+            assert!(app.engine.lyrics_fullscreen.is_none());
             for fullscreen in [false, true] {
-                app.lyrics_fullscreen = fullscreen.then_some(false);
-                app.lyrics = Loadable::Failed("fixture failure".into());
+                app.engine.lyrics_fullscreen = fullscreen.then_some(false);
+                app.engine.lyrics = Loadable::Failed("fixture failure".into());
                 let tree = accessible_frame(&ctx, &mut app, vec![]);
                 let retry = accessible_node(&tree, &gettext(locale, "Try again"), Role::Button);
                 accessible_frame(
@@ -1998,9 +1998,9 @@ mod tests {
                     vec![accessible_action(retry, AccessibleAction::Click, None)],
                 );
                 // Offline retries finish without contacting a lyrics provider.
-                assert!(matches!(app.lyrics, Loadable::Loaded(None)));
+                assert!(matches!(app.engine.lyrics, Loadable::Loaded(None)));
             }
-            app.lyrics_fullscreen = None;
+            app.engine.lyrics_fullscreen = None;
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let close = accessible_node(&tree, &gettext(locale, "Close"), Role::Button);
             accessible_frame(
@@ -2008,8 +2008,8 @@ mod tests {
                 &mut app,
                 vec![accessible_action(close, AccessibleAction::Click, None)],
             );
-            assert!(!app.show_lyrics_panel);
-            app.backend.shutdown();
+            assert!(!app.engine.show_lyrics_panel);
+            app.engine.backend.shutdown();
         }
     }
 
@@ -2020,10 +2020,10 @@ mod tests {
         for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-panel-states-{locale:?}"));
             app.locale = locale;
-            app.show_lyrics_panel = true;
-            app.lyrics_uri = app.now_playing().map(|now| now.uri);
+            app.engine.show_lyrics_panel = true;
+            app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
             for fullscreen in [false, true] {
-                app.lyrics_fullscreen = fullscreen.then_some(false);
+                app.engine.lyrics_fullscreen = fullscreen.then_some(false);
                 let view = |app: &mut App, ui: &mut egui::Ui| app.frame_ui(ui);
                 let mut instrumental = sample_lyrics();
                 instrumental.instrumental = true;
@@ -2058,8 +2058,8 @@ mod tests {
                         vec![sample_lyrics().lines[0].text.clone()],
                     ),
                 ] {
-                    app.lyrics = state;
-                    app.lyrics_following = false;
+                    app.engine.lyrics = state;
+                    app.engine.lyrics_following = false;
                     view_frame(&ctx, &mut app, vec![], view);
                     let painted = view_frame(&ctx, &mut app, vec![], view);
                     for message in messages {
@@ -2090,7 +2090,7 @@ mod tests {
                     ],
                 ),
             ] {
-                app.queue = state;
+                app.engine.queue = state;
                 view_frame(&ctx, &mut app, vec![], crate::ui::queue::page);
                 let painted = view_frame(&ctx, &mut app, vec![], crate::ui::queue::page);
                 for message in messages {
@@ -2100,11 +2100,11 @@ mod tests {
                     );
                 }
             }
-            app.queue_tab = QueueTab::Recents;
-            app.recents.items.clear();
-            app.recents_view.clear();
-            app.recents.loaded_once = true;
-            app.recents.complete = true;
+            app.engine.queue_tab = QueueTab::Recents;
+            app.engine.recents.items.clear();
+            app.engine.recents_view.clear();
+            app.engine.recents.loaded_once = true;
+            app.engine.recents.complete = true;
             for (loading, error, sources) in [
                 (
                     false,
@@ -2114,8 +2114,8 @@ mod tests {
                 (true, None, vec!["Loading…"]),
                 (false, Some("fixture failure".into()), vec!["Retry"]),
             ] {
-                app.recents.loading = loading;
-                app.recents.error = error;
+                app.engine.recents.loading = loading;
+                app.engine.recents.error = error;
                 view_frame(&ctx, &mut app, vec![], crate::ui::queue::side_panel);
                 let painted = view_frame(&ctx, &mut app, vec![], crate::ui::queue::side_panel);
                 for source in sources {
@@ -2125,14 +2125,14 @@ mod tests {
                             .any(|(text, _)| text == &gettext(locale, source))
                     );
                 }
-                if app.recents.error.is_some() {
+                if app.engine.recents.error.is_some() {
                     let retry = painted
                         .iter()
                         .find(|(text, _)| text == &gettext(locale, "Retry"))
                         .unwrap()
                         .1
                         .center();
-                    app.actions.clear();
+                    app.engine.actions.clear();
                     view_frame(
                         &ctx,
                         &mut app,
@@ -2140,13 +2140,13 @@ mod tests {
                         crate::ui::queue::side_panel,
                     );
                     assert!(
-                        app.actions
+                        app.engine.actions
                             .iter()
                             .any(|action| matches!(action, crate::model::Action::ReloadRecents))
                     );
                 }
             }
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -2155,9 +2155,9 @@ mod tests {
         use crate::settings::{LibraryShelf, LibrarySort};
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("library-sort");
-        app.settings.sidebar_order =
+        app.engine.settings.sidebar_order =
             vec!["spotify:playlist:pl4".into(), "spotify:playlist:pl1".into()];
-        let saved = app.settings.sidebar_order.clone();
+        let saved = app.engine.settings.sidebar_order.clone();
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let sort = accessible_node(&tree, "Local custom order", Role::Button);
@@ -2185,10 +2185,10 @@ mod tests {
             vec![keyboard(egui::Key::Enter, egui::Modifiers::NONE)],
         );
         assert_eq!(
-            app.settings.library_sort.get(&LibraryShelf::Playlists),
+            app.engine.settings.library_sort.get(&LibraryShelf::Playlists),
             Some(&LibrarySort::Name)
         );
-        assert_eq!(app.settings.sidebar_order, saved);
+        assert_eq!(app.engine.settings.sidebar_order, saved);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let sort = accessible_node(&tree, "Name", Role::Button);
         accessible_frame(
@@ -2204,15 +2204,15 @@ mod tests {
             vec![accessible_action(local, AccessibleAction::Click, None)],
         );
         assert_eq!(
-            app.settings.library_sort.get(&LibraryShelf::Playlists),
+            app.engine.settings.library_sort.get(&LibraryShelf::Playlists),
             Some(&LibrarySort::Local)
         );
-        assert_eq!(app.settings.sidebar_order, saved);
+        assert_eq!(app.engine.settings.sidebar_order, saved);
         let restored: Settings =
-            serde_json::from_str(&serde_json::to_string(&app.settings).unwrap()).unwrap();
-        assert_eq!(restored.library_sort, app.settings.library_sort);
+            serde_json::from_str(&serde_json::to_string(&app.engine.settings).unwrap()).unwrap();
+        assert_eq!(restored.library_sort, app.engine.settings.library_sort);
         assert_eq!(restored.sidebar_order, saved);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Home's podcast shelf uses the ordinary cards, leaves out audiobooks
@@ -2230,20 +2230,20 @@ mod tests {
         assert!(has(&painted, "20 min left • Rework"));
         assert!(has(&painted, "New • Song Exploder"));
 
-        let rework = app.home.podcasts[0].0.uri.clone();
-        app.audiobook_shows.insert(rework);
-        let exploder = app.home.podcasts[1].0.uri.clone();
-        app.saved.insert(exploder, false);
+        let rework = app.engine.home.podcasts[0].0.uri.clone();
+        app.engine.audiobook_shows.insert(rework);
+        let exploder = app.engine.home.podcasts[1].0.uri.clone();
+        app.engine.saved.insert(exploder, false);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         assert!(!has(&painted, "20 min left • Rework"));
         assert!(!has(&painted, "New • Song Exploder"));
         assert!(has(&painted, "43 min left • Darknet Diaries"));
 
-        app.home.podcasts.clear();
+        app.engine.home.podcasts.clear();
         let painted = view_frame(&ctx, &mut app, vec![], view);
         assert!(!has(&painted, "Your podcasts"));
         assert!(has(&painted, "Your top artists"));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// The Home card's Play continues from the place that card shows, even
@@ -2252,14 +2252,14 @@ mod tests {
     #[test]
     fn a_home_podcast_card_resumes_from_the_place_it_shows() {
         let (ctx, mut app) = accessible_app("home-podcast-resume");
-        let card = app.home.podcasts[0].1[0].clone();
+        let card = app.engine.home.podcasts[0].1[0].clone();
         assert_eq!(card.resume_ms(), Some(1_200_000));
         let mut stale = card.clone();
         stale.resume_point = Some(ResumePoint {
             fully_played: false,
             resume_position_ms: 600_000,
         });
-        app.library.episodes.items.push(SavedEpisode {
+        app.engine.library.episodes.items.push(SavedEpisode {
             episode: stale,
             ..SavedEpisode::default()
         });
@@ -2304,7 +2304,7 @@ mod tests {
             .filter(|center| center.y < left.y && left.distance(*center) < 250.0)
             .min_by(|a, b| left.distance(*a).total_cmp(&left.distance(*b)))
             .expect("the card's Play button on hover");
-        app.actions.clear();
+        app.engine.actions.clear();
         frame(
             &ctx,
             &mut app,
@@ -2325,14 +2325,14 @@ mod tests {
             ],
         );
         assert!(
-            app.actions.iter().any(|action| matches!(
+            app.engine.actions.iter().any(|action| matches!(
                 action,
                 Action::PlayEpisode { uri, resume_ms: Some(1_200_000) } if *uri == card.uri
             )),
             "{:?}",
-            app.actions
+            app.engine.actions
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Spotify lists audiobooks among saved shows, but librespot can't play
@@ -2355,8 +2355,7 @@ mod tests {
             pointer_click(chip, egui::PointerButton::Primary),
             view,
         );
-        let shows: Vec<(String, String)> = app
-            .library
+        let shows: Vec<(String, String)> = app.engine.library
             .shows
             .items
             .iter()
@@ -2366,11 +2365,11 @@ mod tests {
         let painted = view_frame(&ctx, &mut app, vec![], view);
         assert!(painted.iter().any(|(text, _)| *text == shows[0].1));
 
-        app.audiobook_shows.insert(shows[0].0.clone());
+        app.engine.audiobook_shows.insert(shows[0].0.clone());
         let painted = view_frame(&ctx, &mut app, vec![], view);
         assert!(!painted.iter().any(|(text, _)| *text == shows[0].1));
         assert!(painted.iter().any(|(text, _)| *text == shows[1].1));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -2384,7 +2383,7 @@ mod tests {
             &mut app,
             vec![accessible_action(grid, AccessibleAction::Click, None)],
         );
-        assert!(app.settings.sidebar_grid);
+        assert!(app.engine.settings.sidebar_grid);
 
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let list = accessible_node(&tree, "Show as list", Role::Button);
@@ -2396,8 +2395,8 @@ mod tests {
             &mut app,
             vec![accessible_action(list, AccessibleAction::Click, None)],
         );
-        assert!(!app.settings.sidebar_grid);
-        app.backend.shutdown();
+        assert!(!app.engine.settings.sidebar_grid);
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -2407,8 +2406,8 @@ mod tests {
         use egui::accesskit::Role;
         let (ctx, mut app) = accessible_app("library-folder-labels");
         app.locale = Locale::German;
-        app.settings.sidebar_grid = true;
-        app.rootlist = vec![
+        app.engine.settings.sidebar_grid = true;
+        app.engine.rootlist = vec![
             FolderStart {
                 id: "focus".into(),
                 name: "Focus".into(),
@@ -2420,12 +2419,12 @@ mod tests {
             },
             FolderEnd,
         ];
-        app.collapsed_folders = vec!["weekend".into()];
+        app.engine.collapsed_folders = vec!["weekend".into()];
 
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         accessible_node(&tree, "Focus, Ordner, ausgeklappt", Role::Button);
         accessible_node(&tree, "Weekend, Ordner, eingeklappt", Role::Button);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -2434,7 +2433,7 @@ mod tests {
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("library-menu-locale");
         app.locale = Locale::German;
-        app.settings.liked_songs_pinned = false;
+        app.engine.settings.liked_songs_pinned = false;
         let row = |tree: &egui::accesskit::TreeUpdate, label: &str| {
             let bounds = tree
                 .nodes
@@ -2479,7 +2478,7 @@ mod tests {
         );
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         accessible_node(&tree, &gettext(Locale::German, "Unpin"), Role::Button);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -2517,15 +2516,15 @@ mod tests {
         // A menu item spans its menu, so its width is the menu's.
         let (x0, x1, _, _) = button(&tree, "Play");
         assert!(x1 - x0 <= 300.0, "the menu is {} points wide", x1 - x0);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn library_grid_ignores_song_and_card_drops_behind_expanded_art() {
         use egui::accesskit::Role;
         let (ctx, mut app) = accessible_app("library-grid-art-drops");
-        app.settings.sidebar_grid = true;
-        app.settings.art_expanded = true;
+        app.engine.settings.sidebar_grid = true;
+        app.engine.settings.art_expanded = true;
         assert!(app.now_playing().unwrap().art_url.is_some());
         let frame = |ctx: &egui::Context, app: &mut App, events| {
             let mut output = ctx.run_ui(
@@ -2550,7 +2549,7 @@ mod tests {
             .read_response(egui::Id::new("sidebar-art"))
             .expect("expanded artwork")
             .rect;
-        let playlists = app.library.playlists.get().expect("demo playlists");
+        let playlists = app.engine.library.playlists.get().expect("demo playlists");
         // Pick an editable card actually covered by the artwork, regardless
         // of platform font metrics and title-bar height.
         let pos = tree
@@ -2599,7 +2598,7 @@ mod tests {
                 }],
             );
         };
-        app.actions.clear();
+        app.engine.actions.clear();
         let song = PlayableItem::Track(Track {
             uri: "spotify:track:art-drop".into(),
             name: "Art drop".into(),
@@ -2616,7 +2615,7 @@ mod tests {
             },
         );
         release(&mut app, pos);
-        assert!(!app.actions.iter().any(|action| matches!(
+        assert!(!app.engine.actions.iter().any(|action| matches!(
             action,
             Action::AddToPlaylist { .. } | Action::SetSavedMany { .. }
         )));
@@ -2633,7 +2632,7 @@ mod tests {
             );
         };
         let rearranged = |app: &App| {
-            app.actions
+            app.engine.actions
                 .iter()
                 .any(|action| matches!(action, Action::ArrangeLibrary { .. }))
         };
@@ -2646,14 +2645,14 @@ mod tests {
         release(&mut app, visible);
         assert!(rearranged(&app), "a card dropped on a visible card stayed");
         egui::DragAndDrop::clear_payload(&ctx);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn library_grid_highlights_a_song_drop_target_during_drag() {
         use egui::accesskit::Role;
         let (ctx, mut app) = accessible_app("library-grid-drop-highlight");
-        app.settings.sidebar_grid = true;
+        app.engine.settings.sidebar_grid = true;
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let liked = tree
             .nodes
@@ -2722,14 +2721,14 @@ mod tests {
             "no accent outline on the drop target"
         );
         egui::DragAndDrop::clear_payload(&ctx);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn library_grid_cards_navigate_and_their_corner_buttons_play() {
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("library-grid-card-actions");
-        app.settings.sidebar_grid = true;
+        app.engine.settings.sidebar_grid = true;
         app.open(Page::Search);
 
         let tree = accessible_frame(&ctx, &mut app, vec![]);
@@ -2755,19 +2754,19 @@ mod tests {
             Some("spotify:playlist:pl2")
         );
         assert_eq!(app.page(), &Page::Playlist("pl2".into()));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn double_clicking_a_library_grid_card_only_navigates() {
         let (ctx, mut app) = accessible_app("library-grid-double-click");
-        app.settings.sidebar_grid = true;
+        app.engine.settings.sidebar_grid = true;
         app.open(Page::Search);
         let view = crate::ui::sidebar::show;
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         let card = sidebar_text(&painted, "Sunday morning").center();
-        app.actions.clear();
+        app.engine.actions.clear();
 
         let [first, second] = double_click(card);
         view_frame(&ctx, &mut app, first, view);
@@ -2775,11 +2774,11 @@ mod tests {
 
         assert!(played_contexts(&app).is_empty());
         assert!(
-            app.actions
+            app.engine.actions
                 .iter()
                 .any(|action| matches!(action, Action::Open(Page::Playlist(id)) if id == "pl2"))
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -2792,11 +2791,11 @@ mod tests {
         ] {
             let (ctx, mut app) = accessible_app(&format!("library-sort-paging-{shelf:?}"));
             let view = crate::ui::sidebar::show;
-            app.settings.library_sort.insert(shelf, LibrarySort::Name);
-            app.library.albums.next_offset = Some(50);
-            app.library.artists.complete = false;
-            app.library.artists.after = Some("next".into());
-            app.library.shows.next_offset = Some(50);
+            app.engine.settings.library_sort.insert(shelf, LibrarySort::Name);
+            app.engine.library.albums.next_offset = Some(50);
+            app.engine.library.artists.complete = false;
+            app.engine.library.artists.after = Some("next".into());
+            app.engine.library.shows.next_offset = Some(50);
             view_frame(&ctx, &mut app, vec![], view);
             let painted = view_frame(&ctx, &mut app, vec![], view);
             let position = painted
@@ -2811,27 +2810,27 @@ mod tests {
                 pointer_click(position, egui::PointerButton::Primary),
                 view,
             );
-            app.actions.clear();
+            app.engine.actions.clear();
             view_frame(&ctx, &mut app, vec![], view);
             assert!(
-                app.actions
+                app.engine.actions
                     .iter()
                     .any(|action| matches!(action, Action::LoadMore(found) if *found == page))
             );
-            app.actions.clear();
-            app.library.albums.error = Some("Try again later".into());
-            app.library.artists.error = Some("Try again later".into());
-            app.library.shows.error = Some("Try again later".into());
+            app.engine.actions.clear();
+            app.engine.library.albums.error = Some("Try again later".into());
+            app.engine.library.artists.error = Some("Try again later".into());
+            app.engine.library.shows.error = Some("Try again later".into());
             for _ in 0..3 {
                 view_frame(&ctx, &mut app, vec![], view);
                 assert!(
-                    !app.actions
+                    !app.engine.actions
                         .iter()
                         .any(|action| matches!(action, Action::LoadMore(found) if *found == page)),
                     "failed pages must not retry every frame"
                 );
             }
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -2841,7 +2840,7 @@ mod tests {
 
         for setup in [false, true] {
             let (ctx, mut app) = accessible_app(&format!("personal-app-intro-{setup}"));
-            app.dialog = Some(Dialog::PersonalAppIntro);
+            app.engine.dialog = Some(Dialog::PersonalAppIntro);
             accessible_frame(&ctx, &mut app, vec![]);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let button = accessible_node(
@@ -2858,8 +2857,8 @@ mod tests {
                 &mut app,
                 vec![accessible_action(button, AccessibleAction::Click, None)],
             );
-            assert!(app.dialog.is_none());
-            assert!(app.settings.personal_app_intro_seen);
+            assert!(app.engine.dialog.is_none());
+            assert!(app.engine.settings.personal_app_intro_seen);
             if setup {
                 assert_eq!(app.page(), &Page::Settings);
                 accessible_frame(&ctx, &mut app, vec![]);
@@ -2867,19 +2866,19 @@ mod tests {
                     ctx.memory(|memory| memory.has_focus(egui::Id::new("personal-web-client-id")))
                 );
             }
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
         let (ctx, mut app) = accessible_app("personal-app-intro-escape");
-        app.dialog = Some(Dialog::PersonalAppIntro);
+        app.engine.dialog = Some(Dialog::PersonalAppIntro);
         accessible_frame(&ctx, &mut app, vec![]);
         accessible_frame(
             &ctx,
             &mut app,
             vec![keyboard(egui::Key::Escape, egui::Modifiers::NONE)],
         );
-        assert!(app.dialog.is_none());
-        assert!(app.settings.personal_app_intro_seen);
-        app.backend.shutdown();
+        assert!(app.engine.dialog.is_none());
+        assert!(app.engine.settings.personal_app_intro_seen);
+        app.engine.backend.shutdown();
     }
 
     fn settings_filter(ctx: &egui::Context) -> String {
@@ -2904,7 +2903,7 @@ mod tests {
         };
         app.update_support = Some(Ok(installation.clone()));
         assert!(!app.show_update);
-        app.actions.push(Action::ShowUpdate);
+        app.engine.actions.push(Action::ShowUpdate);
         accessible_frame(&ctx, &mut app, vec![]);
         // The window's first frame only measures it, and egui keeps
         // widgets it has not shown out of the screen-reader tree.
@@ -2937,7 +2936,7 @@ mod tests {
         accessible_frame(&ctx, &mut app, vec![]);
         assert!(!app.show_update);
         assert!(matches!(app.update_download, DownloadState::Ready(_)));
-        app.actions.push(Action::ShowUpdate);
+        app.engine.actions.push(Action::ShowUpdate);
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let restart = accessible_node(&tree, "Restart to update", Role::Button);
@@ -2947,7 +2946,7 @@ mod tests {
             vec![accessible_action(restart, AccessibleAction::Click, None)],
         );
         assert!(matches!(app.update_download, DownloadState::Installing));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -2956,8 +2955,8 @@ mod tests {
         let (ctx, mut app) = accessible_app("search-history");
         app.open(Page::Search);
         // Recent searches stand in for results only while nothing is searched
-        app.search.query.clear();
-        app.search.committed.clear();
+        app.engine.search.query.clear();
+        app.engine.search.committed.clear();
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let forget = accessible_node(&tree, "Remove ambient", Role::Button);
@@ -2966,12 +2965,12 @@ mod tests {
             &mut app,
             vec![accessible_action(forget, AccessibleAction::Click, None)],
         );
-        assert_eq!(app.settings.search_history, ["Khruangbin", "Rework"]);
+        assert_eq!(app.engine.settings.search_history, ["Khruangbin", "Rework"]);
         assert!(
-            app.search.committed.is_empty(),
+            app.engine.search.committed.is_empty(),
             "the cross must forget a query without running it"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// #596: clearing the global search from another page empties the field
@@ -2983,7 +2982,7 @@ mod tests {
         app.open(Page::Home);
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
-        assert!(!app.search.query.is_empty());
+        assert!(!app.engine.search.query.is_empty());
         let clear = tree
             .nodes
             .iter()
@@ -3002,7 +3001,7 @@ mod tests {
         for _ in 0..3 {
             accessible_frame(&ctx, &mut app, vec![]);
         }
-        assert!(app.search.query.is_empty());
+        assert!(app.engine.search.query.is_empty());
         assert!(
             matches!(app.page(), Page::Home),
             "clearing must not open the search page"
@@ -3014,9 +3013,9 @@ mod tests {
         // Typing a new query still goes to the search page.
         accessible_frame(&ctx, &mut app, vec![egui::Event::Text("Rework".into())]);
         accessible_frame(&ctx, &mut app, vec![]);
-        assert_eq!(app.search.query, "Rework");
+        assert_eq!(app.engine.search.query, "Rework");
         assert!(matches!(app.page(), Page::Search));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -3072,7 +3071,7 @@ mod tests {
             })
             .expect("Clear beside Search settings")
             .0;
-        let global_search = app.search.query.clone();
+        let global_search = app.engine.search.query.clone();
         let tree = accessible_frame(
             &ctx,
             &mut app,
@@ -3080,7 +3079,7 @@ mod tests {
         );
         assert!(settings_filter(&ctx).is_empty());
         assert_eq!(
-            app.search.query, global_search,
+            app.engine.search.query, global_search,
             "global search stays intact"
         );
         accessible_node(&tree, "Compact track list", Role::CheckBox);
@@ -3113,7 +3112,7 @@ mod tests {
                 "{label} is hidden when nothing matches"
             );
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -3137,7 +3136,7 @@ mod tests {
         accessible_frame(&ctx, &mut app, vec![]);
         // ...and enter Personal App setup, which must reveal and focus
         // the Client ID field instead of landing on a filtered-out row.
-        app.dialog = Some(Dialog::PersonalAppIntro);
+        app.engine.dialog = Some(Dialog::PersonalAppIntro);
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let setup = accessible_node(&tree, "Set up personal app", Role::Button);
@@ -3156,7 +3155,7 @@ mod tests {
             ctx.memory(|memory| memory.has_focus(egui::Id::new("personal-web-client-id"))),
             "the Client ID field takes focus once its row is visible"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     fn settings_text(ctx: &egui::Context, app: &mut App, query: &str) -> Vec<String> {
@@ -3188,7 +3187,7 @@ mod tests {
             .find(|(text, _)| text == "Carmine Paolino")
             .map(|(_, rect)| rect.center())
             .expect("the author's name");
-        app.actions.clear();
+        app.engine.actions.clear();
         view_frame(
             &ctx,
             &mut app,
@@ -3210,14 +3209,14 @@ mod tests {
             crate::ui::settings::show,
         );
         assert!(
-            app.actions.iter().any(|action| matches!(
+            app.engine.actions.iter().any(|action| matches!(
                 action,
                 Action::OpenUrl(url) if url == crate::ui::widgets::AUTHOR_URL
             )),
             "{:?}",
-            app.actions
+            app.engine.actions
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -3251,11 +3250,11 @@ mod tests {
                 cfg!(target_os = "linux")
             );
         }
-        app.local_playback =
+        app.engine.local_playback =
             crate::backend::LocalPlayback::Failed("Test connection failure".into());
         let text = settings_text(&ctx, &mut app, "connection failure");
         assert!(text.iter().any(|text| text == "Status: Unavailable"));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -3274,27 +3273,27 @@ mod tests {
         assert!(text.iter().any(|text| text == "Winamp skins"));
         assert!(text.iter().any(|text| text == "Show in taskbar"));
 
-        app.settings.web_client_id = None;
-        app.web_app = None;
+        app.engine.settings.web_client_id = None;
+        app.engine.web_app = None;
         let text = settings_text(&ctx, &mut app, "Personal app ready");
         assert!(!text.iter().any(|text| text == "Account"));
         assert!(text.iter().any(|text| text.starts_with("No settings for")));
-        app.settings.web_client_id = Some("test-client".into());
-        app.web_app = Some("test-client".into());
+        app.engine.settings.web_client_id = Some("test-client".into());
+        app.engine.web_app = Some("test-client".into());
         let text = settings_text(&ctx, &mut app, "Personal app ready");
         assert!(text.iter().any(|text| text == "Personal app ready"));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn create_an_app_row_hides_once_the_personal_app_is_ready() {
         let (ctx, mut app) = accessible_app("settings-create-app");
-        app.settings.web_client_id = None;
-        app.web_app = None;
+        app.engine.settings.web_client_id = None;
+        app.engine.web_app = None;
         let text = settings_text(&ctx, &mut app, "Account");
         assert!(text.iter().any(|text| text == "Create an app"));
 
-        app.settings.web_client_id = Some("test-client".into());
+        app.engine.settings.web_client_id = Some("test-client".into());
         let text = settings_text(&ctx, &mut app, "Account");
         assert!(text.iter().any(|text| text == "Create an app"));
         assert!(
@@ -3302,12 +3301,12 @@ mod tests {
                 .any(|text| text == "Authorize your personal app")
         );
 
-        app.web_app = Some("test-client".into());
+        app.engine.web_app = Some("test-client".into());
         let text = settings_text(&ctx, &mut app, "Account");
         assert!(text.iter().any(|text| text == "Personal app ready"));
         assert!(!text.iter().any(|text| text == "Create an app"));
         assert!(!text.iter().any(|text| text == "Setup guide"));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -3328,7 +3327,7 @@ mod tests {
         );
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         accessible_node(&tree, "Apply and restart playback", Role::Button);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -3429,11 +3428,11 @@ mod tests {
         use crate::ui::widgets::{TrackRow, track_row};
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("rows");
-        let item = app.queue.get().unwrap().queue[0].clone();
+        let item = app.engine.queue.get().unwrap().queue[0].clone();
         let context = crate::model::RowContext::Uris(Arc::from(vec![item.uri().to_string(); 2]));
         let label = format!("Play {}, {}", item.name(), item.subtitle());
         let mut render = |first, events| {
-            app.actions.clear();
+            app.engine.actions.clear();
             let mut output = ctx.run_ui(
                 egui::RawInput {
                     events,
@@ -3467,7 +3466,7 @@ mod tests {
             output.textures_delta.clear();
             (
                 output.platform_output.accesskit_update.unwrap(),
-                app.actions.clone(),
+                app.engine.actions.clone(),
             )
         };
         let (tree, _) = render(0, vec![]);
@@ -3518,7 +3517,7 @@ mod tests {
                 .any(|(_, node)| node.label() == Some("Add to queue")),
             "the keyboard opens the song menu"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -3526,7 +3525,7 @@ mod tests {
         use crate::ui::widgets::{TrackRow, track_row, virtual_rows};
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("scroll");
-        let item = app.queue.get().unwrap().queue[0].clone();
+        let item = app.engine.queue.get().unwrap().queue[0].clone();
         let context = crate::model::RowContext::Uris(Arc::from(vec![item.uri().to_string(); 20]));
         let label = format!("Play {}, {}", item.name(), item.subtitle());
         let mut reached_last = false;
@@ -3587,7 +3586,7 @@ mod tests {
             reached_last,
             "Tab must scroll through the virtual list instead of trapping focus in its first visible rows"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -3642,7 +3641,7 @@ mod tests {
             reached_last,
             "Tab must scroll through the virtual card grid instead of trapping focus in its first visible row"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -3651,14 +3650,14 @@ mod tests {
         use crate::ui::widgets::{TrackRow, track_row};
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("queued-copy");
-        let item = app.queue.get().unwrap().currently_playing.clone().unwrap();
+        let item = app.engine.queue.get().unwrap().currently_playing.clone().unwrap();
         let contexts = [
             RowContext::Uris(Arc::from([item.uri().to_string()])),
             RowContext::Queue,
         ];
         let label = format!("Play {}, {}", item.name(), item.subtitle());
         let mut render = |events| {
-            app.actions.clear();
+            app.engine.actions.clear();
             let mut output = ctx.run_ui(
                 egui::RawInput {
                     events,
@@ -3692,7 +3691,7 @@ mod tests {
             output.textures_delta.clear();
             (
                 output.platform_output.accesskit_update.unwrap(),
-                app.actions.clone(),
+                app.engine.actions.clone(),
             )
         };
         let (tree, _) = render(vec![]);
@@ -3734,7 +3733,7 @@ mod tests {
                 ..
             }]
         ));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -3768,13 +3767,13 @@ mod tests {
                 None,
             )],
         );
-        assert!(!app.settings.winamp_show_taskbar);
-        assert!(!app.settings.winamp_window && !app.switch_intent);
-        let path = app.dirs.config.join("winamp-taskbar-choice.json");
-        app.settings.save(&path);
-        app.settings = Settings::load(&path);
-        assert!(!app.settings.winamp_show_taskbar);
-        app.backend.shutdown();
+        assert!(!app.engine.settings.winamp_show_taskbar);
+        assert!(!app.engine.settings.winamp_window && !app.switch_intent);
+        let path = app.engine.dirs.config.join("winamp-taskbar-choice.json");
+        app.engine.settings.save(&path);
+        app.engine.settings = Settings::load(&path);
+        assert!(!app.engine.settings.winamp_show_taskbar);
+        app.engine.backend.shutdown();
     }
 
     /// Linux offers middle-click autoscroll as a switch that starts off and
@@ -3791,7 +3790,7 @@ mod tests {
             cfg!(target_os = "linux")
         );
         if !cfg!(target_os = "linux") {
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
             return;
         }
         app.open(Page::Settings);
@@ -3805,7 +3804,7 @@ mod tests {
                 .and_then(|(_, node)| node.toggled())
         };
         assert_eq!(toggled(&tree), Some(Toggled::False));
-        assert!(!app.settings.middle_click_autoscroll);
+        assert!(!app.engine.settings.middle_click_autoscroll);
         accessible_frame(
             &ctx,
             &mut app,
@@ -3815,12 +3814,12 @@ mod tests {
                 None,
             )],
         );
-        assert!(app.settings.middle_click_autoscroll);
-        let path = app.dirs.config.join("autoscroll-choice.json");
-        app.settings.save(&path);
-        app.settings = Settings::load(&path);
-        assert!(app.settings.middle_click_autoscroll);
-        app.backend.shutdown();
+        assert!(app.engine.settings.middle_click_autoscroll);
+        let path = app.engine.dirs.config.join("autoscroll-choice.json");
+        app.engine.settings.save(&path);
+        app.engine.settings = Settings::load(&path);
+        assert!(app.engine.settings.middle_click_autoscroll);
+        app.engine.backend.shutdown();
     }
 
     /// X11 can hide the mini player's taskbar entry, so it gets the same row
@@ -3839,7 +3838,7 @@ mod tests {
             text.iter().any(|text| text == "Winamp skins"),
             cfg!(windows)
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -3847,7 +3846,7 @@ mod tests {
         use egui::accesskit::{Role, Toggled};
         let (ctx, mut app) = accessible_app("wayland-on-top");
         app.window_level_supported = false;
-        app.settings.winamp_on_top = true;
+        app.engine.settings.winamp_on_top = true;
         app.open(Page::Settings);
         accessible_frame(&ctx, &mut app, vec![]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
@@ -3861,10 +3860,10 @@ mod tests {
         assert!(node.is_disabled());
         assert_eq!(node.toggled(), Some(Toggled::False));
         assert!(
-            app.settings.winamp_on_top,
+            app.engine.settings.winamp_on_top,
             "the saved preference is preserved"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     fn frame(ctx: &egui::Context, app: &mut App) {
@@ -3878,11 +3877,11 @@ mod tests {
             crate::theme::Palette::light(),
         ] {
             let (ctx, mut app) = accessible_app("sonos-device-picker");
-            app.backend.set_offline(true);
+            app.engine.backend.set_offline(true);
             app.palette = palette;
-            app.local_ready = true;
+            app.engine.local_ready = true;
             sonos_devices(&mut app, false);
-            app.devices.clear();
+            app.engine.devices.clear();
             let draw = |app: &mut App, events: Vec<egui::Event>| {
                 let mut output = ctx.run_ui(
                     egui::RawInput {
@@ -3906,31 +3905,31 @@ mod tests {
                 1
             );
             let office = labels.iter().find(|(text, _)| text == "Office").unwrap().1;
-            app.actions.clear();
+            app.engine.actions.clear();
             draw(
                 &mut app,
                 pointer_click(office.center(), egui::PointerButton::Primary),
             );
-            assert!(app.actions.iter().any(
+            assert!(app.engine.actions.iter().any(
                 |action| matches!(action, crate::model::Action::Transfer(id) if id == "office")
             ));
             assert!(
-                !app.actions
+                !app.engine.actions
                     .iter()
                     .any(|action| matches!(action, crate::model::Action::ActivateReceiver(_)))
             );
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
     #[test]
     fn a_long_device_list_stays_in_the_window_and_scrolls_to_the_last_speaker() {
         let (ctx, mut app) = accessible_app("long-device-list");
-        app.backend.set_offline(true);
-        app.show_devices = true;
-        app.local_ready = true;
-        app.receivers.clear();
-        app.devices = (0..40)
+        app.engine.backend.set_offline(true);
+        app.engine.show_devices = true;
+        app.engine.local_ready = true;
+        app.engine.receivers.clear();
+        app.engine.devices = (0..40)
             .map(|index| Device {
                 id: Some(format!("speaker-{index}")),
                 name: format!("Speaker {index:02}"),
@@ -3958,10 +3957,10 @@ mod tests {
             output
         };
         // Open with only this computer, then let device discovery fill the list.
-        let discovered = std::mem::take(&mut app.devices);
+        let discovered = std::mem::take(&mut app.engine.devices);
         draw(&mut app, vec![]);
         draw(&mut app, vec![]);
-        app.devices = discovered;
+        app.engine.devices = discovered;
         draw(&mut app, vec![]);
         let output = draw(&mut app, vec![]);
         let visible_speakers = output
@@ -4007,12 +4006,12 @@ mod tests {
             }
         }
         let last = found.expect("scrolling reaches the last speaker");
-        app.actions.clear();
+        app.engine.actions.clear();
         draw(&mut app, pointer_click(last, egui::PointerButton::Primary));
-        assert!(app.actions.iter().any(
+        assert!(app.engine.actions.iter().any(
             |action| matches!(action, crate::model::Action::Transfer(id) if id == "speaker-39")
         ));
-        app.devices.clear();
+        app.engine.devices.clear();
         draw(&mut app, vec![]);
         draw(&mut app, vec![]);
         let popup = egui::AreaState::load(&ctx, egui::Id::new("devices-popup"))
@@ -4022,7 +4021,7 @@ mod tests {
             popup.height() < 160.0,
             "a list with only this computer should shrink to fit: {popup:?}"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -4030,7 +4029,7 @@ mod tests {
         use egui::accesskit::Role;
         for count in [1, 2] {
             let (ctx, mut app) = accessible_app(&format!("playlist-filter-{count}"));
-            app.backend.set_offline(true);
+            app.engine.backend.set_offline(true);
             let owner = app.user_id().unwrap().to_string();
             let make = |id: &str, name: &str, owned: bool, collaborative| Playlist {
                 id: id.into(),
@@ -4047,7 +4046,7 @@ mod tests {
                 collaborative,
                 ..Default::default()
             };
-            app.library.playlists = Loadable::Loaded(vec![
+            app.engine.library.playlists = Loadable::Loaded(vec![
                 make("readonly", "Night locked", false, false),
                 make("owned", "Night drive", true, false),
                 make("shared", "Night together", false, true),
@@ -4112,7 +4111,7 @@ mod tests {
                 reached,
                 "Tab must reach the filtered playlist from the search field"
             );
-            app.actions.clear();
+            app.engine.actions.clear();
             draw(
                 &mut app,
                 &mut query,
@@ -4120,14 +4119,14 @@ mod tests {
                 vec![keyboard(egui::Key::Enter, egui::Modifiers::NONE)],
             );
             assert!(
-                matches!(app.actions.as_slice(), [crate::model::Action::AddToPlaylist { playlist_id, items: selected, .. }] if playlist_id == "owned" && selected == &items)
+                matches!(app.engine.actions.as_slice(), [crate::model::Action::AddToPlaylist { playlist_id, items: selected, .. }] if playlist_id == "owned" && selected == &items)
             );
             query = "no such playlist".into();
             let output = draw(&mut app, &mut query, false, vec![]);
             let tree = output.platform_output.accesskit_update.unwrap();
             accessible_node(&tree, "New playlist", Role::Button);
             assert!(output.shapes.iter().any(|shape| matches!(&shape.shape, egui::epaint::Shape::Text(text) if text.galley.job.text == "No matching playlists")));
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -4136,7 +4135,7 @@ mod tests {
     #[test]
     fn typing_in_the_playlist_filter_chooses_the_first_match() {
         let (ctx, mut app) = accessible_app("playlist-filter-choice");
-        app.backend.set_offline(true);
+        app.engine.backend.set_offline(true);
         let owner = app.user_id().unwrap().to_string();
         let make = |id: &str, name: &str| Playlist {
             id: id.into(),
@@ -4148,7 +4147,7 @@ mod tests {
             },
             ..Default::default()
         };
-        app.library.playlists = Loadable::Loaded(vec![
+        app.engine.library.playlists = Loadable::Loaded(vec![
             make("drive", "Night drive"),
             make("day", "Daylight"),
             make("walk", "Night walk"),
@@ -4174,7 +4173,7 @@ mod tests {
             );
             output.textures_delta.clear();
         };
-        let added = |app: &App| match app.actions.as_slice() {
+        let added = |app: &App| match app.engine.actions.as_slice() {
             [crate::model::Action::AddToPlaylist { playlist_id, .. }] => Some(playlist_id.clone()),
             [] => None,
             other => panic!("expected one addition, got {other:?}"),
@@ -4198,7 +4197,7 @@ mod tests {
         assert_eq!(added(&app).as_deref(), Some("drive"));
 
         // #when Down moves the choice twice and Up once, past both ends
-        app.actions.clear();
+        app.engine.actions.clear();
         let mut query = String::new();
         draw(&mut app, &mut query, true, vec![]);
         draw(
@@ -4219,7 +4218,7 @@ mod tests {
         assert_eq!(added(&app).as_deref(), Some("walk"));
 
         // #when the filter changes after a choice was moved
-        app.actions.clear();
+        app.engine.actions.clear();
         let mut query = String::new();
         draw(&mut app, &mut query, true, vec![]);
         draw(
@@ -4241,21 +4240,21 @@ mod tests {
         assert_eq!(added(&app).as_deref(), Some("owls"));
 
         // #when Enter is pressed with nothing typed
-        app.actions.clear();
+        app.engine.actions.clear();
         let mut query = String::new();
         draw(&mut app, &mut query, true, vec![]);
         draw(&mut app, &mut query, false, key(egui::Key::Enter));
 
         // #then nothing is chosen for the listener
         assert_eq!(added(&app), None);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn playlist_submenu_keeps_typing_and_resets_after_the_parent_closes() {
         use egui::accesskit::{Action, Role};
         let (ctx, mut app) = accessible_app("playlist-submenu");
-        app.backend.set_offline(true);
+        app.engine.backend.set_offline(true);
         let songs = vec![PlayableItem::Track(track(0))];
         let draw = |app: &mut App, show_parent: bool, events| {
             let mut output = ctx.run_ui(
@@ -4322,14 +4321,14 @@ mod tests {
                 .iter()
                 .any(|(_, node)| node.value() == Some("night"))
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn playlist_submenu_stays_open_for_a_click_in_its_filter_and_grows_back_when_cleared() {
         use egui::accesskit::{Action, Role};
         let (ctx, mut app) = accessible_app("playlist-submenu-click");
-        app.backend.set_offline(true);
+        app.engine.backend.set_offline(true);
         let songs = vec![PlayableItem::Track(track(0))];
         let draw = |app: &mut App, events| {
             let mut output = ctx.run_ui(
@@ -4393,17 +4392,17 @@ mod tests {
 
         // #then the submenu grows back to its full height
         assert_eq!(height(), full);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn an_empty_search_half_is_not_reported_as_no_results_while_the_other_waits_or_fails() {
         let (ctx, mut app) = accessible_app("partial-search-status");
-        app.search.committed = "new query".into();
-        app.search.results = Loadable::Loaded(SearchResults::default());
+        app.engine.search.committed = "new query".into();
+        app.engine.search.results = Loadable::Loaded(SearchResults::default());
         for pending in [true, false] {
-            app.search.catalogue_pending = pending;
-            app.search.error = (!pending).then(|| "Search: network error".into());
+            app.engine.search.catalogue_pending = pending;
+            app.engine.search.error = (!pending).then(|| "Search: network error".into());
             search_frame(&ctx, &mut app, vec![]);
             let text = search_frame(&ctx, &mut app, vec![]);
             assert!(!text.iter().any(|(label, _)| label.contains("No results")));
@@ -4414,7 +4413,7 @@ mod tests {
                 );
             }
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     fn search_frame(
@@ -4442,7 +4441,7 @@ mod tests {
                 uri: Some("spotify:artist:guest".into()),
             },
         ];
-        app.local = LocalState {
+        app.engine.local = LocalState {
             playback: Playback::Playing,
             track: Some(LocalTrack {
                 uri: "spotify:track:uncached".into(),
@@ -4453,12 +4452,12 @@ mod tests {
             }),
             ..LocalState::default()
         };
-        app.track_cache.clear();
+        app.engine.track_cache.clear();
         let view = crate::ui::player_bar::show;
         for cached in [false, true] {
             if cached {
                 // A partial response must not turn working links back into text.
-                app.track_cache.insert("uncached".into(), Track::default());
+                app.engine.track_cache.insert("uncached".into(), Track::default());
             }
             view_frame(&ctx, &mut app, vec![], view);
             let text = view_frame(&ctx, &mut app, vec![], view);
@@ -4469,7 +4468,7 @@ mod tests {
                     .unwrap()
                     .1
                     .center();
-                app.actions.clear();
+                app.engine.actions.clear();
                 view_frame(
                     &ctx,
                     &mut app,
@@ -4477,7 +4476,7 @@ mod tests {
                     view,
                 );
                 assert!(
-                    matches!(app.actions.as_slice(), [Action::Open(Page::Artist(id))] if Some(id) == artist.id.as_ref())
+                    matches!(app.engine.actions.as_slice(), [Action::Open(Page::Artist(id))] if Some(id) == artist.id.as_ref())
                 );
             }
             view_frame(
@@ -4488,7 +4487,7 @@ mod tests {
             );
             view_frame(&ctx, &mut app, vec![egui::Event::WindowFocused(true)], view);
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -4559,7 +4558,7 @@ mod tests {
             }
             assert_eq!(text.iter().filter(|(label, _)| label == "•").count(), 4);
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     fn view_frame(
@@ -4621,7 +4620,7 @@ mod tests {
                 "{artist} is not drawn"
             );
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Emoji titles keep their own text: the colour pictures are painted
@@ -4643,7 +4642,7 @@ mod tests {
                 "{title} is not drawn"
             );
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Spotify's own mixes carry only the epoch it stamps on dates it never
@@ -4666,11 +4665,11 @@ mod tests {
             apply_flags(&mut app, Some("playlist:pl0"), show);
             view_frame(&ctx, &mut app, vec![], playlist);
             let painted = view_frame(&ctx, &mut app, vec![], playlist);
-            let first_album = match &app.playlist_pages["pl0"].items.items[0].item {
+            let first_album = match &app.engine.playlist_pages["pl0"].items.items[0].item {
                 Some(PlayableItem::Track(track)) => track.album.clone().expect("an album").name,
                 _ => panic!("the demo playlist starts with a song"),
             };
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
             (painted, first_album)
         };
 
@@ -4749,23 +4748,23 @@ mod tests {
         assert!(wants_frames(&output));
 
         // #when the waveform is chosen
-        app.settings.player_bar_vis = PlayerBarVis::Waveform;
+        app.engine.settings.player_bar_vis = PlayerBarVis::Waveform;
         let output = draw(&mut app);
         assert!(waveform(&output), "the waveform is drawn");
         assert!(!spectrum(&output));
 
         // #when it is turned off
-        app.settings.player_bar_vis = PlayerBarVis::Off;
+        app.engine.settings.player_bar_vis = PlayerBarVis::Off;
         let output = draw(&mut app);
         assert!(!drawn(&output));
         assert!(!wants_frames(&output), "nothing to animate");
 
         // #when the song is paused
-        app.settings.player_bar_vis = PlayerBarVis::Waveform;
-        app.local.playback = crate::player::Playback::Paused;
+        app.engine.settings.player_bar_vis = PlayerBarVis::Waveform;
+        app.engine.local.playback = crate::player::Playback::Paused;
         let output = draw(&mut app);
         assert!(!waveform(&output), "a paused song is still");
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// A click on the player bar's empty space moves the visualizer to its
@@ -4793,33 +4792,33 @@ mod tests {
         let empty = egui::pos2(6.0, 796.0);
         draw(&mut app, pointer_click(empty, egui::PointerButton::Primary));
         assert!(
-            app.actions
+            app.engine.actions
                 .iter()
                 .any(|action| matches!(action, Action::CyclePlayerBarVis))
         );
 
-        app.actions.clear();
-        app.settings.player_bar_vis_click = false;
+        app.engine.actions.clear();
+        app.engine.settings.player_bar_vis_click = false;
         draw(&mut app, pointer_click(empty, egui::PointerButton::Primary));
         assert!(
-            !app.actions
+            !app.engine.actions
                 .iter()
                 .any(|action| matches!(action, Action::CyclePlayerBarVis))
         );
-        app.settings.player_bar_vis_click = true;
+        app.engine.settings.player_bar_vis_click = true;
 
         // The play button, in the middle of the bar, is still the play button.
-        app.actions.clear();
+        app.engine.actions.clear();
         let play = egui::pos2(640.0, 800.0 - crate::theme::PLAYER_BAR_HEIGHT / 2.0 - 10.0);
         draw(&mut app, pointer_click(play, egui::PointerButton::Primary));
         assert!(
-            !app.actions
+            !app.engine.actions
                 .iter()
                 .any(|action| matches!(action, Action::CyclePlayerBarVis)),
             "{:?}",
-            app.actions
+            app.engine.actions
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// The empty space's tooltip belongs to the empty space: once shown, it
@@ -4879,7 +4878,7 @@ mod tests {
         // #then the tooltip is gone
         let shown = draw(&mut app, play);
         assert!(!shown.iter().any(|text| text == tip), "{shown:?}");
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -4898,15 +4897,15 @@ mod tests {
         }
 
         let (ctx, mut app) = accessible_app("loading-collections");
-        app.playlist_pages.remove("pl1");
-        app.album_pages.remove("alb0");
-        app.artist_pages.remove("art0");
-        app.show_pages.remove("sh0");
-        app.library.playlists = Loadable::Loaded(Vec::new());
-        app.library.albums.items.clear();
-        app.library.artists.items.clear();
-        app.library.shows.items.clear();
-        app.search.results.get_mut().unwrap().albums = None;
+        app.engine.playlist_pages.remove("pl1");
+        app.engine.album_pages.remove("alb0");
+        app.engine.artist_pages.remove("art0");
+        app.engine.show_pages.remove("sh0");
+        app.engine.library.playlists = Loadable::Loaded(Vec::new());
+        app.engine.library.albums.items.clear();
+        app.engine.library.artists.items.clear();
+        app.engine.library.shows.items.clear();
+        app.engine.search.results.get_mut().unwrap().albums = None;
         for (title, detail, view) in [
             (
                 "Late night focus",
@@ -4927,7 +4926,7 @@ mod tests {
                 .1;
             assert!(loading.top() > title.bottom());
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -4946,13 +4945,13 @@ mod tests {
         }
 
         let (ctx, mut app) = accessible_app("failed-collections");
-        app.playlist_pages.get_mut("pl1").unwrap().playlist =
+        app.engine.playlist_pages.get_mut("pl1").unwrap().playlist =
             Loadable::Failed("Connection interrupted".into());
-        app.album_pages.get_mut("alb0").unwrap().album =
+        app.engine.album_pages.get_mut("alb0").unwrap().album =
             Loadable::Failed("Connection interrupted".into());
-        app.artist_pages.get_mut("art0").unwrap().artist =
+        app.engine.artist_pages.get_mut("art0").unwrap().artist =
             Loadable::Failed("Connection interrupted".into());
-        app.show_pages.get_mut("sh0").unwrap().show =
+        app.engine.show_pages.get_mut("sh0").unwrap().show =
             Loadable::Failed("Connection interrupted".into());
 
         for (title, detail, view) in [
@@ -4976,7 +4975,7 @@ mod tests {
             let retry = painted.iter().find(|(text, _)| text == "Retry").unwrap().1;
             assert!(retry.top() > title.bottom());
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     fn pointer_click(pos: egui::Pos2, button: egui::PointerButton) -> Vec<egui::Event> {
@@ -5029,7 +5028,7 @@ mod tests {
         ctx.data_mut(|data| {
             data.insert_temp(egui::Id::new("settings-filter"), "Language".to_string())
         });
-        assert_eq!(app.settings.language, LanguageChoice::System);
+        assert_eq!(app.engine.settings.language, LanguageChoice::System);
         for _ in 0..3 {
             view_frame(&ctx, &mut app, vec![], App::frame_ui);
         }
@@ -5071,7 +5070,7 @@ mod tests {
             App::frame_ui,
         );
         assert_eq!(
-            app.settings.language,
+            app.engine.settings.language,
             LanguageChoice::Locale(Locale::Spanish)
         );
         assert_eq!(app.locale, Locale::Spanish);
@@ -5090,11 +5089,11 @@ mod tests {
         assert_eq!(node.value(), Some("Español"));
 
         app.apply(Action::SetLanguage(LanguageChoice::System), &ctx);
-        assert_eq!(app.settings.language, LanguageChoice::System);
+        assert_eq!(app.engine.settings.language, LanguageChoice::System);
         assert_eq!(app.locale, Locale::English, "tests read an English system");
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         accessible_node(&tree, "Home", Role::Button);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Beside the themes folder, a button opens the guide to writing a
@@ -5114,16 +5113,16 @@ mod tests {
         let guide = sidebar_text(&painted, "How to make a theme").center();
         let folder = sidebar_text(&painted, "Open themes folder").center();
         assert!((guide.y - folder.y).abs() < 1.0, "side by side");
-        app.actions.clear();
+        app.engine.actions.clear();
         view_frame(
             &ctx,
             &mut app,
             pointer_click(guide, egui::PointerButton::Primary),
             crate::ui::settings::show,
         );
-        assert!(app.actions.iter().any(|action| matches!(action,
+        assert!(app.engine.actions.iter().any(|action| matches!(action,
             Action::OpenUrl(url) if url == "https://spotifast.rocks/settings-and-files/#custom-themes")));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -5173,11 +5172,11 @@ mod tests {
             pointer_click(custom, egui::PointerButton::Primary),
             App::frame_ui,
         );
-        assert_eq!(app.settings.custom_theme.as_deref(), Some("local.json"));
+        assert_eq!(app.engine.settings.custom_theme.as_deref(), Some("local.json"));
         assert_eq!(app.palette, palette);
         assert_eq!(
             serde_json::from_value::<crate::theme::CustomTheme>(
-                app.settings.custom_theme_cache.clone().unwrap()
+                app.engine.settings.custom_theme_cache.clone().unwrap()
             )
             .unwrap()
             .palette,
@@ -5193,13 +5192,13 @@ mod tests {
             .unwrap()
             .1;
         assert_eq!(node.value(), Some("local"), "read out as shown");
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn themes_folder_button_is_visible_accessible_and_emits_an_action() {
         let (ctx, mut app) = accessible_app("themes-folder-button");
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         ctx.data_mut(|data| {
             data.insert_temp(egui::Id::new("settings-filter"), "Theme".to_string())
         });
@@ -5214,8 +5213,8 @@ mod tests {
             pointer_click(button, egui::PointerButton::Primary),
             crate::ui::settings::show,
         );
-        assert!(matches!(app.actions.as_slice(), [Action::OpenThemesFolder]));
-        app.actions.clear();
+        assert!(matches!(app.engine.actions.as_slice(), [Action::OpenThemesFolder]));
+        app.engine.actions.clear();
         app.open(Page::Settings);
         ctx.data_mut(|data| {
             data.insert_temp(egui::Id::new("settings-filter"), "Theme".to_string())
@@ -5224,7 +5223,7 @@ mod tests {
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         accessible_node(&tree, "Open themes folder", egui::accesskit::Role::Button);
         assert!(
-            !app.dirs.config.join("themes").exists(),
+            !app.engine.dirs.config.join("themes").exists(),
             "drawing cannot open or create folders"
         );
     }
@@ -5247,7 +5246,7 @@ mod tests {
     }
 
     fn played_contexts(app: &App) -> Vec<String> {
-        app.actions
+        app.engine.actions
             .iter()
             .filter_map(|action| match action {
                 Action::PlayContext { uri, .. } => Some(uri.clone()),
@@ -5317,8 +5316,8 @@ mod tests {
                     )
                 }
             };
-            app.search.results = Loadable::Loaded(results);
-            app.saved.clear();
+            app.engine.search.results = Loadable::Loaded(results);
+            app.engine.saved.clear();
             search_frame(&ctx, &mut app, vec![]);
             let text = search_frame(&ctx, &mut app, vec![]);
             let pos = text
@@ -5327,7 +5326,7 @@ mod tests {
                 .expect("top result title")
                 .1
                 .center();
-            app.actions.clear();
+            app.engine.actions.clear();
             search_frame(
                 &ctx,
                 &mut app,
@@ -5335,7 +5334,7 @@ mod tests {
             );
             let text = search_frame(&ctx, &mut app, vec![]);
             assert!(
-                app.actions.is_empty(),
+                app.engine.actions.is_empty(),
                 "right-clicking {kind} must not navigate or play"
             );
             let expected = match kind {
@@ -5374,9 +5373,9 @@ mod tests {
                 pointer_click(copy.1.center(), egui::PointerButton::Primary),
             );
             assert!(
-                matches!(app.actions.as_slice(), [crate::model::Action::CopyLink(link)] if link == &uri)
+                matches!(app.engine.actions.as_slice(), [crate::model::Action::CopyLink(link)] if link == &uri)
             );
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -5391,7 +5390,7 @@ mod tests {
                 name: "Ween".into(),
                 uri: artist_id.map(|id| format!("spotify:artist:{id}")),
             }];
-            app.search.results = Loadable::Loaded(SearchResults {
+            app.engine.search.results = Loadable::Loaded(SearchResults {
                 tracks: Some(page(vec![item])),
                 ..Default::default()
             });
@@ -5408,7 +5407,7 @@ mod tests {
                 .iter()
                 .find(|(text, rect)| text == "Ween" && rect.left() < songs_left)
                 .expect("top result artist name");
-            app.actions.clear();
+            app.engine.actions.clear();
             search_frame(
                 &ctx,
                 &mut app,
@@ -5419,14 +5418,14 @@ mod tests {
             );
             if artist_id.is_some() {
                 assert!(
-                    matches!(app.actions.as_slice(), [Action::Open(Page::Artist(id))] if id == "ween")
+                    matches!(app.engine.actions.as_slice(), [Action::Open(Page::Artist(id))] if id == "ween")
                 );
             } else {
                 assert!(
-                    matches!(app.actions.as_slice(), [Action::Open(Page::Album(id))] if id == &album_id)
+                    matches!(app.engine.actions.as_slice(), [Action::Open(Page::Album(id))] if id == &album_id)
                 );
             }
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -5457,7 +5456,7 @@ mod tests {
             .iter()
             .find(|(_, rect)| (rect.center().y - pos.y).abs() < 1.0 && rect.center().x < pos.x)
             .map(|(_, rect)| rect.center());
-        app.actions.clear();
+        app.engine.actions.clear();
         view_frame(
             ctx,
             app,
@@ -5470,7 +5469,7 @@ mod tests {
         }
         let text = view_frame(ctx, app, vec![], view);
         assert!(
-            app.actions.is_empty(),
+            app.engine.actions.is_empty(),
             "right-click must not navigate or play"
         );
         for label in labels {
@@ -5489,7 +5488,7 @@ mod tests {
             pointer_click(copy.1.center(), egui::PointerButton::Primary),
             view,
         );
-        assert!(matches!(app.actions.as_slice(), [Action::CopyLink(link)] if link == uri));
+        assert!(matches!(app.engine.actions.as_slice(), [Action::CopyLink(link)] if link == uri));
     }
 
     #[test]
@@ -5541,7 +5540,7 @@ mod tests {
                 }
             }
             check_card_menu(&mut app, &ctx, view, section, &title, &uri, &labels);
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -5577,10 +5576,10 @@ mod tests {
             for selected in [SearchFilter::All, filter] {
                 let (ctx, mut app) =
                     accessible_app(&format!("search-card-{selected:?}-{filter:?}"));
-                app.saved.clear();
-                app.search.filter = selected;
+                app.engine.saved.clear();
+                app.engine.search.filter = selected;
                 // Keep matching artist subtitles in song rows out of the card lookup.
-                if let Loadable::Loaded(results) = &mut app.search.results {
+                if let Loadable::Loaded(results) = &mut app.engine.search.results {
                     results.tracks = None;
                     results.episodes = None;
                 }
@@ -5598,7 +5597,7 @@ mod tests {
                     &uri,
                     &labels,
                 );
-                app.backend.shutdown();
+                app.engine.backend.shutdown();
             }
         }
     }
@@ -5610,7 +5609,7 @@ mod tests {
         for (made_for_you, recommendations) in
             [(true, true), (false, true), (true, false), (false, false)]
         {
-            app.settings.home = serde_json::from_str(&format!(
+            app.engine.settings.home = serde_json::from_str(&format!(
                 r#"{{"made_for_you":{{"visible":{made_for_you}}},"recommendations":{{"visible":{recommendations}}}}}"#
             )).unwrap();
             view_frame(&ctx, &mut app, vec![], view);
@@ -5630,7 +5629,7 @@ mod tests {
                 );
             }
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -5677,7 +5676,7 @@ mod tests {
                 &uri,
                 &labels,
             );
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -5693,7 +5692,7 @@ mod tests {
             .unwrap()
             .1
             .center();
-        app.actions.clear();
+        app.engine.actions.clear();
         view_frame(
             &ctx,
             &mut app,
@@ -5701,7 +5700,7 @@ mod tests {
             view,
         );
         let text = view_frame(&ctx, &mut app, vec![], view);
-        assert!(app.actions.is_empty());
+        assert!(app.engine.actions.is_empty());
         assert!(!text.iter().any(|(text, _)| text == "Copy link"));
         view_frame(
             &ctx,
@@ -5710,10 +5709,10 @@ mod tests {
             view,
         );
         assert!(matches!(
-            app.actions.as_slice(),
+            app.engine.actions.as_slice(),
             [Action::Open(Page::LikedSongs)]
         ));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     fn frame_events(ctx: &egui::Context, app: &mut App, events: Vec<egui::Event>) {
@@ -5769,7 +5768,7 @@ mod tests {
         for _ in 0..2 {
             frame(&ctx, &mut app);
         }
-        app.toasts.clear();
+        app.engine.toasts.clear();
         app.toast("Wish You Were Here added to queue");
         // Two frames: an area sizes itself on its first one.
         let mut first = ctx.run_ui(input.clone(), |ui| app.frame_ui(ui));
@@ -5800,7 +5799,7 @@ mod tests {
             width > 150.0,
             "one word per line again: the toast text is only {width}px wide"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// The shortcuts are longer than a small window is tall, so the
@@ -5830,7 +5829,7 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        app.dialog = Some(Dialog::Shortcuts);
+        app.engine.dialog = Some(Dialog::Shortcuts);
 
         let height = 420.0;
         let input = egui::RawInput {
@@ -5853,7 +5852,7 @@ mod tests {
             "the dialog runs {} pixels past the bottom of a {height}-tall window",
             bottom - height
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Playlist forms stay sized to their content even on a tall window.
@@ -5864,27 +5863,27 @@ mod tests {
                 for edit in [false, true] {
                     for busy in [false, true] {
                         let (ctx, mut app) = accessible_app("compact-playlist-dialog");
-                        app.settings.theme = if light {
+                        app.engine.settings.theme = if light {
                             crate::settings::ThemeChoice::Light
                         } else {
                             crate::settings::ThemeChoice::Dark
                         };
-                        app.actions.push(Action::SettingsChanged);
-                        app.playlist_busy = busy;
+                        app.engine.actions.push(Action::SettingsChanged);
+                        app.engine.playlist_busy = busy;
                         let input = egui::RawInput {
                             screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, size)),
                             ..Default::default()
                         };
                         // The same modal area has already shown a longer dialog.
-                        app.dialog = Some(Dialog::Shortcuts);
+                        app.engine.dialog = Some(Dialog::Shortcuts);
                         for _ in 0..3 {
                             let mut output = ctx.run_ui(input.clone(), |ui| app.frame_ui(ui));
                             output.textures_delta.clear();
                         }
-                        app.dialog = None;
+                        app.engine.dialog = None;
                         let mut output = ctx.run_ui(input.clone(), |ui| app.frame_ui(ui));
                         output.textures_delta.clear();
-                        app.dialog = Some(if edit {
+                        app.engine.dialog = Some(if edit {
                             Dialog::EditPlaylist {
                                 id: "pl1".into(),
                                 name: "Long Way Home".into(),
@@ -5910,7 +5909,7 @@ mod tests {
                             "edit={edit}, busy={busy}, light={light}, size={size:?}: {dialog:?}"
                         );
                         assert!(dialog.top() >= 0.0 && dialog.bottom() <= size.y);
-                        app.backend.shutdown();
+                        app.engine.backend.shutdown();
                     }
                 }
             }
@@ -5944,7 +5943,7 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        app.settings.zoom = 1.0;
+        app.engine.settings.zoom = 1.0;
         app.open(Page::Settings);
 
         let mut placed: Vec<(String, f32, f32)> = Vec::new();
@@ -5993,7 +5992,7 @@ mod tests {
             "zoom control should read minus, percent, plus; got - at {minus}, 100% at {}, + at {plus}",
             percent.1
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -6025,8 +6024,8 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        app.settings.milkdrop_screen_hz = 144;
-        app.settings.milkdrop_fps = 60;
+        app.engine.settings.milkdrop_screen_hz = 144;
+        app.engine.settings.milkdrop_fps = 60;
         // The main window's screen is not MilkDrop's: its dial keeps
         // the rate MilkDrop reported.
         app.screen_hz = 60;
@@ -6074,14 +6073,14 @@ mod tests {
             (0, "Uncapped"),
             (30, "30 fps"),
         ] {
-            app.settings.milkdrop_fps = rate;
+            app.engine.settings.milkdrop_fps = rate;
             let said = drawn(&mut app, &ctx);
             assert!(
                 said.iter().any(|text| text == expected),
                 "the dial on {rate} should read {expected}: {said:?}"
             );
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// The visualizers' frame-rate dial names the rate of the screen showing
@@ -6140,9 +6139,9 @@ mod tests {
             said
         };
 
-        assert_eq!(app.settings.milkdrop_screen_hz, 0, "MilkDrop never opened");
+        assert_eq!(app.engine.settings.milkdrop_screen_hz, 0, "MilkDrop never opened");
         app.screen_hz = 165;
-        app.settings.visualizer_fps = 165;
+        app.engine.settings.visualizer_fps = 165;
         let mut said = Vec::new();
         for _ in 0..3 {
             said = drawn(&mut app, &ctx);
@@ -6153,14 +6152,14 @@ mod tests {
         );
 
         app.screen_hz = 0;
-        app.settings.milkdrop_screen_hz = 144;
-        app.settings.visualizer_fps = 144;
+        app.engine.settings.milkdrop_screen_hz = 144;
+        app.engine.settings.visualizer_fps = 144;
         let said = drawn(&mut app, &ctx);
         assert!(
             said.iter().any(|text| text == "144 fps, your screen"),
             "MilkDrop's screen until the window's has said: {said:?}"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -6191,10 +6190,10 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        app.settings.queue_width = crate::theme::SIDE_PANEL_MIN_WIDTH;
-        app.settings.lyrics_width = crate::theme::SIDE_PANEL_MIN_WIDTH;
-        app.lyrics = Loadable::Loaded(Some(sample_lyrics()));
-        app.lyrics_following = false;
+        app.engine.settings.queue_width = crate::theme::SIDE_PANEL_MIN_WIDTH;
+        app.engine.settings.lyrics_width = crate::theme::SIDE_PANEL_MIN_WIDTH;
+        app.engine.lyrics = Loadable::Loaded(Some(sample_lyrics()));
+        app.engine.lyrics_following = false;
 
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -6245,8 +6244,8 @@ mod tests {
         };
 
         for (queue, lyrics) in [(false, false), (true, false), (false, true), (true, true)] {
-            app.show_queue_panel = queue;
-            app.show_lyrics_panel = lyrics;
+            app.engine.show_queue_panel = queue;
+            app.engine.show_lyrics_panel = lyrics;
             let placed = drawn(&mut app);
             if queue {
                 assert_same_row(&placed, "Queue", "Recent");
@@ -6255,7 +6254,7 @@ mod tests {
                 assert_same_row(&placed, "Lyrics", "Follow");
             }
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// The queue names where the playing song comes from, on one row
@@ -6287,7 +6286,7 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        app.show_queue_panel = true;
+        app.engine.show_queue_panel = true;
 
         let input = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -6346,7 +6345,7 @@ mod tests {
         beside(&drawn(&mut app), "Late night focus");
 
         // A song radio is named after its song.
-        if let Some(remote) = app.remote.as_mut() {
+        if let Some(remote) = app.engine.remote.as_mut() {
             remote.state.context = Some(Context {
                 uri: "spotify:station:track:trk0".into(),
                 kind: "station".into(),
@@ -6355,7 +6354,7 @@ mod tests {
         beside(&drawn(&mut app), "Rosewood Radio");
 
         // Nothing reported, nothing named.
-        if let Some(remote) = app.remote.as_mut() {
+        if let Some(remote) = app.engine.remote.as_mut() {
             remote.state.context = None;
         }
         let placed = drawn(&mut app);
@@ -6363,7 +6362,7 @@ mod tests {
             !placed.iter().any(|(text, _)| text == "Playing from"),
             "the row hides without a context"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// The line being sung sits high in the lyrics, a fifth of the way
@@ -6373,11 +6372,11 @@ mod tests {
     fn the_sung_line_sits_high_in_the_lyrics() {
         for fullscreen in [false, true] {
             let (ctx, mut app) = accessible_app(&format!("sung-line-{fullscreen}"));
-            app.show_lyrics_panel = true;
-            app.lyrics_fullscreen = Some(fullscreen);
-            app.lyrics = Loadable::Loaded(Some(sample_lyrics()));
-            app.lyrics_following = true;
-            let remote = app.remote.as_mut().unwrap();
+            app.engine.show_lyrics_panel = true;
+            app.engine.lyrics_fullscreen = Some(fullscreen);
+            app.engine.lyrics = Loadable::Loaded(Some(sample_lyrics()));
+            app.engine.lyrics_following = true;
+            let remote = app.engine.remote.as_mut().unwrap();
             remote.state.is_playing = false;
             remote.state.progress_ms = Some(106_000);
             let mut centre = None;
@@ -6408,7 +6407,7 @@ mod tests {
                 (60.0..320.0).contains(&centre),
                 "fullscreen {fullscreen}: the sung line is at {centre} of 800"
             );
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -6459,7 +6458,7 @@ mod tests {
                 let detail = detail.expect("why there are no words");
                 assert!((detail.center().x - 800.0).abs() < 2.0, "{detail:?}");
             }
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -6488,7 +6487,7 @@ mod tests {
         ] {
             let (ctx, mut app) = accessible_app("lyrics-centred-while-loading");
             apply_flags(&mut app, None, Some("lyrics-fullscreen-view"));
-            app.lyrics = state;
+            app.engine.lyrics = state;
             let mut shapes = Vec::new();
             for frame in 0..10 {
                 let mut output = ctx.run_ui(
@@ -6509,7 +6508,7 @@ mod tests {
             if let Some(below) = below {
                 assert!(centred(&shapes, below), "{below} under the cover");
             }
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -6536,13 +6535,13 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        app.show_lyrics_panel = true;
-        app.lyrics_fullscreen = Some(false);
-        app.lyrics = Loadable::Loaded(Some(sample_lyrics()));
-        app.lyrics_following = false;
+        app.engine.show_lyrics_panel = true;
+        app.engine.lyrics_fullscreen = Some(false);
+        app.engine.lyrics = Loadable::Loaded(Some(sample_lyrics()));
+        app.engine.lyrics_following = false;
         let mut sizes = Vec::new();
         for (step, position) in [0, 41_000].into_iter().enumerate() {
-            let remote = app.remote.as_mut().unwrap();
+            let remote = app.engine.remote.as_mut().unwrap();
             remote.state.is_playing = false;
             remote.state.progress_ms = Some(position);
             for frame in 0..30 {
@@ -6575,7 +6574,7 @@ mod tests {
                 }
             }
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         assert_eq!(
             sizes[0], sizes[1],
             "highlighting must not rewrap or resize a line"
@@ -6634,28 +6633,28 @@ mod tests {
             }
             assert_eq!(app.page(), &page);
         }
-        app.settings.sidebar_visible = false;
+        app.engine.settings.sidebar_visible = false;
         frame(&ctx, &mut app);
-        app.settings.sidebar_visible = true;
-        app.show_queue_panel = true;
-        app.show_devices = true;
+        app.engine.settings.sidebar_visible = true;
+        app.engine.show_queue_panel = true;
+        app.engine.show_devices = true;
         frame(&ctx, &mut app);
         // Draw the Playing next section with a manual queue row.
-        if let Loadable::Loaded(queue) = &app.queue
+        if let Loadable::Loaded(queue) = &app.engine.queue
             && let Some(first) = queue.queue.first()
         {
-            app.manual_queue = vec![first.uri().to_string()];
+            app.engine.manual_queue = vec![first.uri().to_string()];
         }
         frame(&ctx, &mut app);
-        app.manual_queue.clear();
-        app.lyrics_uri = app.now_playing().map(|now| now.uri);
-        app.lyrics = Loadable::Loaded(Some(sample_lyrics()));
-        app.show_lyrics_panel = true;
+        app.engine.manual_queue.clear();
+        app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
+        app.engine.lyrics = Loadable::Loaded(Some(sample_lyrics()));
+        app.engine.show_lyrics_panel = true;
         frame(&ctx, &mut app);
-        app.lyrics_fullscreen = Some(false);
+        app.engine.lyrics_fullscreen = Some(false);
         frame(&ctx, &mut app);
-        app.lyrics_fullscreen = None;
-        app.show_lyrics_panel = false;
+        app.engine.lyrics_fullscreen = None;
+        app.engine.show_lyrics_panel = false;
         for dialog in [
             Dialog::Shortcuts,
             Dialog::CreatePlaylist {
@@ -6683,19 +6682,19 @@ mod tests {
                 duplicate_uris: vec!["spotify:track:trk1".into()],
             },
         ] {
-            app.dialog = Some(dialog);
+            app.engine.dialog = Some(dialog);
             frame(&ctx, &mut app);
         }
-        app.settings.theme = crate::settings::ThemeChoice::Light;
-        app.actions.push(Action::SettingsChanged);
+        app.engine.settings.theme = crate::settings::ThemeChoice::Light;
+        app.engine.actions.push(Action::SettingsChanged);
         app.open(Page::Home);
         for _ in 0..3 {
             frame(&ctx, &mut app);
         }
         assert!(!app.palette.dark);
-        app.lyrics_fullscreen = Some(false);
+        app.engine.lyrics_fullscreen = Some(false);
         frame(&ctx, &mut app);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -6725,34 +6724,34 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        if let Loadable::Loaded(queue) = &mut app.queue {
+        if let Loadable::Loaded(queue) = &mut app.engine.queue {
             let seed = queue.queue.clone();
             queue.queue = seed.iter().cloned().cycle().take(200).collect();
-            app.manual_queue = queue
+            app.engine.manual_queue = queue
                 .queue
                 .iter()
                 .take(80)
                 .map(|item| item.uri().to_string())
                 .collect();
         }
-        app.show_queue_panel = true;
+        app.engine.show_queue_panel = true;
         for _ in 0..3 {
             frame(&ctx, &mut app);
         }
-        app.library.albums.items = (0..80)
+        app.engine.library.albums.items = (0..80)
             .map(|index| SavedAlbum {
                 added_at: None,
                 album: album(index % 8),
             })
             .collect();
-        app.library.albums.next_offset = Some(80);
-        app.library.albums.loaded_once = true;
+        app.engine.library.albums.next_offset = Some(80);
+        app.engine.library.albums.loaded_once = true;
         app.open(Page::Albums);
-        app.actions.clear();
+        app.engine.actions.clear();
         for _ in 0..3 {
             frame(&ctx, &mut app);
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -6793,7 +6792,7 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        app.library
+        app.engine.library
             .playlists
             .get_mut()
             .expect("the demo library")
@@ -6802,7 +6801,7 @@ mod tests {
         for _ in 0..3 {
             frame(&ctx, &mut app);
         }
-        let before = app.playlist_pages["pl1"].items.items.len();
+        let before = app.engine.playlist_pages["pl1"].items.items.len();
         let mut dragged = vec![
             PlayableItem::Track(Track {
                 id: Some("not-in-demo-playlists".into()),
@@ -6850,21 +6849,21 @@ mod tests {
                 }],
             );
             assert!(!egui::DragAndDrop::has_any_payload(&ctx));
-            if app.playlist_busy {
+            if app.engine.playlist_busy {
                 dropped = true;
                 break;
             }
         }
         assert!(dropped, "no sweep position landed on an owned playlist row");
-        assert_eq!(app.playlist_pages["pl1"].items.items.len(), before + count);
+        assert_eq!(app.engine.playlist_pages["pl1"].items.items.len(), before + count);
         assert_eq!(
-            app.playlist_pages["pl1"].items.items[before..]
+            app.engine.playlist_pages["pl1"].items.items[before..]
                 .iter()
                 .map(|row| row.playable().unwrap().uri())
                 .collect::<Vec<_>>(),
             dragged.iter().map(PlayableItem::uri).collect::<Vec<_>>()
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -6875,10 +6874,10 @@ mod tests {
             for sorted in [false, true] {
                 let (ctx, mut app) =
                     accessible_app(&format!("album-selection-drag-{compact}-{sorted}"));
-                app.settings.tracklist_compact = compact;
+                app.engine.settings.tracklist_compact = compact;
                 let source = Page::Album("alb0".into());
                 app.open(source.clone());
-                let tracks = &mut app.album_pages.get_mut("alb0").unwrap().tracks;
+                let tracks = &mut app.engine.album_pages.get_mut("alb0").unwrap().tracks;
                 tracks.items.truncate(3);
                 for (index, name) in ["Charlie", "Bravo", "Alpha"].iter().enumerate() {
                     tracks.items[index].name = name.to_string();
@@ -6889,7 +6888,7 @@ mod tests {
                 tracks.next_offset = None;
                 tracks.revision += 1;
                 if sorted {
-                    app.table_sorts.insert(
+                    app.engine.table_sorts.insert(
                         source.clone(),
                         crate::model::TableSort {
                             column: crate::model::SortColumn::Title,
@@ -7002,7 +7001,7 @@ mod tests {
                     ((bounds.x0 + bounds.x1) / 2.0) as f32,
                     ((bounds.y0 + bounds.y1) / 2.0) as f32,
                 );
-                let before = app.playlist_pages["pl1"].items.items.len();
+                let before = app.engine.playlist_pages["pl1"].items.items.len();
                 let playing = app.current_track_uri();
                 draw(
                     &mut app,
@@ -7020,18 +7019,18 @@ mod tests {
                     egui::Modifiers::NONE,
                 );
                 assert_eq!(
-                    app.playlist_pages["pl1"].items.items[before..]
+                    app.engine.playlist_pages["pl1"].items.items[before..]
                         .iter()
                         .map(|row| row.playable().unwrap().uri())
                         .collect::<Vec<_>>(),
                     expected
                 );
-                let sent = app.backend.take_playlist_add_requests();
+                let sent = app.engine.backend.take_playlist_add_requests();
                 assert!(
                     matches!(sent.as_slice(), [crate::backend::ApiRequest::AddToPlaylist { playlist_id, uris, position: None, .. }] if playlist_id == "pl1" && uris == &expected)
                 );
                 assert_eq!(app.current_track_uri(), playing);
-                app.backend.shutdown();
+                app.engine.backend.shutdown();
             }
         }
     }
@@ -7042,23 +7041,23 @@ mod tests {
     fn double_clicking_a_sidebar_row_plays_its_context() {
         for compact in [false, true] {
             let (ctx, mut app) = accessible_app(&format!("sidebar-double-click-{compact}"));
-            app.settings.sidebar_compact = compact;
+            app.engine.settings.sidebar_compact = compact;
             let view = crate::ui::sidebar::show;
             view_frame(&ctx, &mut app, vec![], view);
             let painted = view_frame(&ctx, &mut app, vec![], view);
             let name = sidebar_text(&painted, "Sunday morning").center();
-            app.actions.clear();
+            app.engine.actions.clear();
             let [first, second] = double_click(name);
             view_frame(&ctx, &mut app, first, view);
             view_frame(&ctx, &mut app, second, view);
             assert_eq!(played_contexts(&app), ["spotify:playlist:pl2"]);
             assert!(
-                app.actions.iter().any(
+                app.engine.actions.iter().any(
                     |action| matches!(action, Action::Open(Page::Playlist(id)) if id == "pl2")
                 ),
                 "double click must still open the page"
             );
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -7070,7 +7069,7 @@ mod tests {
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         let name = sidebar_text(&painted, "Sunday morning").center();
-        app.actions.clear();
+        app.engine.actions.clear();
         view_frame(
             &ctx,
             &mut app,
@@ -7079,11 +7078,11 @@ mod tests {
         );
         assert!(played_contexts(&app).is_empty());
         assert!(
-            app.actions
+            app.engine.actions
                 .iter()
                 .any(|action| matches!(action, Action::Open(Page::Playlist(id)) if id == "pl2"))
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -7093,19 +7092,19 @@ mod tests {
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         let name = sidebar_text(&painted, "Liked Songs").center();
-        app.actions.clear();
+        app.engine.actions.clear();
         let [first, second] = double_click(name);
         view_frame(&ctx, &mut app, first, view);
         view_frame(&ctx, &mut app, second, view);
         assert_eq!(played_contexts(&app), ["spotify:user:demo:collection"]);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn double_clicking_a_sidebar_folder_plays_nothing() {
         use crate::player::RootlistEntry;
         let (ctx, mut app) = accessible_app("sidebar-double-click-folder");
-        app.rootlist = vec![
+        app.engine.rootlist = vec![
             RootlistEntry::FolderStart {
                 id: "f1".into(),
                 name: "Focus".into(),
@@ -7118,12 +7117,12 @@ mod tests {
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         let name = sidebar_text(&painted, "Focus").center();
-        app.actions.clear();
+        app.engine.actions.clear();
         let [first, second] = double_click(name);
         view_frame(&ctx, &mut app, first, view);
         view_frame(&ctx, &mut app, second, view);
         assert!(played_contexts(&app).is_empty(), "folders must not play");
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// The cover play button sits on top of its row. A double click on it
@@ -7138,7 +7137,7 @@ mod tests {
         // The cover is the 44 point square centered 34 points left of the
         // name and on the row's centre, nine points below the name line.
         let cover = egui::pos2(name.left() - 34.0, name.center().y + 9.0);
-        app.actions.clear();
+        app.engine.actions.clear();
         let [first, second] = double_click(cover);
         view_frame(&ctx, &mut app, first, view);
         assert_eq!(played_contexts(&app), ["spotify:playlist:pl2"]);
@@ -7148,7 +7147,7 @@ mod tests {
             ["spotify:playlist:pl2"],
             "the second click must not play again"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// The cover's control follows its row: the playlist that is playing
@@ -7162,11 +7161,11 @@ mod tests {
         // The demo's remote snapshot plays the "Late night focus" playlist.
         let name = sidebar_text(&painted, "Late night focus");
         let cover = egui::pos2(name.left() - 34.0, name.center().y + 9.0);
-        app.actions.clear();
+        app.engine.actions.clear();
         let [click, _] = double_click(cover);
         view_frame(&ctx, &mut app, click, view);
         assert!(
-            app.actions
+            app.engine.actions
                 .iter()
                 .any(|action| matches!(action, Action::TogglePlay)),
             "the playing playlist's cover pauses"
@@ -7175,7 +7174,7 @@ mod tests {
             played_contexts(&app).is_empty(),
             "the playing playlist must not be started over"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// A paused context keeps the play glyph, and pressing it resumes where
@@ -7184,17 +7183,17 @@ mod tests {
     fn clicking_the_cover_of_the_paused_playlist_resumes() {
         let (ctx, mut app) = accessible_app("sidebar-cover-resume");
         // The demo's remote snapshot plays "Late night focus"; pause it.
-        app.remote.as_mut().unwrap().state.is_playing = false;
+        app.engine.remote.as_mut().unwrap().state.is_playing = false;
         let view = crate::ui::sidebar::show;
         view_frame(&ctx, &mut app, vec![], view);
         let painted = view_frame(&ctx, &mut app, vec![], view);
         let name = sidebar_text(&painted, "Late night focus");
         let cover = egui::pos2(name.left() - 34.0, name.center().y + 9.0);
-        app.actions.clear();
+        app.engine.actions.clear();
         let [click, _] = double_click(cover);
         view_frame(&ctx, &mut app, click, view);
         assert!(
-            app.actions
+            app.engine.actions
                 .iter()
                 .any(|action| matches!(action, Action::TogglePlay)),
             "the paused playlist's cover resumes"
@@ -7203,7 +7202,7 @@ mod tests {
             played_contexts(&app).is_empty(),
             "the paused playlist must not be started over"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// The cover and title in the bottom-left player are a song source, not
@@ -7276,7 +7275,7 @@ mod tests {
                 modifiers: egui::Modifiers::NONE,
             }],
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -7285,8 +7284,7 @@ mod tests {
     #[test]
     fn dropping_a_dragged_song_on_the_queue_button_queues_it() {
         let (ctx, mut app) = accessible_app("queue-button-drop");
-        let source_uri = app
-            .queue
+        let source_uri = app.engine.queue
             .get()
             .unwrap()
             .currently_playing
@@ -7348,15 +7346,15 @@ mod tests {
             }],
         );
 
-        assert_eq!(app.manual_queue, vec![source_uri]);
+        assert_eq!(app.engine.manual_queue, vec![source_uri]);
         assert!(
-            app.toasts
+            app.engine.toasts
                 .iter()
                 .any(|toast| toast.message == "1 song added to queue"),
             "{:?}",
-            app.toasts
+            app.engine.toasts
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Dropping a dragged song anywhere on the open queue list (side panel
@@ -7365,9 +7363,8 @@ mod tests {
     #[test]
     fn dropping_a_dragged_song_on_the_open_queue_list_queues_it() {
         let (ctx, mut app) = accessible_app("queue-list-drop");
-        app.show_queue_panel = true;
-        let source_uri = app
-            .queue
+        app.engine.show_queue_panel = true;
+        let source_uri = app.engine.queue
             .get()
             .unwrap()
             .currently_playing
@@ -7418,15 +7415,15 @@ mod tests {
             }],
         );
 
-        assert_eq!(app.manual_queue, vec![source_uri]);
+        assert_eq!(app.engine.manual_queue, vec![source_uri]);
         assert!(
-            app.toasts
+            app.engine.toasts
                 .iter()
                 .any(|toast| toast.message == "1 song added to queue"),
             "{:?}",
-            app.toasts
+            app.engine.toasts
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Seeds three manually queued songs at the front of "Playing next",
@@ -7434,12 +7431,12 @@ mod tests {
     /// Also makes the local player the active target, the only case where
     /// the queue can be reordered or inserted into positionally.
     fn seed_queued_songs(app: &mut App) -> Vec<String> {
-        app.local_ready = true;
-        app.local.track = Some(crate::player::LocalTrack {
+        app.engine.local_ready = true;
+        app.engine.local.track = Some(crate::player::LocalTrack {
             uri: app.now_playing().unwrap().uri,
             ..Default::default()
         });
-        app.local.playback = crate::player::Playback::Paused;
+        app.engine.local.playback = crate::player::Playback::Paused;
         let songs: Vec<Track> = (0..3)
             .map(|index| {
                 let mut t = track(index);
@@ -7449,7 +7446,7 @@ mod tests {
                 t
             })
             .collect();
-        if let Loadable::Loaded(queue) = &mut app.queue {
+        if let Loadable::Loaded(queue) = &mut app.engine.queue {
             for (offset, song) in songs.iter().enumerate() {
                 queue
                     .queue
@@ -7457,7 +7454,7 @@ mod tests {
             }
         }
         let uris: Vec<String> = songs.iter().map(|song| song.uri.clone()).collect();
-        app.manual_queue = uris.clone();
+        app.engine.manual_queue = uris.clone();
         uris
     }
 
@@ -7466,7 +7463,7 @@ mod tests {
     #[test]
     fn dragging_a_queued_row_within_the_queue_reorders_it() {
         let (ctx, mut app) = accessible_app("queue-reorder");
-        app.show_queue_panel = true;
+        app.engine.show_queue_panel = true;
         let uris = seed_queued_songs(&mut app);
         for _ in 0..3 {
             frame_events(&ctx, &mut app, vec![]);
@@ -7535,11 +7532,11 @@ mod tests {
         );
 
         assert_eq!(
-            app.manual_queue,
+            app.engine.manual_queue,
             vec![uris[1].clone(), uris[2].clone(), uris[0].clone()],
             "moved, not duplicated"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Right-clicking a song under Playing next offers to take it out of
@@ -7549,7 +7546,7 @@ mod tests {
     fn a_queued_rows_menu_removes_it_from_the_queue() {
         use egui::accesskit::Role;
         let (ctx, mut app) = accessible_app("queue-remove");
-        app.show_queue_panel = true;
+        app.engine.show_queue_panel = true;
         let uris = seed_queued_songs(&mut app);
         for _ in 0..3 {
             frame_events(&ctx, &mut app, vec![]);
@@ -7617,7 +7614,7 @@ mod tests {
                 None,
             )],
         );
-        assert_eq!(app.manual_queue, [uris[0].clone(), uris[2].clone()]);
+        assert_eq!(app.engine.manual_queue, [uris[0].clone(), uris[2].clone()]);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         assert!(
             !tree.nodes.iter().any(|(_, node)| node
@@ -7625,7 +7622,7 @@ mod tests {
                 .is_some_and(|text| text.starts_with("Play Queued 1,"))),
             "the removed row leaves the queue at once"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// If the playing song advances (consuming the front queued row) while a
@@ -7635,7 +7632,7 @@ mod tests {
     #[test]
     fn dragging_a_queued_row_while_next_advances_moves_the_dragged_song() {
         let (ctx, mut app) = accessible_app("queue-reorder-mid-drag-advance");
-        app.show_queue_panel = true;
+        app.engine.show_queue_panel = true;
         let uris = seed_queued_songs(&mut app);
         for _ in 0..3 {
             frame_events(&ctx, &mut app, vec![]);
@@ -7695,8 +7692,8 @@ mod tests {
         // "Next" fires mid-drag: the front queued row is consumed and every
         // later row's index shifts down by one, so index 1 (the recorded
         // drag source) now names "Queued 2" instead of the dragged song.
-        app.manual_queue.remove(0);
-        if let Loadable::Loaded(queue) = &mut app.queue {
+        app.engine.manual_queue.remove(0);
+        if let Loadable::Loaded(queue) = &mut app.engine.queue {
             queue.queue.remove(0);
         }
 
@@ -7717,11 +7714,11 @@ mod tests {
         // the stale index 1 would instead have moved "Queued 2" (the wrong
         // song) to the front.
         assert_eq!(
-            app.manual_queue,
+            app.engine.manual_queue,
             vec![uris[1].clone(), uris[2].clone()],
             "the dragged song stays put instead of the wrong row moving"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// "Next up" plays from the current context, not from a list Spotifast
@@ -7731,7 +7728,7 @@ mod tests {
     #[test]
     fn dropping_a_queued_row_on_next_up_does_nothing() {
         let (ctx, mut app) = accessible_app("queue-reorder-next-up-not-a-target");
-        app.show_queue_panel = true;
+        app.engine.show_queue_panel = true;
         let uris = seed_queued_songs(&mut app);
         for _ in 0..3 {
             frame_events(&ctx, &mut app, vec![]);
@@ -7818,11 +7815,11 @@ mod tests {
             frame_events(&ctx, &mut app, vec![]);
 
             assert_eq!(
-                app.manual_queue, uris,
+                app.engine.manual_queue, uris,
                 "Next up is never a drop target: nothing moves or gets inserted (dropped at {end:?})"
             );
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Holding a dragged queue row at the bottom edge of the open queue
@@ -7832,7 +7829,7 @@ mod tests {
     fn dragging_a_queued_row_scrolls_a_long_playing_next() {
         use egui::accesskit::Role;
         let (ctx, mut app) = accessible_app("queue-drag-scroll");
-        app.show_queue_panel = true;
+        app.engine.show_queue_panel = true;
         seed_queued_songs(&mut app);
         let songs: Vec<Track> = (3..40)
             .map(|index| {
@@ -7843,16 +7840,16 @@ mod tests {
                 t
             })
             .collect();
-        if let Loadable::Loaded(queue) = &mut app.queue {
+        if let Loadable::Loaded(queue) = &mut app.engine.queue {
             for (offset, song) in songs.iter().enumerate() {
                 queue
                     .queue
                     .insert(3 + offset, PlayableItem::Track(song.clone()));
             }
         }
-        app.manual_queue
+        app.engine.manual_queue
             .extend(songs.iter().map(|song| song.uri.clone()));
-        let uris = app.manual_queue.clone();
+        let uris = app.engine.manual_queue.clone();
         let on_screen = |tree: &egui::accesskit::TreeUpdate, name: &str| {
             let prefix = format!("Play {name},");
             tree.nodes.iter().find_map(|(_, node)| {
@@ -7909,11 +7906,11 @@ mod tests {
             "holding the drag at the bottom edge scrolls Playing next into view"
         );
         assert_eq!(
-            app.manual_queue, uris,
+            app.engine.manual_queue, uris,
             "scrolling alone must not reorder rows"
         );
         egui::DragAndDrop::clear_payload(&ctx);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// With nothing manually queued yet, every row the open queue shows
@@ -7924,20 +7921,19 @@ mod tests {
     fn dropping_a_song_on_next_up_with_an_empty_playing_next_does_nothing() {
         use egui::accesskit::Role;
         let (ctx, mut app) = accessible_app("queue-empty-playing-next-not-a-target");
-        app.show_queue_panel = true;
+        app.engine.show_queue_panel = true;
         // Make the local player the active target, like `seed_queued_songs`,
         // but leave "Playing next" empty.
-        app.local_ready = true;
-        app.local.track = Some(crate::player::LocalTrack {
+        app.engine.local_ready = true;
+        app.engine.local.track = Some(crate::player::LocalTrack {
             uri: app.now_playing().unwrap().uri,
             ..Default::default()
         });
-        app.local.playback = crate::player::Playback::Paused;
-        assert!(app.manual_queue.is_empty());
+        app.engine.local.playback = crate::player::Playback::Paused;
+        assert!(app.engine.manual_queue.is_empty());
         assert!(app.queue_locally_reorderable());
 
-        let source_uri = app
-            .queue
+        let source_uri = app.engine.queue
             .get()
             .unwrap()
             .currently_playing
@@ -8051,18 +8047,18 @@ mod tests {
         ] {
             drag_to(&mut app, end);
             assert!(
-                app.manual_queue.is_empty(),
+                app.engine.manual_queue.is_empty(),
                 "Next up is never a drop target, even when Playing next has no rows of its own (dropped at {end:?})"
             );
         }
 
         drag_to(&mut app, button.center());
         assert_eq!(
-            app.manual_queue,
+            app.engine.manual_queue,
             vec![source_uri],
             "the Queue button still queues the dropped song"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Dropping a song from elsewhere at a specific row in "Playing next"
@@ -8070,7 +8066,7 @@ mod tests {
     #[test]
     fn dropping_a_new_song_at_a_queue_position_inserts_it_there() {
         let (ctx, mut app) = accessible_app("queue-insert-position");
-        app.show_queue_panel = true;
+        app.engine.show_queue_panel = true;
         let uris = seed_queued_songs(&mut app);
         for _ in 0..3 {
             frame_events(&ctx, &mut app, vec![]);
@@ -8134,7 +8130,7 @@ mod tests {
         );
 
         assert_eq!(
-            app.manual_queue,
+            app.engine.manual_queue,
             vec![
                 uris[0].clone(),
                 dropped_uri,
@@ -8142,7 +8138,7 @@ mod tests {
                 uris[2].clone(),
             ],
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Without local playback active, neither the Web API nor librespot can
@@ -8151,9 +8147,9 @@ mod tests {
     #[test]
     fn dropping_on_the_queue_without_local_playback_still_just_appends() {
         let (ctx, mut app) = accessible_app("queue-remote-fallback");
-        app.show_queue_panel = true;
+        app.engine.show_queue_panel = true;
         let uris = seed_queued_songs(&mut app);
-        app.local_ready = false;
+        app.engine.local_ready = false;
         assert!(!app.queue_locally_reorderable());
         for _ in 0..3 {
             frame_events(&ctx, &mut app, vec![]);
@@ -8213,7 +8209,7 @@ mod tests {
         );
 
         assert_eq!(
-            app.manual_queue,
+            app.engine.manual_queue,
             vec![
                 uris[0].clone(),
                 uris[1].clone(),
@@ -8221,7 +8217,7 @@ mod tests {
                 dropped_uri
             ],
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Pins are pins: dropping a pinned row at the top of the block
@@ -8251,7 +8247,7 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        app.settings.pinned_contexts =
+        app.engine.settings.pinned_contexts =
             vec!["spotify:playlist:pl2".into(), "spotify:playlist:pl4".into()];
         for _ in 0..3 {
             frame(&ctx, &mut app);
@@ -8283,7 +8279,7 @@ mod tests {
                 }],
             );
             egui::DragAndDrop::clear_payload(&ctx);
-            if app.settings.pinned_contexts.first().map(String::as_str)
+            if app.engine.settings.pinned_contexts.first().map(String::as_str)
                 == Some("spotify:playlist:pl4")
             {
                 dropped = true;
@@ -8292,15 +8288,15 @@ mod tests {
         }
         assert!(dropped, "no sweep position landed in the pinned block");
         assert_eq!(
-            app.settings.pinned_contexts,
+            app.engine.settings.pinned_contexts,
             vec![
                 "spotify:playlist:pl4".to_string(),
                 crate::settings::LIKED_SONGS_KEY.to_string(),
                 "spotify:playlist:pl2".to_string(),
             ],
         );
-        assert!(app.settings.sidebar_order.is_empty());
-        app.backend.shutdown();
+        assert!(app.engine.settings.sidebar_order.is_empty());
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -8329,8 +8325,8 @@ mod tests {
         );
         app.attach(&ctx);
         populate(&mut app);
-        assert!(app.settings.pinned_contexts.is_empty());
-        assert!(app.settings.sidebar_order.is_empty());
+        assert!(app.engine.settings.pinned_contexts.is_empty());
+        assert!(app.engine.settings.sidebar_order.is_empty());
         for _ in 0..3 {
             frame(&ctx, &mut app);
         }
@@ -8361,7 +8357,7 @@ mod tests {
                 }],
             );
             egui::DragAndDrop::clear_payload(&ctx);
-            if !app.settings.sidebar_order.is_empty() {
+            if !app.engine.settings.sidebar_order.is_empty() {
                 dropped = true;
                 break;
             }
@@ -8372,12 +8368,12 @@ mod tests {
             .chain((1..PLAYLISTS.len()).filter(|index| *index != 4))
             .map(|index| format!("spotify:playlist:pl{index}"))
             .collect();
-        assert_eq!(app.settings.sidebar_order, expected);
+        assert_eq!(app.engine.settings.sidebar_order, expected);
         assert_eq!(
-            app.settings.library_pins(),
+            app.engine.settings.library_pins(),
             [crate::settings::LIKED_SONGS_KEY]
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -8388,10 +8384,10 @@ mod tests {
         use egui::accesskit::Role;
         for compact in [false, true] {
             let (ctx, mut app) = accessible_app(&format!("liked-drag-{compact}"));
-            app.settings.sidebar_compact = compact;
-            app.rootlist.clear();
-            app.settings.pinned_contexts = vec!["spotify:playlist:pl2".into()];
-            app.settings.sidebar_order = (0..PLAYLISTS.len())
+            app.engine.settings.sidebar_compact = compact;
+            app.engine.rootlist.clear();
+            app.engine.settings.pinned_contexts = vec!["spotify:playlist:pl2".into()];
+            app.engine.settings.sidebar_order = (0..PLAYLISTS.len())
                 .filter(|index| *index != 2)
                 .map(|index| format!("spotify:playlist:pl{index}"))
                 .collect();
@@ -8451,21 +8447,21 @@ mod tests {
                     modifiers: egui::Modifiers::NONE,
                 }],
             );
-            assert!(!app.settings.liked_songs_pinned);
+            assert!(!app.engine.settings.liked_songs_pinned);
             assert_eq!(
-                &app.settings.sidebar_order[..3],
+                &app.engine.settings.sidebar_order[..3],
                 [
                     "spotify:playlist:pl0",
                     LIKED_SONGS_KEY,
                     "spotify:playlist:pl1"
                 ]
             );
-            let expected = app.settings.sidebar_order.clone();
-            let path = app.dirs.config.join("liked-placement.json");
-            app.settings.save(&path);
-            app.settings = Settings::load(&path);
+            let expected = app.engine.settings.sidebar_order.clone();
+            let path = app.engine.dirs.config.join("liked-placement.json");
+            app.engine.settings.save(&path);
+            app.engine.settings = Settings::load(&path);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
-            assert_eq!(app.settings.sidebar_order, expected);
+            assert_eq!(app.engine.settings.sidebar_order, expected);
             assert!(row(&tree, "Discover Weekly").top() < row(&tree, "Liked Songs").top());
             assert!(row(&tree, "Liked Songs").top() < row(&tree, "Late night focus").top());
             let source = row(&tree, "Liked Songs").center();
@@ -8482,11 +8478,11 @@ mod tests {
                 vec![accessible_action(pin, egui::accesskit::Action::Click, None)],
             );
             assert_eq!(
-                app.settings.library_pins(),
+                app.engine.settings.library_pins(),
                 ["spotify:playlist:pl2", LIKED_SONGS_KEY]
             );
             assert!(
-                !app.settings
+                !app.engine.settings
                     .sidebar_order
                     .iter()
                     .any(|key| key == LIKED_SONGS_KEY)
@@ -8509,10 +8505,10 @@ mod tests {
                     None,
                 )],
             );
-            assert!(!app.settings.liked_songs_pinned);
+            assert!(!app.engine.settings.liked_songs_pinned);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let target = row(&tree, "Liked Songs").center();
-            app.saved.insert("spotify:track:trk0".into(), false);
+            app.engine.saved.insert("spotify:track:trk0".into(), false);
             let source = egui::pos2(40.0, 755.0);
             accessible_frame(
                 &ctx,
@@ -8552,8 +8548,8 @@ mod tests {
                 Some(true),
                 "dropping a song on the relocated row still saves it"
             );
-            assert!(app.backend.take_playlist_add_requests().is_empty());
-            app.backend.shutdown();
+            assert!(app.engine.backend.take_playlist_add_requests().is_empty());
+            app.engine.backend.shutdown();
         }
     }
 
@@ -8564,10 +8560,10 @@ mod tests {
                 for position in [0, 1, 4] {
                     let (ctx, mut app) =
                         accessible_app(&format!("insert-drag-{from_queue}-{compact}-{position}"));
-                    app.settings.tracklist_compact = compact;
-                    app.show_queue_panel = from_queue;
+                    app.engine.settings.tracklist_compact = compact;
+                    app.engine.show_queue_panel = from_queue;
                     app.open(Page::Playlist("pl1".into()));
-                    let items = &mut app.playlist_pages.get_mut("pl1").unwrap().items;
+                    let items = &mut app.engine.playlist_pages.get_mut("pl1").unwrap().items;
                     items.items.truncate(4);
                     for (index, row) in items.items.iter_mut().enumerate() {
                         if let Some(PlayableItem::Track(track)) = &mut row.item {
@@ -8579,20 +8575,19 @@ mod tests {
                     items.total = Some(4);
                     items.next_offset = None;
                     items.revision += 1;
-                    let queue_before: Vec<_> = app
-                        .queue
+                    let queue_before: Vec<_> = app.engine.queue
                         .get()
                         .unwrap()
                         .queue
                         .iter()
                         .map(|item| item.uri().to_string())
                         .collect();
-                    let manual_before = app.manual_queue.clone();
+                    let manual_before = app.engine.manual_queue.clone();
                     let playing_before = app.current_track_uri();
                     let source_item = if from_queue {
-                        app.queue.get().unwrap().queue[0].clone()
+                        app.engine.queue.get().unwrap().queue[0].clone()
                     } else {
-                        app.queue.get().unwrap().currently_playing.clone().unwrap()
+                        app.engine.queue.get().unwrap().currently_playing.clone().unwrap()
                     };
                     accessible_frame(&ctx, &mut app, vec![]);
                     let tree = accessible_frame(&ctx, &mut app, vec![]);
@@ -8662,17 +8657,17 @@ mod tests {
                             modifiers: egui::Modifiers::NONE,
                         }],
                     );
-                    let rows = &app.playlist_pages["pl1"].items.items;
+                    let rows = &app.engine.playlist_pages["pl1"].items.items;
                     assert_eq!(rows.len(), 5, "{from_queue} {compact} {position}");
                     assert_eq!(rows[position].playable().unwrap().uri(), source_item.uri());
-                    let sent = app.backend.take_playlist_add_requests();
+                    let sent = app.engine.backend.take_playlist_add_requests();
                     assert!(
                         matches!(sent.as_slice(), [crate::backend::ApiRequest::AddToPlaylist { playlist_id, position: Some(at), uris, .. }] if playlist_id == "pl1" && *at == position as u32 && uris == &[source_item.uri()])
                     );
                     assert_eq!(app.current_track_uri(), playing_before);
-                    assert_eq!(app.manual_queue, manual_before);
+                    assert_eq!(app.engine.manual_queue, manual_before);
                     assert_eq!(
-                        app.queue
+                        app.engine.queue
                             .get()
                             .unwrap()
                             .queue
@@ -8681,7 +8676,7 @@ mod tests {
                             .collect::<Vec<_>>(),
                         queue_before
                     );
-                    app.backend.shutdown();
+                    app.engine.backend.shutdown();
                 }
             }
         }
@@ -8704,7 +8699,7 @@ mod tests {
             target.uri = "spotify:track:destination".into();
             let rows = vec![(PlayableItem::Track(target), None, None)];
             if mode == "sorted" {
-                app.table_sorts.insert(
+                app.engine.table_sorts.insert(
                     Page::Playlist("pl1".into()),
                     crate::model::TableSort {
                         column: crate::model::SortColumn::Title,
@@ -8778,7 +8773,7 @@ mod tests {
                 },
             );
             let dragged =
-                app.queue.get().unwrap().queue[..if matches!(mode, "multiple" | "own-multiple") {
+                app.engine.queue.get().unwrap().queue[..if matches!(mode, "multiple" | "own-multiple") {
                     2
                 } else {
                     1
@@ -8812,7 +8807,7 @@ mod tests {
                 ],
                 mode == "empty",
             );
-            app.actions.clear();
+            app.engine.actions.clear();
             draw(
                 &mut app,
                 vec![egui::Event::PointerButton {
@@ -8825,20 +8820,20 @@ mod tests {
             );
             if matches!(mode, "foreign" | "empty" | "multiple") {
                 assert!(
-                    matches!(app.actions.as_slice(), [Action::InsertInPlaylist { playlist_id, position, items }] if playlist_id == "pl1" && *position == if mode == "empty" { 0 } else { 100 } && items.iter().map(PlayableItem::uri).collect::<Vec<_>>() == expected),
+                    matches!(app.engine.actions.as_slice(), [Action::InsertInPlaylist { playlist_id, position, items }] if playlist_id == "pl1" && *position == if mode == "empty" { 0 } else { 100 } && items.iter().map(PlayableItem::uri).collect::<Vec<_>>() == expected),
                     "{mode}: {:?}",
-                    app.actions
+                    app.engine.actions
                 );
             } else {
                 assert!(
-                    !app.actions.iter().any(|action| matches!(
+                    !app.engine.actions.iter().any(|action| matches!(
                         action,
                         Action::InsertInPlaylist { .. } | Action::MoveInPlaylist { .. }
                     )),
                     "{mode}"
                 );
             }
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -8847,9 +8842,9 @@ mod tests {
         for compact in [false, true] {
             for upwards in [false, true] {
                 let (ctx, mut app) = accessible_app(&format!("drag-scroll-{compact}-{upwards}"));
-                app.settings.tracklist_compact = compact;
+                app.engine.settings.tracklist_compact = compact;
                 app.open(Page::Playlist("pl1".into()));
-                let items = &mut app.playlist_pages.get_mut("pl1").unwrap().items.items;
+                let items = &mut app.engine.playlist_pages.get_mut("pl1").unwrap().items.items;
                 let count = items.len();
                 assert!(count > 20);
                 for (index, name) in [(0, "First song"), (count - 1, "Last song")] {
@@ -8989,7 +8984,7 @@ mod tests {
                     },
                 );
                 draw(&mut app, vec![egui::Event::PointerMoved(pos)], None);
-                app.actions.clear();
+                app.engine.actions.clear();
                 draw(
                     &mut app,
                     vec![egui::Event::PointerButton {
@@ -9001,12 +8996,12 @@ mod tests {
                     None,
                 );
                 assert!(
-                    matches!(app.actions.as_slice(), [Action::MoveInPlaylist { playlist_id, from: actual_from, to }] if playlist_id == "pl1" && *actual_from == from as u32 && *to == if upwards { 0 } else { count as u32 })
+                    matches!(app.engine.actions.as_slice(), [Action::MoveInPlaylist { playlist_id, from: actual_from, to }] if playlist_id == "pl1" && *actual_from == from as u32 && *to == if upwards { 0 } else { count as u32 })
                 );
-                for action in std::mem::take(&mut app.actions) {
+                for action in std::mem::take(&mut app.engine.actions) {
                     app.apply(action, &ctx);
                 }
-                let items = &app.playlist_pages["pl1"].items.items;
+                let items = &app.engine.playlist_pages["pl1"].items.items;
                 assert_eq!(
                     items[if upwards { 0 } else { count - 1 }]
                         .playable()
@@ -9014,7 +9009,7 @@ mod tests {
                         .uri(),
                     dragged_uri
                 );
-                app.backend.shutdown();
+                app.engine.backend.shutdown();
             }
         }
     }
@@ -9024,9 +9019,9 @@ mod tests {
         use egui::accesskit::Role;
         for compact in [false, true] {
             let (ctx, mut app) = accessible_app(&format!("sidebar-drag-scroll-{compact}"));
-            app.settings.sidebar_compact = compact;
-            app.rootlist.clear();
-            app.settings.pinned_contexts.clear();
+            app.engine.settings.sidebar_compact = compact;
+            app.engine.rootlist.clear();
+            app.engine.settings.pinned_contexts.clear();
             let playlists: Vec<_> = (0..60)
                 .map(|index| {
                     let mut playlist = playlist(1);
@@ -9036,12 +9031,12 @@ mod tests {
                     playlist
                 })
                 .collect();
-            app.settings.sidebar_order = playlists
+            app.engine.settings.sidebar_order = playlists
                 .iter()
                 .map(|playlist| playlist.uri.clone())
                 .collect();
-            app.library.playlists = Loadable::Loaded(playlists);
-            let original = app.settings.sidebar_order.clone();
+            app.engine.library.playlists = Loadable::Loaded(playlists);
+            let original = app.engine.settings.sidebar_order.clone();
             accessible_frame(&ctx, &mut app, vec![]);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let first = accessible_node(&tree, "Target 0", Role::Button);
@@ -9087,11 +9082,11 @@ mod tests {
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             accessible_node(&tree, "Target 59", Role::Button);
             assert_eq!(
-                app.settings.sidebar_order, original,
+                app.engine.settings.sidebar_order, original,
                 "scrolling alone must not reorder entries"
             );
             egui::DragAndDrop::clear_payload(&ctx);
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -9127,7 +9122,7 @@ mod tests {
             frame(&ctx, &mut app);
         }
         let order = |app: &App| -> Vec<String> {
-            app.playlist_pages["pl1"]
+            app.engine.playlist_pages["pl1"]
                 .items
                 .items
                 .iter()
@@ -9168,7 +9163,7 @@ mod tests {
                 }],
             );
             egui::DragAndDrop::clear_payload(&ctx);
-            if app.playlist_busy {
+            if app.engine.playlist_busy {
                 landed = Some(pos);
                 break;
             }
@@ -9205,14 +9200,14 @@ mod tests {
         // Dropping the row on the same slot again moves nothing: the slot
         // is insert-before, so a row's own edges are a no-op. A slot sent
         // one row out would move it here.
-        app.playlist_busy = false;
+        app.engine.playlist_busy = false;
         drop_at(&ctx, &mut app, held(to, &expected[to]));
-        assert!(!app.playlist_busy, "a row dropped on its own slot moved");
+        assert!(!app.engine.playlist_busy, "a row dropped on its own slot moved");
         assert_eq!(order(&app), expected);
 
         // A sorted view refuses the move: positions on screen no longer
         // match the server's.
-        app.table_sorts.insert(
+        app.engine.table_sorts.insert(
             Page::Playlist("pl1".into()),
             TableSort {
                 column: SortColumn::Title,
@@ -9221,16 +9216,16 @@ mod tests {
         );
         frame(&ctx, &mut app);
         drop_at(&ctx, &mut app, held(to, &expected[to]));
-        assert!(!app.playlist_busy, "a sorted view accepted a move");
+        assert!(!app.engine.playlist_busy, "a sorted view accepted a move");
         assert_eq!(order(&app), expected);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn sorted_playlist_view_keeps_remove_but_not_moves() {
         let (ctx, mut app) = accessible_app("sorted-remove-menu");
-        app.backend.set_offline(true);
+        app.engine.backend.set_offline(true);
         let item = PlayableItem::Track(track(0));
         let uri = item.uri().to_string();
         let editable = Some(("pl1".to_string(), None));
@@ -9294,7 +9289,7 @@ mod tests {
             .unwrap()
             .1
             .center();
-        app.actions.clear();
+        app.engine.actions.clear();
         paint(
             &ctx,
             &mut app,
@@ -9303,7 +9298,7 @@ mod tests {
             pointer_click(remove, egui::PointerButton::Primary),
         );
         assert!(
-            matches!(app.actions.as_slice(), [Action::RemoveFromPlaylist { playlist_id, uris }] if playlist_id == "pl1" && uris == std::slice::from_ref(&uri))
+            matches!(app.engine.actions.as_slice(), [Action::RemoveFromPlaylist { playlist_id, uris }] if playlist_id == "pl1" && uris == std::slice::from_ref(&uri))
         );
         // A view without edit rights offers no removal at all.
         let readonly = RowContext::View {
@@ -9352,7 +9347,7 @@ mod tests {
             .expect("multi-select menu lost its removal")
             .1
             .center();
-        app.actions.clear();
+        app.engine.actions.clear();
         frame(
             &ctx,
             &mut app,
@@ -9361,9 +9356,9 @@ mod tests {
         );
         let expected: Vec<String> = songs.iter().map(|song| song.uri().to_string()).collect();
         assert!(
-            matches!(app.actions.as_slice(), [Action::RemoveFromPlaylist { playlist_id, uris }] if playlist_id == "pl1" && *uris == expected)
+            matches!(app.engine.actions.as_slice(), [Action::RemoveFromPlaylist { playlist_id, uris }] if playlist_id == "pl1" && *uris == expected)
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// The custom order is a setting like any other: it survives the trip
@@ -9462,7 +9457,7 @@ mod tests {
             "sidebar-search must have keyboard focus after clicking the search icon"
         );
 
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -9480,8 +9475,8 @@ mod tests {
         let (ctx, mut app) = accessible_app("topbar-badges");
         app.open(Page::Playlist("pl1".into()));
         for panel in [None, Some("queue"), Some("lyrics")] {
-            app.show_queue_panel = panel == Some("queue");
-            app.show_lyrics_panel = panel == Some("lyrics");
+            app.engine.show_queue_panel = panel == Some("queue");
+            app.engine.show_lyrics_panel = panel == Some("lyrics");
             for (label, state) in [
                 (None, DownloadState::Idle),
                 (Some("Update to 9.9.9"), DownloadState::Idle),
@@ -9600,7 +9595,7 @@ mod tests {
                 }
             }
         }
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
     #[test]
     fn saved_toggles_stay_green_while_hovered() {
@@ -9616,12 +9611,12 @@ mod tests {
             for (place, label, pick) in targets {
                 let (ctx, mut app) = accessible_app(&format!("saved-hover-{theme}"));
                 app.open(Page::Album("alb0".into()));
-                app.settings.theme = if theme == "light" {
+                app.engine.settings.theme = if theme == "light" {
                     crate::settings::ThemeChoice::Light
                 } else {
                     crate::settings::ThemeChoice::Dark
                 };
-                app.actions.push(Action::SettingsChanged);
+                app.engine.actions.push(Action::SettingsChanged);
                 let mut frame = |events| {
                     let mut output = ctx.run_ui(
                         egui::RawInput {
@@ -9675,7 +9670,7 @@ mod tests {
                     "a hovered {place} button in {theme} must still look saved: {tints:?}"
                 );
                 assert!(!tints.contains(&app.palette.text), "{place} in {theme}");
-                app.backend.shutdown();
+                app.engine.backend.shutdown();
             }
         }
     }
@@ -9685,15 +9680,15 @@ mod tests {
         for theme in ["dark", "light"] {
             let (ctx, mut app) = accessible_app(&format!("full-height-panels-{theme}"));
             app.open(Page::Playlist("pl1".into()));
-            app.settings.theme = if theme == "light" {
+            app.engine.settings.theme = if theme == "light" {
                 crate::settings::ThemeChoice::Light
             } else {
                 crate::settings::ThemeChoice::Dark
             };
-            app.actions.push(Action::SettingsChanged);
+            app.engine.actions.push(Action::SettingsChanged);
             for panel in ["queue", "lyrics"] {
-                app.show_queue_panel = panel == "queue";
-                app.show_lyrics_panel = panel == "lyrics";
+                app.engine.show_queue_panel = panel == "queue";
+                app.engine.show_lyrics_panel = panel == "lyrics";
                 for width in [760.0, 1080.0, 1600.0] {
                     for _ in 0..3 {
                         let mut output = ctx.run_ui(
@@ -9723,7 +9718,7 @@ mod tests {
                     assert!(side.top() < search.rect.top());
                 }
             }
-            app.backend.shutdown();
+            app.engine.backend.shutdown();
         }
     }
 
@@ -9734,8 +9729,7 @@ mod tests {
     fn song_radio_from_liked_songs_is_named_after_the_song() {
         let (ctx, mut app) = accessible_app("liked-song-radio");
         let view = crate::ui::collection::liked;
-        let song = app
-            .library
+        let song = app.engine.library
             .liked
             .items
             .last()
@@ -9744,7 +9738,7 @@ mod tests {
             .clone();
         let seed = song.uri.clone();
         // Only songs that played or came back from a radio are cached.
-        app.track_cache.clear();
+        app.engine.track_cache.clear();
         view_frame(&ctx, &mut app, vec![], view);
         let text = view_frame(&ctx, &mut app, vec![], view);
         let row = text
@@ -9767,20 +9761,20 @@ mod tests {
             .expect("the song's menu")
             .1
             .center();
-        app.actions.clear();
+        app.engine.actions.clear();
         view_frame(
             &ctx,
             &mut app,
             pointer_click(radio, egui::PointerButton::Primary),
             view,
         );
-        let actions = std::mem::take(&mut app.actions);
+        let actions = std::mem::take(&mut app.engine.actions);
         assert!(
             matches!(actions.as_slice(), [Action::OpenSongRadio { uri, .. }] if uri == &seed),
             "the menu opens the song's radio: {actions:?}"
         );
         assert!(
-            app.track_cache.is_empty(),
+            app.engine.track_cache.is_empty(),
             "the menu leaves the cache to the action, applied after drawing"
         );
         for action in actions {
@@ -9793,11 +9787,11 @@ mod tests {
             "the radio is named after the song"
         );
         assert_eq!(
-            app.radio_pages[&seed].name,
+            app.engine.radio_pages[&seed].name,
             Some(format!("{} Radio", song.name)),
             "the page keeps the name"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// A song already cached from an album's song list, which comes without
@@ -9806,8 +9800,7 @@ mod tests {
     #[test]
     fn song_radio_takes_the_rows_album_art_for_a_cached_song() {
         let (ctx, mut app) = accessible_app("song-radio-album-art");
-        let song = app
-            .library
+        let song = app.engine.library
             .liked
             .items
             .last()
@@ -9823,8 +9816,8 @@ mod tests {
         let mut cached = song.clone();
         cached.album = None;
         cached.name = "Cached name".into();
-        app.track_cache.clear();
-        app.track_cache.insert(id.clone(), cached);
+        app.engine.track_cache.clear();
+        app.engine.track_cache.insert(id.clone(), cached);
         app.apply(
             Action::OpenSongRadio {
                 uri: seed.clone(),
@@ -9839,9 +9832,9 @@ mod tests {
             "the cover comes from the row's album"
         );
         assert_eq!(
-            app.track_cache[&id].name, "Cached name",
+            app.engine.track_cache[&id].name, "Cached name",
             "the cached song is kept"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 }

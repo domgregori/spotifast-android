@@ -112,7 +112,7 @@ pub(super) fn show(app: &mut App, ui: &mut egui::Ui, data: &Prerelease) {
                     if theme::link(ui, &artist.name, theme::semibold(13.0), hero_text).clicked()
                         && let Some(id) = &artist.id
                     {
-                        app.actions.push(Action::Open(Page::Artist(id.clone())));
+                        app.engine.actions.push(Action::Open(Page::Artist(id.clone())));
                     }
                 }
                 let date = data.album.release_date.clone().or_else(|| {
@@ -157,7 +157,7 @@ pub(super) fn show(app: &mut App, ui: &mut egui::Ui, data: &Prerelease) {
         } else {
             gettext(locale, "Pre-save")
         };
-        let enabled = data.saved.is_some() && !data.saving && app.local_ready;
+        let enabled = data.saved.is_some() && !data.saving && app.engine.local_ready;
         let text_color = if enabled {
             ink
         } else {
@@ -213,7 +213,7 @@ pub(super) fn show(app: &mut App, ui: &mut egui::Ui, data: &Prerelease) {
             if saved { green } else { ink },
         );
         if save_button.clicked() {
-            app.actions.push(Action::SetPrereleaseSaved {
+            app.engine.actions.push(Action::SetPrereleaseSaved {
                 uri: data.uri.clone(),
                 saved: data.saved != Some(true),
             });
@@ -224,12 +224,12 @@ pub(super) fn show(app: &mut App, ui: &mut egui::Ui, data: &Prerelease) {
             ui.visuals_mut().widgets.inactive.bg_fill = Color32::TRANSPARENT;
             ui.menu_button("•••", |ui| {
                 if ui.button(gettext(locale, "Copy link")).clicked() {
-                    app.actions.push(Action::CopyLink(data.uri.clone()));
+                    app.engine.actions.push(Action::CopyLink(data.uri.clone()));
                     ui.close();
                 }
                 if ui.button(gettext(locale, "Open in Spotify")).clicked() {
                     let id = data.uri.rsplit(':').next().unwrap_or_default();
-                    app.actions.push(Action::OpenUrl(format!(
+                    app.engine.actions.push(Action::OpenUrl(format!(
                         "https://open.spotify.com/prerelease/{id}?spotifast_web=1"
                     )));
                     ui.close();
@@ -240,7 +240,7 @@ pub(super) fn show(app: &mut App, ui: &mut egui::Ui, data: &Prerelease) {
     if let Some(error) = &data.save_error {
         theme::text(ui, error, theme::regular(13.0), palette.secondary);
         if ui.button(gettext(locale, "Retry")).clicked() {
-            app.actions.push(Action::OpenLink(data.uri.clone()));
+            app.engine.actions.push(Action::OpenLink(data.uri.clone()));
         }
     }
     ui.add_space(28.0);
@@ -380,7 +380,7 @@ pub(super) fn show(app: &mut App, ui: &mut egui::Ui, data: &Prerelease) {
                     };
                     if let Some(id) = &artist.id {
                         if theme::link(ui, &artist.name, theme::regular(13.0), color).clicked() {
-                            app.actions.push(Action::Open(Page::Artist(id.clone())));
+                            app.engine.actions.push(Action::Open(Page::Artist(id.clone())));
                         }
                     } else {
                         theme::text(ui, &artist.name, theme::regular(13.0), color);
@@ -420,7 +420,7 @@ pub(super) fn show(app: &mut App, ui: &mut egui::Ui, data: &Prerelease) {
                 .flatten()
                 .filter(|track| track.is_playable == Some(true))
                 .count();
-            app.actions.push(Action::PlayFromRow {
+            app.engine.actions.push(Action::PlayFromRow {
                 context: RowContext::View {
                     uris: Arc::clone(&playable),
                     context_uri: data.album.uri.clone(),
@@ -519,7 +519,7 @@ mod tests {
             },
         );
         app.attach(&ctx);
-        app.local_ready = true;
+        app.engine.local_ready = true;
         let mut data = Prerelease::decode(
             include_bytes!("../testdata/prerelease.pb"),
             "spotify:prerelease:0kRaNkRxpO16BjxJU0IQAL",
@@ -581,8 +581,7 @@ mod tests {
                 }],
             );
         }
-        let plays: Vec<_> = app
-            .actions
+        let plays: Vec<_> = app.engine.actions
             .iter()
             .filter_map(|action| match action {
                 Action::PlayFromRow {
@@ -593,7 +592,7 @@ mod tests {
                 _ => None,
             })
             .collect();
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
         assert_eq!(plays.len(), 1, "one click emits one playback action");
         assert_eq!(plays[0].0, 2, "start at the clicked second occurrence");
         assert_eq!(

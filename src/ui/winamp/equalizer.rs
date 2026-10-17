@@ -26,7 +26,7 @@ const GRAPH_STEP: u32 = 12;
 const GRAPH_PAD: u32 = 2;
 
 pub(super) fn show(app: &mut App, view: &mut View, now: Option<&NowPlaying>, focused: bool) {
-    if app.settings.eq_shaded {
+    if app.engine.settings.eq_shaded {
         shade(app, view, now, focused);
         return;
     }
@@ -47,7 +47,7 @@ pub(super) fn show(app: &mut App, view: &mut View, now: Option<&NowPlaying>, foc
             .send_viewport_cmd(egui::ViewportCommand::StartDrag);
     }
     if title.double_clicked() {
-        app.actions.push(Action::ToggleWinampEqShade);
+        app.engine.actions.push(Action::ToggleWinampEqShade);
     }
     if view
         .lamp_button(
@@ -59,7 +59,7 @@ pub(super) fn show(app: &mut App, view: &mut View, now: Option<&NowPlaying>, foc
         .on_hover_text(gettext(app.locale, "Roll the equalizer up").as_ref())
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampEqShade);
+        app.engine.actions.push(Action::ToggleWinampEqShade);
     }
     if view
         .button(
@@ -70,7 +70,7 @@ pub(super) fn show(app: &mut App, view: &mut View, now: Option<&NowPlaying>, foc
         )
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampEq);
+        app.engine.actions.push(Action::ToggleWinampEq);
     }
 
     let settings = current(app);
@@ -83,7 +83,7 @@ pub(super) fn show(app: &mut App, view: &mut View, now: Option<&NowPlaying>, foc
         .button(layout::EQ_ON, normal, pressed, "eq-on")
         .clicked()
     {
-        app.actions.push(Action::ToggleEq);
+        app.engine.actions.push(Action::ToggleEq);
     }
     // Winamp's AUTO loaded a preset per song, which Spotify has no
     // equivalent for; here the button lays the bands flat.
@@ -94,7 +94,7 @@ pub(super) fn show(app: &mut App, view: &mut View, now: Option<&NowPlaying>, foc
         "eq-auto",
     );
     if auto.clicked() {
-        app.actions.push(Action::ApplyEqPreset(0));
+        app.engine.actions.push(Action::ApplyEqPreset(0));
     }
     let presets = view.button(
         layout::EQ_PRESETS_BUTTON,
@@ -112,12 +112,12 @@ pub(super) fn show(app: &mut App, view: &mut View, now: Option<&NowPlaying>, foc
     graph(view, &settings);
     let preamp = fraction(settings.preamp_db);
     if let Some(value) = slider(view, layout::EQ_PREAMP, "eq-preamp", preamp) {
-        app.actions.push(Action::SetEqPreamp(decibels(value)));
+        app.engine.actions.push(Action::SetEqPreamp(decibels(value)));
     }
     for (band, gain_db) in settings.bands_db.into_iter().enumerate() {
         let area = layout::eq_band(band);
         if let Some(value) = slider(view, area, &format!("eq-band-{band}"), fraction(gain_db)) {
-            app.actions.push(Action::SetEqBand(band, decibels(value)));
+            app.engine.actions.push(Action::SetEqBand(band, decibels(value)));
         }
     }
 }
@@ -138,36 +138,36 @@ fn shade(app: &mut App, view: &mut View, now: Option<&NowPlaying>, focused: bool
             .send_viewport_cmd(egui::ViewportCommand::StartDrag);
     }
     if title.double_clicked() {
-        app.actions.push(Action::ToggleWinampEqShade);
+        app.engine.actions.push(Action::ToggleWinampEqShade);
     }
 
     // Volume, as the main window's slider does it.
     let volume = now
         .map(|now| now.volume_percent)
-        .unwrap_or_else(|| crate::app::volume_to_percent(app.local.volume));
+        .unwrap_or_else(|| crate::app::volume_to_percent(app.engine.local.volume));
     let track = layout::EQ_SHADE_VOLUME;
     let (response, event) = view.slider(track, "eq-shade-volume", layout::EQ_SHADE_THUMB);
     let notches = super::super::widgets::wheel_notches(view.ui, &response);
     if notches != 0 {
         let level = (i32::from(volume) + 5 * notches).clamp(0, 100);
-        app.actions.push(Action::SetVolume(level as u8));
+        app.engine.actions.push(Action::SetVolume(level as u8));
     }
     match event {
         SliderEvent::Dragging(value) => {
-            app.volume_preview = Some(value);
+            app.engine.volume_preview = Some(value);
             if now.is_none_or(|now| now.local) {
-                app.actions
+                app.engine.actions
                     .push(Action::PreviewVolume((value * 100.0).round() as u8));
             }
         }
         SliderEvent::Committed(value) => {
-            app.volume_preview = None;
-            app.actions
+            app.engine.volume_preview = None;
+            app.engine.actions
                 .push(Action::SetVolume((value * 100.0).round() as u8));
         }
         SliderEvent::None => {}
     }
-    let shown = match app.volume_preview {
+    let shown = match app.engine.volume_preview {
         Some(fraction) => (fraction * 100.0).round() as u32,
         None => u32::from(volume),
     };
@@ -189,16 +189,16 @@ fn shade(app: &mut App, view: &mut View, now: Option<&NowPlaying>, focused: bool
         SliderEvent::Dragging(value) => {
             let balance = super::balance_of(value);
             app.winamp.balance_preview = Some(balance);
-            app.actions.push(Action::SetBalance(balance));
+            app.engine.actions.push(Action::SetBalance(balance));
         }
         SliderEvent::Committed(value) => {
             app.winamp.balance_preview = None;
-            app.actions
+            app.engine.actions
                 .push(Action::SetBalance(super::balance_of(value)));
         }
         SliderEvent::None => {}
     }
-    let balance = app.winamp.balance_preview.unwrap_or(app.settings.balance);
+    let balance = app.winamp.balance_preview.unwrap_or(app.engine.settings.balance);
     let fraction = (balance + 1.0) / 2.0;
     let thumb = look(
         fraction,
@@ -225,7 +225,7 @@ fn shade(app: &mut App, view: &mut View, now: Option<&NowPlaying>, focused: bool
         .on_hover_text(gettext(app.locale, "Roll the equalizer down").as_ref())
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampEqShade);
+        app.engine.actions.push(Action::ToggleWinampEqShade);
     }
     if view
         .button(
@@ -236,7 +236,7 @@ fn shade(app: &mut App, view: &mut View, now: Option<&NowPlaying>, focused: bool
         )
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampEq);
+        app.engine.actions.push(Action::ToggleWinampEq);
     }
 }
 
@@ -252,7 +252,7 @@ fn look(value: f32, looks: [Sprite; 3]) -> Sprite {
 }
 
 fn current(app: &App) -> EqSettings {
-    crate::app::eq_settings(&app.settings)
+    crate::app::eq_settings(&app.engine.settings)
 }
 
 /// A gain as a fraction of the slider, 0 at the bottom.
@@ -343,14 +343,14 @@ fn spline(points: &[f32], t: f32) -> f32 {
 
 /// Winamp's presets, in a menu sized to the skin.
 fn presets_menu(app: &mut App, ui: &mut egui::Ui) {
-    let current = app.settings.eq_bands_db;
+    let current = app.engine.settings.eq_bands_db;
     for (index, preset) in eq::PRESETS.iter().enumerate() {
         if index == eq::WINAMP_PRESET_COUNT {
             ui.separator();
         }
         let chosen = preset.bands_db == current;
         if ui.selectable_label(chosen, preset.name).clicked() {
-            app.actions.push(Action::ApplyEqPreset(index));
+            app.engine.actions.push(Action::ApplyEqPreset(index));
         }
     }
 }

@@ -39,12 +39,12 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
         ui.ctx(),
         "lyrics-panel",
         theme::SIDE_PANEL_MIN_WIDTH..=640.0,
-        app.settings.lyrics_width,
+        app.engine.settings.lyrics_width,
         ui.available_width() - super::topbar::least_width(ui.ctx()),
     );
     let panel = egui::Panel::right("lyrics-panel")
         .resizable(true)
-        .default_size(app.settings.lyrics_width)
+        .default_size(app.engine.settings.lyrics_width)
         .size_range(fit.range.clone())
         .show_separator_line(false)
         .frame(
@@ -55,8 +55,8 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
     let response = panel.show(ui, |ui| {
         let window_controls = super::window_controls_reservation(
             ui.ctx(),
-            app.show_queue_panel,
-            app.show_lyrics_panel,
+            app.engine.show_queue_panel,
+            app.engine.show_lyrics_panel,
             ui.available_width(),
         );
         ui.add_space(window_controls.lyrics_top);
@@ -79,7 +79,7 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .clicked()
                 {
-                    app.actions.push(Action::ToggleLyricsPanel);
+                    app.engine.actions.push(Action::ToggleLyricsPanel);
                 }
                 if theme::icon_button(
                     ui,
@@ -91,11 +91,11 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .clicked()
                 {
-                    app.actions.push(Action::SetLyricsFullscreen(true));
+                    app.engine.actions.push(Action::SetLyricsFullscreen(true));
                 }
-                let loaded = matches!(&app.lyrics, Loadable::Loaded(Some(_)));
+                let loaded = matches!(&app.engine.lyrics, Loadable::Loaded(Some(_)));
                 if loaded
-                    && !app.lyrics_following
+                    && !app.engine.lyrics_following
                     && theme::pill_button(
                         ui,
                         &palette,
@@ -104,8 +104,8 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
                     )
                     .clicked()
                 {
-                    app.lyrics_following = true;
-                    app.lyrics_line_shown = None;
+                    app.engine.lyrics_following = true;
+                    app.engine.lyrics_line_shown = None;
                 }
             });
         });
@@ -113,11 +113,11 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
         contents(app, ui);
     });
     let current_width = response.response.rect.width();
-    if (app.settings.lyrics_width - current_width).abs() > 1.0
+    if (app.engine.settings.lyrics_width - current_width).abs() > 1.0
         && super::panel_width_chosen(ui.ctx(), "lyrics-panel", &fit)
     {
-        app.settings.lyrics_width = current_width;
-        app.actions.push(Action::SettingsChanged);
+        app.engine.settings.lyrics_width = current_width;
+        app.engine.actions.push(Action::SettingsChanged);
     }
 }
 
@@ -133,9 +133,9 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
         );
         return;
     };
-    let lyrics = match &app.lyrics {
+    let lyrics = match &app.engine.lyrics {
         Loadable::NotLoaded | Loadable::Loading => {
-            if !app.network_reachable {
+            if !app.engine.network_reachable {
                 widgets::empty_state(
                     ui,
                     &palette,
@@ -152,7 +152,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
             return;
         }
         Loadable::Failed(error) => {
-            if !app.network_reachable {
+            if !app.engine.network_reachable {
                 widgets::empty_state(
                     ui,
                     &palette,
@@ -204,7 +204,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
     };
 
     let active = lyrics.active_line(now.position_ms);
-    let follow = app.lyrics_following && app.lyrics_line_shown != Some(active);
+    let follow = app.engine.lyrics_following && app.engine.lyrics_line_shown != Some(active);
     // The line being sung is bold and in the accent colour; every other
     // line is quiet, regular text, the same before and after it has been
     // sung. A line takes 220 ms to light up or fade, as in omarchy-lyrics.
@@ -273,8 +273,8 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
                     && response.clicked()
                     && let Some(at_ms) = line.at_ms
                 {
-                    app.actions.push(Action::Seek(at_ms));
-                    app.lyrics_following = true;
+                    app.engine.actions.push(Action::Seek(at_ms));
+                    app.engine.lyrics_following = true;
                 }
                 if is_active && follow {
                     show_sung_line(ui, rect, None);
@@ -283,7 +283,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
             }
             // Words without timing can only be followed by the clock: sit
             // at the part of the text the song is probably at.
-            if app.lyrics_following && !lyrics.synced && now.duration_ms > 0 {
+            if app.engine.lyrics_following && !lyrics.synced && now.duration_ms > 0 {
                 let fraction =
                     (f64::from(now.position_ms) / f64::from(now.duration_ms)).clamp(0.0, 1.0);
                 let content = ui.min_rect();
@@ -306,9 +306,9 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
     if ui.rect_contains_pointer(scroll.inner_rect)
         && ui.input(|input| input.smooth_scroll_delta.y != 0.0)
     {
-        app.lyrics_following = false;
+        app.engine.lyrics_following = false;
     }
-    app.lyrics_line_shown = Some(active);
+    app.engine.lyrics_line_shown = Some(active);
 }
 
 pub fn fullscreen(app: &mut App, ui: &mut egui::Ui) {
@@ -360,7 +360,7 @@ fn with_cover(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: f32) {
     // The cover moves aside only for words to read. While they load it
     // stays in the middle, so a song that turns out to have none never
     // moves at all.
-    let words = matches!(&app.lyrics, Loadable::Loaded(Some(lyrics)) if !lyrics.instrumental);
+    let words = matches!(&app.engine.lyrics, Loadable::Loaded(Some(lyrics)) if !lyrics.instrumental);
     if words {
         // The cover and the lyrics are one group, centred in the window.
         let gap = 64.0;
@@ -388,7 +388,7 @@ fn with_cover(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: f32) {
         big_cover(app, ui, column, Align::Center);
         // Why there are no words, quietly, under the song, or that they
         // are still being fetched.
-        let (heading, detail) = match &app.lyrics {
+        let (heading, detail) = match &app.engine.lyrics {
             Loadable::Loaded(Some(_)) => (
                 gettext(app.locale, "Instrumental"),
                 gettext(app.locale, "No timed lyrics for this track."),
@@ -418,7 +418,7 @@ fn with_cover(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: f32) {
             theme::semibold(13.0),
             Color32::from_gray(200),
         );
-        if matches!(app.lyrics, Loadable::Failed(_)) {
+        if matches!(app.engine.lyrics, Loadable::Failed(_)) {
             let retry = Rect::from_center_size(
                 pos2(column.center().x, heading.bottom() + 24.0),
                 vec2(column.width(), 32.0),
@@ -430,7 +430,7 @@ fn with_cover(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: f32) {
             );
             let label = gettext(app.locale, "Try again");
             if theme::pill_button(&mut retry_ui, &theme::Palette::dark(), &label, false).clicked() {
-                app.actions.push(Action::RetryLyrics);
+                app.engine.actions.push(Action::RetryLyrics);
             }
             return;
         }
@@ -561,11 +561,11 @@ fn fullscreen_header(app: &mut App, ui: &mut egui::Ui) {
             )
             .clicked()
             {
-                app.actions.push(Action::SetLyricsFullscreen(false));
+                app.engine.actions.push(Action::SetLyricsFullscreen(false));
             }
-            let loaded = matches!(&app.lyrics, Loadable::Loaded(Some(_)));
+            let loaded = matches!(&app.engine.lyrics, Loadable::Loaded(Some(_)));
             if loaded
-                && !app.lyrics_following
+                && !app.engine.lyrics_following
                 && theme::pill_button(
                     ui,
                     &palette,
@@ -574,7 +574,7 @@ fn fullscreen_header(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .clicked()
             {
-                app.actions.push(Action::FollowLyrics);
+                app.engine.actions.push(Action::FollowLyrics);
             }
         });
     });
@@ -628,7 +628,7 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
         );
         return;
     };
-    let lyrics = match &app.lyrics {
+    let lyrics = match &app.engine.lyrics {
         Loadable::NotLoaded | Loadable::Loading => {
             widgets::loading_row(ui, &palette, app.locale);
             return;
@@ -645,7 +645,7 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(8.0);
             if theme::pill_button(ui, &palette, &gettext(app.locale, "Try again"), false).clicked()
             {
-                app.actions.push(Action::RetryLyrics);
+                app.engine.actions.push(Action::RetryLyrics);
             }
             return;
         }
@@ -675,12 +675,11 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
     let active = lyrics.active_line(now.position_ms);
     // A Follow click resets the remembered line after drawing. Other frames
     // record the shown line before any line-click action restores following.
-    if !app
-        .actions
+    if !app.engine.actions
         .iter()
         .any(|action| matches!(action, Action::FollowLyrics))
     {
-        app.actions.push(Action::LyricsLineShown(active));
+        app.engine.actions.push(Action::LyricsLineShown(active));
     }
     let viewport = ui.available_rect_before_wrap();
     let manual_scroll = ui.rect_contains_pointer(viewport)
@@ -688,8 +687,8 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
             input.smooth_scroll_delta.y != 0.0
                 || (input.pointer.primary_down() && input.pointer.delta().y != 0.0)
         });
-    let following = app.lyrics_following && !manual_scroll;
-    let follow = following && app.lyrics_line_shown != Some(active);
+    let following = app.engine.lyrics_following && !manual_scroll;
+    let follow = following && app.engine.lyrics_line_shown != Some(active);
     let animation = crate::motion::scroll(ui.ctx(), 0.45);
     let size = (ui.available_width() * 0.046).clamp(28.0, 42.0);
     // The line being sung brightens; all lines keep the same font metrics
@@ -770,8 +769,8 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
                     && response.clicked()
                     && let Some(at_ms) = line.at_ms
                 {
-                    app.actions.push(Action::Seek(at_ms));
-                    app.actions.push(Action::FollowLyrics);
+                    app.engine.actions.push(Action::Seek(at_ms));
+                    app.engine.actions.push(Action::FollowLyrics);
                 }
                 if is_active && follow {
                     show_sung_line(ui, rect, Some(animation));
@@ -798,8 +797,8 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
         });
     // Scrolling by hand means the reader wants to look elsewhere; the
     // Follow button in the header picks the song back up.
-    if manual_scroll && app.lyrics_following {
-        app.actions.push(Action::PauseLyricsFollow);
+    if manual_scroll && app.engine.lyrics_following {
+        app.engine.actions.push(Action::PauseLyricsFollow);
     }
     if now.playing
         && lyrics.synced

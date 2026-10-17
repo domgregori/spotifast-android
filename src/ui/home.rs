@@ -14,7 +14,7 @@ use super::widgets::{self, TrackRow};
 
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    if !app.network_reachable {
+    if !app.engine.network_reachable {
         let space = ((ui.available_height() - 160.0) / 2.0).max(48.0);
         ui.add_space(space);
         ui.vertical_centered(|ui| {
@@ -46,14 +46,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     quick_access(app, ui);
     ui.add_space(16.0);
 
-    if app.settings.home.made_for_you.visible {
+    if app.engine.settings.home.made_for_you.visible {
         made_for_you(app, ui);
     }
     recently_played(app, ui);
     podcasts(app, ui);
     top_artists(app, ui);
     top_tracks(app, ui);
-    if app.settings.home.recommendations.visible {
+    if app.engine.settings.home.recommendations.visible {
         recommendations(app, ui);
     }
 }
@@ -77,14 +77,13 @@ fn quick_access_tiles(app: &App) -> Vec<Tile> {
         image: None,
         name: gettext(app.locale, "Liked Songs").into_owned(),
         page: Page::LikedSongs,
-        uri: app
-            .user
+        uri: app.engine.user
             .as_ref()
             .map(|user| format!("spotify:user:{}:collection", user.id)),
         liked: true,
         owned_playlist: None,
     }];
-    if let Some(playlists) = app.library.playlists.get() {
+    if let Some(playlists) = app.engine.library.playlists.get() {
         for playlist in playlists.iter().take(7) {
             tiles.push(Tile {
                 image: pick_image(&playlist.images, tile_art).map(str::to_string),
@@ -191,9 +190,9 @@ fn quick_access(app: &mut App, ui: &mut egui::Ui) {
                         .clicked()
                         {
                             if context_here {
-                                app.actions.push(Action::TogglePlay);
+                                app.engine.actions.push(Action::TogglePlay);
                             } else {
-                                app.actions.push(Action::PlayContext {
+                                app.engine.actions.push(Action::PlayContext {
                                     uri: uri.clone(),
                                     offset_uri: None,
                                     offset_index: None,
@@ -203,7 +202,7 @@ fn quick_access(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
                 if response.clicked() {
-                    app.actions.push(Action::Open(page.clone()));
+                    app.engine.actions.push(Action::Open(page.clone()));
                 }
                 if !liked && let Some(uri) = uri {
                     egui::Popup::context_menu(&response)
@@ -227,7 +226,7 @@ fn quick_access(app: &mut App, ui: &mut egui::Ui) {
 /// Renders session Home cards or approximate fallback cards in the same shelf.
 fn made_for_you(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    let (playlists, loading, failure) = match &app.home.made_for_you {
+    let (playlists, loading, failure) = match &app.engine.home.made_for_you {
         Loadable::Loaded(playlists) => (playlists.clone(), false, None),
         Loadable::Loading | Loadable::NotLoaded => (Vec::new(), true, None),
         Loadable::Failed(error) => (Vec::new(), false, Some(error.clone())),
@@ -272,9 +271,9 @@ fn made_for_you(app: &mut App, ui: &mut egui::Ui) {
                 );
                 if card.play {
                     if context_here {
-                        app.actions.push(Action::TogglePlay);
+                        app.engine.actions.push(Action::TogglePlay);
                     } else {
-                        app.actions.push(Action::PlayContext {
+                        app.engine.actions.push(Action::PlayContext {
                             uri: playlist.uri.clone(),
                             offset_uri: None,
                             offset_index: None,
@@ -282,7 +281,7 @@ fn made_for_you(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
                 if card.clicked {
-                    app.actions
+                    app.engine.actions
                         .push(Action::Open(Page::Playlist(playlist.id.clone())));
                 }
                 egui::Popup::context_menu(&card.response)
@@ -305,7 +304,7 @@ fn made_for_you(app: &mut App, ui: &mut egui::Ui) {
 
 fn recently_played(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    let history = match app.home.recently_played.clone() {
+    let history = match app.engine.home.recently_played.clone() {
         Loadable::Loaded(history) => history,
         Loadable::Loading | Loadable::NotLoaded => {
             widgets::shelf(
@@ -363,7 +362,7 @@ fn recently_played(app: &mut App, ui: &mut egui::Ui) {
                     widgets::CardCover::square(false),
                 );
                 if card.play {
-                    app.actions.push(Action::PlayUris {
+                    app.engine.actions.push(Action::PlayUris {
                         uris: vec![track.uri.clone()],
                         index: 0,
                     });
@@ -372,7 +371,7 @@ fn recently_played(app: &mut App, ui: &mut egui::Ui) {
                     && let Some(album) = &track.album
                     && !album.id.is_empty()
                 {
-                    app.actions
+                    app.engine.actions
                         .push(Action::Open(Page::Album(album.id.clone())));
                 }
                 egui::Popup::context_menu(&card.response)
@@ -475,8 +474,8 @@ pub(crate) fn podcast_episodes(
 fn podcasts(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     let episodes = podcast_episodes(
-        &app.home.podcasts,
-        |show| app.audiobook_shows.contains(&show.uri) || app.is_saved(&show.uri) == Some(false),
+        &app.engine.home.podcasts,
+        |show| app.engine.audiobook_shows.contains(&show.uri) || app.is_saved(&show.uri) == Some(false),
         jiff::Zoned::now().date(),
     );
     if episodes.is_empty() {
@@ -515,13 +514,13 @@ fn podcasts(app: &mut App, ui: &mut egui::Ui) {
                     widgets::CardCover::square(false),
                 );
                 if card.play {
-                    app.actions.push(Action::PlayEpisode {
+                    app.engine.actions.push(Action::PlayEpisode {
                         uri: episode.uri.clone(),
                         resume_ms: episode.resume_ms(),
                     });
                 }
                 if card.clicked && !show.id.is_empty() {
-                    app.actions.push(Action::Open(Page::Show(show.id.clone())));
+                    app.engine.actions.push(Action::Open(Page::Show(show.id.clone())));
                 }
                 egui::Popup::context_menu(&card.response)
                     .id(ui.make_persistent_id(("home-podcasts-menu", &episode.uri)))
@@ -542,7 +541,7 @@ fn podcasts(app: &mut App, ui: &mut egui::Ui) {
 
 fn top_artists(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    let artists = match app.home.top_artists.clone() {
+    let artists = match app.engine.home.top_artists.clone() {
         Loadable::Loaded(artists) => artists,
         Loadable::Loading | Loadable::NotLoaded => {
             widgets::shelf(
@@ -591,9 +590,9 @@ fn top_artists(app: &mut App, ui: &mut egui::Ui) {
                 );
                 if card.play {
                     if context_here {
-                        app.actions.push(Action::TogglePlay);
+                        app.engine.actions.push(Action::TogglePlay);
                     } else {
-                        app.actions.push(Action::PlayContext {
+                        app.engine.actions.push(Action::PlayContext {
                             uri: artist.uri.clone(),
                             offset_uri: None,
                             offset_index: None,
@@ -601,7 +600,7 @@ fn top_artists(app: &mut App, ui: &mut egui::Ui) {
                     }
                 }
                 if card.clicked {
-                    app.actions
+                    app.engine.actions
                         .push(Action::Open(Page::Artist(artist.id.clone())));
                 }
                 egui::Popup::context_menu(&card.response)
@@ -630,7 +629,7 @@ fn track_list(
         Loadable::Loading | Loadable::NotLoaded => {
             if let Some(page) = title_page {
                 if theme::link(ui, title, theme::bold(17.0), palette.text).clicked() {
-                    app.actions.push(Action::Open(page));
+                    app.engine.actions.push(Action::Open(page));
                 }
             } else {
                 theme::section_title(ui, &palette, title);
@@ -651,7 +650,7 @@ fn track_list(
     }
     if let Some(page) = title_page {
         if theme::link(ui, title, theme::bold(17.0), palette.text).clicked() {
-            app.actions.push(Action::Open(page));
+            app.engine.actions.push(Action::Open(page));
         }
     } else {
         theme::section_title(ui, &palette, title);
@@ -673,13 +672,13 @@ fn track_list(
                 number: None,
                 item: &item,
                 context: &context,
-                show_cover: !app.settings.tracklist_compact,
+                show_cover: !app.engine.settings.tracklist_compact,
                 show_album: true,
                 added_at: None,
                 added_by: None,
                 show_added_by: false,
                 compact: false,
-                thin: app.settings.tracklist_compact,
+                thin: app.engine.settings.tracklist_compact,
                 shift: 0.0,
                 picked: false,
                 picked_songs: &[],
@@ -690,13 +689,13 @@ fn track_list(
         && tracks.len() > limit
         && theme::link(ui, label, theme::semibold(14.0), palette.secondary).clicked()
     {
-        app.actions.push(Action::Open(Page::TopSongs));
+        app.engine.actions.push(Action::Open(Page::TopSongs));
     }
     ui.add_space(16.0);
 }
 
 fn top_tracks(app: &mut App, ui: &mut egui::Ui) {
-    let tracks = app.home.top_tracks.clone();
+    let tracks = app.engine.home.top_tracks.clone();
     let title = gettext(app.locale, "Your top songs");
     let more = gettext(app.locale, "Show more top songs");
     track_list(
@@ -711,7 +710,7 @@ fn top_tracks(app: &mut App, ui: &mut egui::Ui) {
 }
 
 fn recommendations(app: &mut App, ui: &mut egui::Ui) {
-    let tracks = app.home.recommendations.clone();
+    let tracks = app.engine.home.recommendations.clone();
     let title = gettext(app.locale, "Recommended for you");
     track_list(app, ui, &title, tracks, 20, None, None);
 }
@@ -774,7 +773,7 @@ mod tests {
             },
         );
         crate::demo::populate(&mut app);
-        let first = app.library.playlists.get().unwrap()[0].images.clone();
+        let first = app.engine.library.playlists.get().unwrap()[0].images.clone();
         let width = |url: Option<&str>| {
             first
                 .iter()

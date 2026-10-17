@@ -198,11 +198,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let width = ui.available_width();
     let mut window_controls = super::window_controls_reservation(
         ui.ctx(),
-        app.show_queue_panel,
-        app.show_lyrics_panel,
+        app.engine.show_queue_panel,
+        app.engine.show_lyrics_panel,
         width,
     );
-    if !app.settings.sidebar_visible {
+    if !app.engine.settings.sidebar_visible {
         window_controls.topbar_top = window_controls
             .topbar_top
             .max(super::linux_left_controls_inset(ui.ctx()));
@@ -234,7 +234,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         |ui| {
             ui.add_space(super::widgets::PAGE_PADDING);
             ui.spacing_mut().item_spacing.x = ITEM_SPACING;
-            if !app.settings.sidebar_visible {
+            if !app.engine.settings.sidebar_visible {
                 if nav_button(
                     ui,
                     &palette,
@@ -247,14 +247,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .clicked()
                 {
-                    app.actions.push(Action::ToggleSidebar);
+                    app.engine.actions.push(Action::ToggleSidebar);
                 }
                 ui.add_space(2.0);
             }
-            if !app.settings.sidebar_visible
+            if !app.engine.settings.sidebar_visible
                 && nav_button(ui, &palette, Icon::House, true, &gettext(locale, "Home")).clicked()
             {
-                app.actions.push(Action::Open(Page::Home));
+                app.engine.actions.push(Action::Open(Page::Home));
             }
             if nav_button(
                 ui,
@@ -265,7 +265,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             )
             .clicked()
             {
-                app.actions.push(Action::Back);
+                app.engine.actions.push(Action::Back);
             }
             if nav_button(
                 ui,
@@ -276,7 +276,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             )
             .clicked()
             {
-                app.actions.push(Action::Forward);
+                app.engine.actions.push(Action::Forward);
             }
             ui.add_space(8.0);
 
@@ -324,7 +324,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     + badge_width(update_galley.as_ref(), UPDATE_BADGE_PADDING, labels)
             };
             let controls = RIGHT_CONTROLS_WIDTH
-                + if !app.network_reachable {
+                + if !app.engine.network_reachable {
                     ICON_BUTTON_SIZE + 4.0
                 } else {
                     0.0
@@ -344,7 +344,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             let fit = topbar_fit(search_room, controls, badges(true), badges(false));
             let search_width = fit.search;
             let id = egui::Id::new("global-search");
-            let before = app.search.query.clone();
+            let before = app.engine.search.query.clone();
             let selected = egui::TextEdit::load_state(ui.ctx(), id)
                 .and_then(|state| state.cursor.char_range())
                 .is_some_and(|range| !range.is_empty());
@@ -353,34 +353,34 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 &palette,
                 app.locale,
                 id,
-                &mut app.search.query,
+                &mut app.engine.search.query,
                 &gettext(locale, "What do you want to play?"),
                 search_width,
             );
-            if app.search.focus_requested {
-                app.search.focus_requested = false;
+            if app.engine.search.focus_requested {
+                app.engine.search.focus_requested = false;
                 response.request_focus();
             }
             // Clear empties the field and hands it focus in the same frame.
             // Neither should leave the page: only typing a query does.
-            let cleared = app.search.query.is_empty() && !before.is_empty();
+            let cleared = app.engine.search.query.is_empty() && !before.is_empty();
             if response.gained_focus() && !cleared && !matches!(app.page(), Page::Search) {
-                app.actions.push(Action::Open(Page::Search));
+                app.engine.actions.push(Action::Open(Page::Search));
             }
-            if app.search.query != before {
+            if app.engine.search.query != before {
                 // Typing over a selection, or emptying the field, starts a
                 // new query rather than editing the last one.
-                if selected || app.search.query.is_empty() {
-                    app.actions.push(Action::EndSearchRun);
+                if selected || app.engine.search.query.is_empty() {
+                    app.engine.actions.push(Action::EndSearchRun);
                 }
-                app.search.typed_at = Some(std::time::Instant::now());
+                app.engine.search.typed_at = Some(std::time::Instant::now());
                 if !cleared && !matches!(app.page(), Page::Search) {
-                    app.actions.push(Action::Open(Page::Search));
+                    app.engine.actions.push(Action::Open(Page::Search));
                 }
             }
             if response.lost_focus() && ui.input(|input| input.key_pressed(egui::Key::Enter)) {
-                let query = app.search.query.clone();
-                app.actions.push(Action::Search(query));
+                let query = app.engine.search.query.clone();
+                app.engine.actions.push(Action::Search(query));
             }
             if response.has_focus() && ui.input(|input| input.key_pressed(egui::Key::Escape)) {
                 response.surrender_focus();
@@ -390,8 +390,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 ui.add_space(window_controls.topbar_width);
                 ui.add_space(super::widgets::PAGE_PADDING);
                 // Account.
-                let (name, avatar) = app
-                    .user
+                let (name, avatar) = app.engine.user
                     .as_ref()
                     .map(|user| {
                         (
@@ -451,7 +450,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             theme::text(ui, &name, theme::semibold(14.0), palette.text);
                         });
                         if let Some(product) =
-                            app.user.as_ref().and_then(|user| user.product.clone())
+                            app.engine.user.as_ref().and_then(|user| user.product.clone())
                         {
                             ui.horizontal(|ui| {
                                 ui.add_space(10.0);
@@ -470,7 +469,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             Some(Icon::Settings),
                             &gettext(locale, "Settings"),
                         ) {
-                            app.actions.push(Action::Open(Page::Settings));
+                            app.engine.actions.push(Action::Open(Page::Settings));
                         }
                         if super::widgets::menu_item(
                             ui,
@@ -478,7 +477,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             Some(Icon::Info),
                             &gettext(locale, "Keyboard shortcuts"),
                         ) {
-                            app.actions
+                            app.engine.actions
                                 .push(Action::ShowDialog(crate::model::Dialog::Shortcuts));
                         }
                         super::widgets::menu_separator(ui, &palette);
@@ -488,10 +487,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             Some(Icon::LogOut),
                             &gettext(locale, "Sign out"),
                         ) {
-                            app.actions.push(Action::SignOut);
+                            app.engine.actions.push(Action::SignOut);
                         }
                     });
-                if !app.network_reachable {
+                if !app.engine.network_reachable {
                     ui.add_space(4.0);
                     let (rect, response) =
                         ui.allocate_exact_size(Vec2::splat(ICON_BUTTON_SIZE), Sense::hover());
@@ -532,13 +531,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .clicked()
                 {
-                    app.actions.push(Action::Open(Page::Settings));
+                    app.engine.actions.push(Action::Open(Page::Settings));
                 }
                 if theme::icon_button(
                     ui,
                     Icon::AudioLines,
                     ICON_BUTTON_ICON,
-                    if app.settings.milkdrop_open {
+                    if app.engine.settings.milkdrop_open {
                         palette.accent
                     } else {
                         palette.secondary
@@ -551,7 +550,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .clicked()
                 {
-                    app.actions.push(Action::ToggleWinampMilkdrop);
+                    app.engine.actions.push(Action::ToggleWinampMilkdrop);
                 }
                 if theme::icon_button(
                     ui,
@@ -566,7 +565,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .clicked()
                 {
-                    app.actions.push(Action::ToggleWinampWindow);
+                    app.engine.actions.push(Action::ToggleWinampWindow);
                 }
                 // A quiet spinner once the app has been at something in the
                 // background for a while, long enough that fast requests
@@ -599,7 +598,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         response.on_hover_text(device)
                     };
                     if response.clicked() {
-                        app.actions.push(Action::ToggleDevicesPopup);
+                        app.engine.actions.push(Action::ToggleDevicesPopup);
                     }
                 }
                 // A newer release. Most people never visit a releases page,
@@ -620,7 +619,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     )
                     .clicked()
                 {
-                    app.actions.push(Action::ShowUpdate);
+                    app.engine.actions.push(Action::ShowUpdate);
                 }
             });
         },

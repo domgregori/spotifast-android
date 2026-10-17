@@ -64,7 +64,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             // Its empty space is the visualizer's control, as Winamp's
             // visualizer was: a click moves to the next mode. The controls
             // drawn after it take their own clicks.
-            if app.settings.player_bar_vis_click {
+            if app.engine.settings.player_bar_vis_click {
                 let empty = ui.interact(
                     behind,
                     ui.id().with("player-bar-visualizer"),
@@ -82,7 +82,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     empty
                 };
                 if empty.clicked() {
-                    app.actions.push(Action::CyclePlayerBarVis);
+                    app.engine.actions.push(Action::CyclePlayerBarVis);
                 }
             }
             ui.painter().hline(
@@ -124,7 +124,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 fn visualizer(app: &mut App, ui: &egui::Ui, rect: Rect, now: Option<&NowPlaying>) -> bool {
     use crate::settings::PlayerBarVis;
     use crate::vis;
-    let mode = app.settings.player_bar_vis;
+    let mode = app.engine.settings.player_bar_vis;
     let sounding = now.is_some_and(|now| (now.playing || now.loading) && now.local);
     let dark = ui.visuals().dark_mode;
     let (low, high) = vis_colours(app.now_playing_tint().unwrap_or(app.palette.accent), dark);
@@ -440,13 +440,13 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
         pos2(cover_rect.right() - 10.0, cover_rect.top() + 10.0),
         Vec2::splat(18.0),
     );
-    let offer_expand = art_available && !app.settings.art_expanded && app.settings.sidebar_visible;
+    let offer_expand = art_available && !app.engine.settings.art_expanded && app.engine.settings.sidebar_visible;
     let over_expand = offer_expand && ui.rect_contains_pointer(expand_rect);
     if cover_response.clicked() && !over_expand {
         if let Some(id) = &now.album_id {
-            app.actions.push(Action::Open(Page::Album(id.clone())));
+            app.engine.actions.push(Action::Open(Page::Album(id.clone())));
         } else if let Some(id) = &now.show_id {
-            app.actions.push(Action::Open(Page::Show(id.clone())));
+            app.engine.actions.push(Action::Open(Page::Show(id.clone())));
         }
     }
     if offer_expand && (cover_response.hovered() || over_expand) {
@@ -462,8 +462,8 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
             Rect::from_center_size(expand_rect.center(), Vec2::splat(12.0)),
         );
         if expand.clicked() {
-            app.settings.art_expanded = true;
-            app.actions.push(Action::SettingsChanged);
+            app.engine.settings.art_expanded = true;
+            app.engine.actions.push(Action::SettingsChanged);
         }
     }
     let heart_width = if now.is_episode { 0.0 } else { 42.0 };
@@ -481,9 +481,9 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
     let title_response = theme::link(&mut text_ui, &now.title, theme::medium(14.0), palette.text);
     if title_response.clicked() {
         if let Some(id) = &now.album_id {
-            app.actions.push(Action::Open(Page::Album(id.clone())));
+            app.engine.actions.push(Action::Open(Page::Album(id.clone())));
         } else if let Some(id) = &now.show_id {
-            app.actions.push(Action::Open(Page::Show(id.clone())));
+            app.engine.actions.push(Action::Open(Page::Show(id.clone())));
         }
     }
     text_ui.horizontal_top(|ui| {
@@ -491,7 +491,7 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
             if theme::link(ui, &now.subtitle, theme::regular(12.0), palette.secondary).clicked()
                 && let Some(id) = &now.show_id
             {
-                app.actions.push(Action::Open(Page::Show(id.clone())));
+                app.engine.actions.push(Action::Open(Page::Show(id.clone())));
             }
         } else {
             super::widgets::artist_links(
@@ -569,7 +569,7 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
                 .layout(Layout::centered_and_justified(egui::Direction::LeftToRight)),
         );
         if theme::icon_button(&mut heart_ui, icon, 17.0, color, hover, &tooltip).clicked() {
-            app.actions.push(Action::ToggleSaved(now.uri.clone()));
+            app.engine.actions.push(Action::ToggleSaved(now.uri.clone()));
         }
     }
 }
@@ -638,7 +638,7 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
         )
     });
     if shuffle_button.clicked() {
-        app.actions.push(Action::ToggleShuffle);
+        app.engine.actions.push(Action::ToggleShuffle);
     }
 
     let mut cell = centered(ui, slot(widths[1]));
@@ -652,7 +652,7 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
     )
     .clicked()
     {
-        app.actions.push(Action::Previous);
+        app.engine.actions.push(Action::Previous);
     }
 
     let disc = slot(widths[2]);
@@ -688,7 +688,7 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
         )
         .clicked()
         {
-            app.actions.push(Action::TogglePlay);
+            app.engine.actions.push(Action::TogglePlay);
         }
     }
 
@@ -703,7 +703,7 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
     )
     .clicked()
     {
-        app.actions.push(Action::Next);
+        app.engine.actions.push(Action::Next);
     }
 
     let (repeat_icon, repeat_color, tooltip) = match repeat {
@@ -734,7 +734,7 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
     )
     .clicked()
     {
-        app.actions.push(Action::CycleRepeat);
+        app.engine.actions.push(Action::CycleRepeat);
     }
 
     // Progress row, just below the buttons (disc bottom + 6px gap + half of
@@ -744,7 +744,7 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
     let (position, duration) = now
         .map(|now| (now.position_ms, now.duration_ms))
         .unwrap_or((0, 0));
-    let shown_position = match app.seek_preview {
+    let shown_position = match app.engine.seek_preview {
         Some(fraction) => (fraction * duration as f32) as u32,
         None => position,
     };
@@ -782,11 +782,11 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
         slider_width,
         None,
     ) {
-        SliderEvent::Dragging(value) => app.seek_preview = Some(value),
+        SliderEvent::Dragging(value) => app.engine.seek_preview = Some(value),
         SliderEvent::Committed(value) => {
-            app.seek_preview = None;
+            app.engine.seek_preview = None;
             if duration > 0 {
-                app.actions
+                app.engine.actions
                     .push(Action::Seek((value * duration as f32) as u32));
             }
         }
@@ -806,8 +806,8 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
     ui.spacing_mut().item_spacing.x = 6.0;
     let volume = now
         .map(|now| now.volume_percent)
-        .unwrap_or_else(|| crate::app::volume_to_percent(app.local.volume));
-    let shown = match app.volume_preview {
+        .unwrap_or_else(|| crate::app::volume_to_percent(app.engine.local.volume));
+    let shown = match app.engine.volume_preview {
         Some(fraction) => (fraction * 100.0).round() as u8,
         None => volume,
     };
@@ -826,16 +826,16 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
             Some(0.05),
         ) {
             SliderEvent::Dragging(value) => {
-                app.volume_preview = Some(value);
+                app.engine.volume_preview = Some(value);
                 // Local volume is cheap to apply continuously; remote goes on release.
                 if now.is_none_or(|now| now.local) {
-                    app.actions
+                    app.engine.actions
                         .push(Action::PreviewVolume((value * 100.0).round() as u8));
                 }
             }
             SliderEvent::Committed(value) => {
-                app.volume_preview = None;
-                app.actions
+                app.engine.volume_preview = None;
+                app.engine.actions
                     .push(Action::SetVolume((value * 100.0).round() as u8));
             }
             SliderEvent::None => {}
@@ -860,7 +860,7 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
         )
         .clicked()
         {
-            app.actions.push(Action::ToggleMute);
+            app.engine.actions.push(Action::ToggleMute);
         }
     });
     if !adjustable {
@@ -897,9 +897,9 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
         data.insert_temp(egui::Id::new(super::devices::BUTTON_RECT_ID), devices.rect)
     });
     if devices.clicked() {
-        app.actions.push(Action::ToggleDevicesPopup);
+        app.engine.actions.push(Action::ToggleDevicesPopup);
     }
-    let queue_open = app.show_queue_panel || matches!(app.page(), Page::Queue);
+    let queue_open = app.engine.show_queue_panel || matches!(app.page(), Page::Queue);
     let queue_button = theme::icon_button(
         ui,
         Icon::ListVideo,
@@ -913,12 +913,12 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
         &gettext(app.locale, "Queue"),
     );
     if queue_button.clicked() {
-        app.actions.push(Action::ToggleQueuePanel);
+        app.engine.actions.push(Action::ToggleQueuePanel);
     }
     // A dragged song dropped on the queue button queues it, same as the
     // "Add to queue" menu item.
     if let Some(track) = queue_button.dnd_release_payload::<DragTrack>() {
-        app.actions.push(Action::QueueMany {
+        app.engine.actions.push(Action::QueueMany {
             songs: track
                 .items
                 .iter()
@@ -930,7 +930,7 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
         ui,
         Icon::Mic,
         18.0,
-        if app.show_lyrics_panel {
+        if app.engine.show_lyrics_panel {
             palette.accent
         } else {
             palette.secondary
@@ -940,7 +940,7 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
     )
     .clicked()
     {
-        app.actions.push(Action::ToggleLyricsPanel);
+        app.engine.actions.push(Action::ToggleLyricsPanel);
     }
 }
 

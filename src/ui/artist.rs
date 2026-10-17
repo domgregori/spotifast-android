@@ -14,10 +14,10 @@ use super::collection::{Hero, HeroArt, hero, hero_images};
 use super::widgets::{self, TrackRow};
 
 pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
-    if !app.artist_pages.contains_key(id) {
+    if !app.engine.artist_pages.contains_key(id) {
         app.ensure_loaded(Page::Artist(id.to_string()));
     }
-    let Some(page) = app.artist_pages.remove(id) else {
+    let Some(page) = app.engine.artist_pages.remove(id) else {
         return;
     };
     let preview =
@@ -53,13 +53,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                                     number: Some(index + 1),
                                     item,
                                     context: &context,
-                                    show_cover: !app.settings.tracklist_compact,
+                                    show_cover: !app.engine.settings.tracklist_compact,
                                     show_album: false,
                                     added_at: None,
                                     added_by: None,
                                     show_added_by: false,
                                     compact: false,
-                                    thin: app.settings.tracklist_compact,
+                                    thin: app.engine.settings.tracklist_compact,
                                     shift: 0.0,
                                     picked: false,
                                     picked_songs: &[],
@@ -67,7 +67,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                             );
                         }
                     };
-                    if !app.network_reachable {
+                    if !app.engine.network_reachable {
                         ui.add_enabled_ui(false, |ui| {
                             ui.multiply_opacity(0.55);
                             render_top(ui, app);
@@ -90,7 +90,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                         )
                         .clicked()
                         {
-                            app.actions.push(Action::ToggleShowAllTop(id.to_string()));
+                            app.engine.actions.push(Action::ToggleShowAllTop(id.to_string()));
                         }
                     }
                 }
@@ -119,7 +119,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                 .map(|(filter, label)| (*filter, label.as_ref()))
                 .collect();
             if let Some(filter) = widgets::chips(ui, &palette, &options, page.filter) {
-                app.actions.push(Action::SetDiscographyFilter {
+                app.engine.actions.push(Action::SetDiscographyFilter {
                     artist_id: id.to_string(),
                     filter,
                 });
@@ -154,9 +154,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                             );
                             if card.play {
                                 if context_here {
-                                    app.actions.push(Action::TogglePlay);
+                                    app.engine.actions.push(Action::TogglePlay);
                                 } else {
-                                    app.actions.push(Action::PlayContext {
+                                    app.engine.actions.push(Action::PlayContext {
                                         uri: album.uri.clone(),
                                         offset_uri: None,
                                         offset_index: None,
@@ -164,7 +164,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                                 }
                             }
                             if card.clicked {
-                                app.actions
+                                app.engine.actions
                                     .push(Action::Open(Page::Album(album.id.clone())));
                             }
                             egui::Popup::context_menu(&card.response)
@@ -199,7 +199,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                         )
                         .clicked()
                         {
-                            app.actions
+                            app.engine.actions
                                 .push(Action::LoadMoreArtistAlbums(id.to_string()));
                         }
                     }
@@ -230,9 +230,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                         );
                         if card.play {
                             if context_here {
-                                app.actions.push(Action::TogglePlay);
+                                app.engine.actions.push(Action::TogglePlay);
                             } else {
-                                app.actions.push(Action::PlayContext {
+                                app.engine.actions.push(Action::PlayContext {
                                     uri: artist.uri.clone(),
                                     offset_uri: None,
                                     offset_index: None,
@@ -240,7 +240,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                             }
                         }
                         if card.clicked {
-                            app.actions
+                            app.engine.actions
                                 .push(Action::Open(Page::Artist(artist.id.clone())));
                         }
                         egui::Popup::context_menu(&card.response)
@@ -265,7 +265,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
             } else {
                 ui.add_space(40.0);
             }
-            if !app.network_reachable {
+            if !app.engine.network_reachable {
                 widgets::empty_state(
                     ui,
                     &palette,
@@ -290,7 +290,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
             } else {
                 ui.add_space(40.0);
             }
-            if !app.network_reachable
+            if !app.engine.network_reachable
                 || error.contains("network error")
                 || error.contains("Network connection error")
             {
@@ -312,7 +312,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
             }
         }
     }
-    app.artist_pages.insert(id.to_string(), page);
+    app.engine.artist_pages.insert(id.to_string(), page);
 }
 
 fn artist_hero(app: &mut App, ui: &mut egui::Ui, artist: &Artist, preview: Option<&Artist>) {
@@ -390,7 +390,7 @@ fn artist_actions(app: &mut App, ui: &mut egui::Ui, artist: &Artist) {
         )
         .clicked()
         {
-            app.actions.push(Action::PlayContext {
+            app.engine.actions.push(Action::PlayContext {
                 uri: artist.uri.clone(),
                 offset_uri: None,
                 offset_index: None,
@@ -408,7 +408,7 @@ fn artist_actions(app: &mut App, ui: &mut egui::Ui, artist: &Artist) {
         )
         .clicked()
         {
-            app.actions.push(Action::ToggleSaved(artist.uri.clone()));
+            app.engine.actions.push(Action::ToggleSaved(artist.uri.clone()));
         }
         let more = theme::icon_button(
             ui,

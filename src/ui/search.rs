@@ -15,7 +15,7 @@ use super::widgets::{self, TrackRow};
 
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    if app.search.committed.is_empty() && app.search.typed_at.is_none() {
+    if app.engine.search.committed.is_empty() && app.engine.search.typed_at.is_none() {
         recent(app, ui);
         return;
     }
@@ -28,18 +28,18 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .iter()
         .map(|(filter, label)| (*filter, label.as_ref()))
         .collect();
-    if let Some(filter) = widgets::chips(ui, &palette, &options, app.search.filter) {
-        app.actions.push(Action::SetSearchFilter(filter));
+    if let Some(filter) = widgets::chips(ui, &palette, &options, app.engine.search.filter) {
+        app.engine.actions.push(Action::SetSearchFilter(filter));
     }
     ui.add_space(12.0);
-    let pending = app.search.catalogue_pending || app.search.playlists_pending;
+    let pending = app.engine.search.catalogue_pending || app.engine.search.playlists_pending;
     if pending {
         widgets::loading_row(ui, &palette, app.locale);
     }
-    if let Some(error) = app.search.error.clone() {
+    if let Some(error) = app.engine.search.error.clone() {
         widgets::error_row(ui, app, &error, None);
     }
-    let results = match &app.search.results {
+    let results = match &app.engine.search.results {
         Loadable::Loaded(results) => results.clone(),
         Loadable::Loading | Loadable::NotLoaded => {
             if !pending {
@@ -49,13 +49,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         }
         Loadable::Failed(error) => {
             let error = error.clone();
-            if app.search.error.is_none() {
+            if app.engine.search.error.is_none() {
                 widgets::error_row(ui, app, &error, None);
             }
             return;
         }
     };
-    if results.is_empty() && (pending || app.search.error.is_some()) {
+    if results.is_empty() && (pending || app.engine.search.error.is_some()) {
         return;
     }
     if results.is_empty() {
@@ -65,12 +65,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             Icon::Search,
             // Translators: {query} is the text the user searched for.
             &gettext(app.locale, "No results for “{query}”")
-                .replace("{query}", &app.search.committed),
+                .replace("{query}", &app.engine.search.committed),
             &gettext(app.locale, "Check the spelling, or try fewer words."),
         );
         return;
     }
-    match app.search.filter {
+    match app.engine.search.filter {
         SearchFilter::All => all(app, ui, &results),
         SearchFilter::Songs => songs(app, ui, &results, usize::MAX),
         SearchFilter::Artists => artists_grid(app, ui, &results),
@@ -84,7 +84,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 fn recent(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     ui.add_space(6.0);
-    if !app.network_reachable && app.settings.search_history.is_empty() {
+    if !app.engine.network_reachable && app.engine.settings.search_history.is_empty() {
         widgets::empty_state(
             ui,
             &palette,
@@ -97,7 +97,7 @@ fn recent(app: &mut App, ui: &mut egui::Ui) {
         );
         return;
     }
-    if app.settings.search_history.is_empty() {
+    if app.engine.settings.search_history.is_empty() {
         widgets::empty_state(
             ui,
             &palette,
@@ -112,15 +112,15 @@ fn recent(app: &mut App, ui: &mut egui::Ui) {
     }
     theme::section_title(ui, &palette, &gettext(app.locale, "Recent searches"));
     ui.add_space(6.0);
-    let history = app.settings.search_history.clone();
+    let history = app.engine.settings.search_history.clone();
     ui.horizontal_wrapped(|ui| {
         ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
         for query in &history {
             let (response, forget) = theme::soft_button_dismiss(ui, &palette, Icon::Clock, query);
             if forget {
-                app.actions.push(Action::ForgetSearch(query.clone()));
+                app.engine.actions.push(Action::ForgetSearch(query.clone()));
             } else if response.clicked() {
-                app.actions.push(Action::Search(query.clone()));
+                app.engine.actions.push(Action::Search(query.clone()));
             }
         }
     });
@@ -129,7 +129,7 @@ fn recent(app: &mut App, ui: &mut egui::Ui) {
 fn all(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
     let palette = app.palette;
     let locale = app.locale;
-    let query = app.search.committed.to_lowercase();
+    let query = app.engine.search.committed.to_lowercase();
     let top_artist = results
         .artists
         .as_ref()
@@ -411,12 +411,12 @@ fn top_result(
             .clicked()
             {
                 if uri.starts_with("spotify:track:") {
-                    app.actions.push(Action::PlayUris {
+                    app.engine.actions.push(Action::PlayUris {
                         uris: vec![uri.clone()],
                         index: 0,
                     });
                 } else {
-                    app.actions.push(Action::PlayContext {
+                    app.engine.actions.push(Action::PlayContext {
                         uri: uri.clone(),
                         offset_uri: None,
                         offset_index: None,
@@ -426,7 +426,7 @@ fn top_result(
         }
     }
     if response.clicked() && !subtitle_clicked && page != Page::Search {
-        app.actions.push(Action::Open(page));
+        app.engine.actions.push(Action::Open(page));
     }
     egui::Popup::context_menu(&response)
         .frame(widgets::menu_frame(&palette))
@@ -494,9 +494,9 @@ fn artist_card(app: &mut App, ui: &mut egui::Ui, artist: &Artist) {
     );
     if card.play {
         if context_here {
-            app.actions.push(Action::TogglePlay);
+            app.engine.actions.push(Action::TogglePlay);
         } else {
-            app.actions.push(Action::PlayContext {
+            app.engine.actions.push(Action::PlayContext {
                 uri: artist.uri.clone(),
                 offset_uri: None,
                 offset_index: None,
@@ -504,7 +504,7 @@ fn artist_card(app: &mut App, ui: &mut egui::Ui, artist: &Artist) {
         }
     }
     if card.clicked {
-        app.actions
+        app.engine.actions
             .push(Action::Open(Page::Artist(artist.id.clone())));
     }
     egui::Popup::context_menu(&card.response)
@@ -562,9 +562,9 @@ fn album_card(app: &mut App, ui: &mut egui::Ui, album: &crate::api::models::Albu
     );
     if card.play {
         if context_here {
-            app.actions.push(Action::TogglePlay);
+            app.engine.actions.push(Action::TogglePlay);
         } else {
-            app.actions.push(Action::PlayContext {
+            app.engine.actions.push(Action::PlayContext {
                 uri: album.uri.clone(),
                 offset_uri: None,
                 offset_index: None,
@@ -572,7 +572,7 @@ fn album_card(app: &mut App, ui: &mut egui::Ui, album: &crate::api::models::Albu
         }
     }
     if card.clicked {
-        app.actions
+        app.engine.actions
             .push(Action::Open(Page::Album(album.id.clone())));
     }
     egui::Popup::context_menu(&card.response)
@@ -626,9 +626,9 @@ fn playlist_card(app: &mut App, ui: &mut egui::Ui, playlist: &crate::api::models
     );
     if card.play {
         if context_here {
-            app.actions.push(Action::TogglePlay);
+            app.engine.actions.push(Action::TogglePlay);
         } else {
-            app.actions.push(Action::PlayContext {
+            app.engine.actions.push(Action::PlayContext {
                 uri: playlist.uri.clone(),
                 offset_uri: None,
                 offset_index: None,
@@ -636,7 +636,7 @@ fn playlist_card(app: &mut App, ui: &mut egui::Ui, playlist: &crate::api::models
         }
     }
     if card.clicked {
-        app.actions
+        app.engine.actions
             .push(Action::Open(Page::Playlist(playlist.id.clone())));
     }
     egui::Popup::context_menu(&card.response)
@@ -697,7 +697,7 @@ fn show_card(app: &mut App, ui: &mut egui::Ui, show: &crate::api::models::Show) 
         widgets::CardCover::default(),
     );
     if card.clicked {
-        app.actions.push(Action::Open(Page::Show(show.id.clone())));
+        app.engine.actions.push(Action::Open(Page::Show(show.id.clone())));
     }
     egui::Popup::context_menu(&card.response)
         .id(ui.make_persistent_id(("search-show-menu", &show.uri)))

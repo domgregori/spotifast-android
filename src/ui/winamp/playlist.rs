@@ -33,12 +33,11 @@ struct Row {
 /// The whole panel, `height` skin pixels tall, drawn into a view whose
 /// origin is the panel's top left.
 pub(super) fn show(app: &mut App, view: &mut View, now: Option<&NowPlaying>, focused: bool) {
-    if app.settings.playlist_shaded {
+    if app.engine.settings.playlist_shaded {
         shade(app, view, now, focused);
         return;
     }
-    let height = app
-        .settings
+    let height = app.engine.settings
         .playlist_height
         .max(layout::PLAYLIST_MIN_HEIGHT);
     frame(view, height, focused);
@@ -62,7 +61,7 @@ pub(super) fn show(app: &mut App, view: &mut View, now: Option<&NowPlaying>, foc
         )
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampPlaylist);
+        app.engine.actions.push(Action::ToggleWinampPlaylist);
     }
     if view
         .lamp_button(
@@ -73,7 +72,7 @@ pub(super) fn show(app: &mut App, view: &mut View, now: Option<&NowPlaying>, foc
         )
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampPlaylistShade);
+        app.engine.actions.push(Action::ToggleWinampPlaylistShade);
     }
 
     let (rows, queue_uris) = rows(app, now);
@@ -101,21 +100,21 @@ fn mini_transport(app: &mut App, view: &mut View, now: Option<&NowPlaying>, heig
             continue;
         }
         match name {
-            "previous" => app.actions.push(Action::Previous),
-            "play" => app.actions.push(if playing {
+            "previous" => app.engine.actions.push(Action::Previous),
+            "play" => app.engine.actions.push(if playing {
                 Action::Seek(0)
             } else {
                 Action::TogglePlay
             }),
-            "pause" if now.is_some() => app.actions.push(Action::TogglePlay),
+            "pause" if now.is_some() => app.engine.actions.push(Action::TogglePlay),
             "stop" if now.is_some() => {
                 if playing {
-                    app.actions.push(Action::TogglePlay);
+                    app.engine.actions.push(Action::TogglePlay);
                 }
-                app.actions.push(Action::Seek(0));
+                app.engine.actions.push(Action::Seek(0));
             }
-            "next" => app.actions.push(Action::Next),
-            "eject" => app.actions.push(Action::ToggleWinampWindow),
+            "next" => app.engine.actions.push(Action::Next),
+            "eject" => app.engine.actions.push(Action::ToggleWinampWindow),
             _ => {}
         }
     }
@@ -176,7 +175,7 @@ fn shade(app: &mut App, view: &mut View, now: Option<&NowPlaying>, focused: bool
         )
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampPlaylistShade);
+        app.engine.actions.push(Action::ToggleWinampPlaylistShade);
     }
     if view
         .lamp_button(
@@ -187,7 +186,7 @@ fn shade(app: &mut App, view: &mut View, now: Option<&NowPlaying>, focused: bool
         )
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampPlaylist);
+        app.engine.actions.push(Action::ToggleWinampPlaylist);
     }
 }
 
@@ -272,7 +271,7 @@ fn rows_visible(height: u32) -> usize {
 /// What is playing, then the queue, numbered the way Winamp numbered a
 /// playlist. The queue's URIs come along for playing from a row.
 fn rows(app: &App, now: Option<&NowPlaying>) -> (Vec<Row>, Vec<String>) {
-    let queue = app.queue.get();
+    let queue = app.engine.queue.get();
     let ids = |item: &PlayableItem| match item {
         PlayableItem::Track(track) => (
             track.album.as_ref().map(|album| album.id.clone()),
@@ -441,7 +440,7 @@ fn list(app: &mut App, view: &mut View, rows: &[Row], height: u32) {
         if response.double_clicked()
             && let Some(index) = row.queued
         {
-            app.actions.push(Action::PlayFromRow {
+            app.engine.actions.push(Action::PlayFromRow {
                 context: RowContext::Queue,
                 uri: row.uri.clone(),
                 index: index as u32,
@@ -577,7 +576,7 @@ fn grip(app: &mut App, view: &mut View, height: u32) {
                 layout::PLAYLIST_MAX_HEIGHT as i64,
             ) as u32;
             if wanted != height {
-                app.actions.push(Action::SetPlaylistHeight(wanted));
+                app.engine.actions.push(Action::SetPlaylistHeight(wanted));
             }
         }
     }
@@ -647,12 +646,12 @@ fn add_menu(app: &mut App, ui: &mut egui::Ui) {
         .button(gettext(locale, "Search Spotify").as_ref())
         .clicked()
     {
-        app.actions.push(Action::FocusSearch);
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::FocusSearch);
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
     if ui.button(gettext(locale, "Liked Songs").as_ref()).clicked() {
-        app.actions.push(Action::Open(Page::LikedSongs));
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::Open(Page::LikedSongs));
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
 }
 
@@ -679,7 +678,7 @@ fn rem_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row]) {
         // The rows below move up, so the selection's indexes would name
         // other songs.
         app.winamp.playlist_selection.clear();
-        app.actions
+        app.engine.actions
             .push(Action::RemoveFromQueue { rows: removable });
     }
     if ui
@@ -692,7 +691,7 @@ fn rem_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row]) {
         )
         .clicked()
     {
-        app.actions.push(Action::ClearQueue);
+        app.engine.actions.push(Action::ClearQueue);
     }
 }
 
@@ -739,21 +738,20 @@ fn misc_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row]) {
     if let Some(album) = &row.album_id
         && ui.button(gettext(locale, "Song info").as_ref()).clicked()
     {
-        app.actions.push(Action::Open(Page::Album(album.clone())));
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::Open(Page::Album(album.clone())));
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
     if let Some(artist) = &row.artist_id
         && ui.button(gettext(locale, "Artist").as_ref()).clicked()
     {
-        app.actions.push(Action::Open(Page::Artist(artist.clone())));
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::Open(Page::Artist(artist.clone())));
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
 }
 
 /// Your playlists to play, and the queue kept as a new one.
 fn list_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row], queue_uris: &[String]) {
-    let playlists: Vec<(String, String)> = app
-        .library
+    let playlists: Vec<(String, String)> = app.engine.library
         .playlists
         .get()
         .map(|playlists| {
@@ -778,7 +776,7 @@ fn list_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row], queue_uris: &[Strin
                 }
                 for (name, uri) in &playlists {
                     if ui.button(name).clicked() {
-                        app.actions.push(Action::PlayContext {
+                        app.engine.actions.push(Action::PlayContext {
                             uri: uri.clone(),
                             offset_uri: None,
                             offset_index: None,
@@ -804,7 +802,7 @@ fn list_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row], queue_uris: &[Strin
             .map(|row| row.uri.clone())
             .collect();
         uris.extend(queue_uris.iter().cloned());
-        app.actions.push(Action::CreatePlaylist {
+        app.engine.actions.push(Action::CreatePlaylist {
             name: app.queue_playlist_name(),
             public: false,
             add_uris: uris,
@@ -868,17 +866,17 @@ mod tests {
         );
         crate::demo::populate(&mut app);
         let now = app.now_playing();
-        app.local_ready = true;
-        app.local.track = Some(crate::player::LocalTrack {
+        app.engine.local_ready = true;
+        app.engine.local.track = Some(crate::player::LocalTrack {
             uri: now.as_ref().unwrap().uri.clone(),
             ..Default::default()
         });
-        app.local.playback = crate::player::Playback::Paused;
-        let queued: Vec<String> = app.queue.get().unwrap().queue[..2]
+        app.engine.local.playback = crate::player::Playback::Paused;
+        let queued: Vec<String> = app.engine.queue.get().unwrap().queue[..2]
             .iter()
             .map(|item| item.uri().to_string())
             .collect();
-        app.manual_queue = queued.clone();
+        app.engine.manual_queue = queued.clone();
         let (rows, _) = rows(&app, now.as_ref());
         assert!(rows[0].current);
         // The second queued song, and the first song of Next up after it.
@@ -915,13 +913,13 @@ mod tests {
         );
         assert!(
             matches!(
-                app.actions.as_slice(),
+                app.engine.actions.as_slice(),
                 [Action::RemoveFromQueue { rows }] if *rows == [(1, queued[1].clone())]
             ),
             "{:?}",
-            app.actions
+            app.engine.actions
         );
         assert!(app.winamp.playlist_selection.is_empty());
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 }

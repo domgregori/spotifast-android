@@ -39,9 +39,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
     match page {
         Page::Albums => {
             let card_height = widgets::card_row_height(ui);
-            let count = app.library.albums.items.len();
+            let count = app.engine.library.albums.items.len();
             widgets::virtual_wrapped_cards(ui, count, card_height, |ui, index| {
-                let album = app.library.albums.items[index].album.clone();
+                let album = app.engine.library.albums.items[index].album.clone();
                 let id = album.id.clone();
                 let uri = album.uri.clone();
                 let subtitle = join_names(album.artists.iter().map(|artist| artist.name.as_str()));
@@ -58,9 +58,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                 );
                 if card.play {
                     if context_here {
-                        app.actions.push(Action::TogglePlay);
+                        app.engine.actions.push(Action::TogglePlay);
                     } else {
-                        app.actions.push(Action::PlayContext {
+                        app.engine.actions.push(Action::PlayContext {
                             uri,
                             offset_uri: None,
                             offset_index: None,
@@ -68,14 +68,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                     }
                 }
                 if card.clicked {
-                    app.actions.push(Action::Open(Page::Album(id)));
+                    app.engine.actions.push(Action::Open(Page::Album(id)));
                 }
                 egui::Popup::context_menu(&card.response)
                     .id(ui.make_persistent_id(("library-album-menu", &album.uri)))
                     .frame(widgets::menu_frame(&palette))
                     .show(|ui| widgets::context_menu_items(ui, app, &album.uri, &album.name, None));
             });
-            let list = &app.library.albums;
+            let list = &app.engine.library.albums;
             let (loading, error, can_load, empty) = (
                 list.loading,
                 list.error.clone(),
@@ -97,10 +97,10 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
         }
         Page::Artists => {
             let card_height = widgets::card_row_height(ui);
-            let count = app.library.artists.items.len();
+            let count = app.engine.library.artists.items.len();
             let artist_label = gettext(locale, "Artist");
             widgets::virtual_wrapped_cards(ui, count, card_height, |ui, index| {
-                let artist = app.library.artists.items[index].clone();
+                let artist = app.engine.library.artists.items[index].clone();
                 let id = artist.id.clone();
                 let uri = artist.uri.clone();
                 let context_here = app.playing_context_uri().as_deref() == Some(uri.as_str());
@@ -116,9 +116,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                 );
                 if card.play {
                     if context_here {
-                        app.actions.push(Action::TogglePlay);
+                        app.engine.actions.push(Action::TogglePlay);
                     } else {
-                        app.actions.push(Action::PlayContext {
+                        app.engine.actions.push(Action::PlayContext {
                             uri,
                             offset_uri: None,
                             offset_index: None,
@@ -126,7 +126,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                     }
                 }
                 if card.clicked {
-                    app.actions.push(Action::Open(Page::Artist(id)));
+                    app.engine.actions.push(Action::Open(Page::Artist(id)));
                 }
                 egui::Popup::context_menu(&card.response)
                     .id(ui.make_persistent_id(("library-artist-menu", &artist.uri)))
@@ -135,7 +135,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                         widgets::context_menu_items(ui, app, &artist.uri, &artist.name, None)
                     });
             });
-            let list = &app.library.artists;
+            let list = &app.engine.library.artists;
             let (loading, error, can_load, empty) = (
                 list.loading,
                 list.error.clone(),
@@ -157,9 +157,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
         }
         Page::Podcasts => {
             let card_height = widgets::card_row_height(ui);
-            let count = app.library.shows.items.len();
+            let count = app.engine.library.shows.items.len();
             widgets::virtual_wrapped_cards(ui, count, card_height, |ui, index| {
-                let show = app.library.shows.items[index].show.clone();
+                let show = app.engine.library.shows.items[index].show.clone();
                 let id = show.id.clone();
                 let card_art = app.art_px(widgets::CARD_ART);
                 let card = widgets::card(
@@ -171,14 +171,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                     widgets::CardCover::default(),
                 );
                 if card.clicked {
-                    app.actions.push(Action::Open(Page::Show(id)));
+                    app.engine.actions.push(Action::Open(Page::Show(id)));
                 }
                 egui::Popup::context_menu(&card.response)
                     .id(ui.make_persistent_id(("library-show-menu", &show.uri)))
                     .frame(widgets::menu_frame(&palette))
                     .show(|ui| widgets::context_menu_items(ui, app, &show.uri, &show.name, None));
             });
-            let list = &app.library.shows;
+            let list = &app.engine.library.shows;
             let (loading, error, can_load, empty) = (
                 list.loading,
                 list.error.clone(),
@@ -199,8 +199,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
             );
         }
         _ => {
-            let episodes: Vec<_> = app
-                .library
+            let episodes: Vec<_> = app.engine.library
                 .episodes
                 .items
                 .iter()
@@ -214,7 +213,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
                     super::show::episode_row(app, ui, &episodes[index], None);
                 },
             );
-            let list = &app.library.episodes;
+            let list = &app.engine.library.episodes;
             let (loading, error, can_load, empty) = (
                 list.loading,
                 list.error.clone(),
@@ -251,7 +250,7 @@ fn footer(
     icon: Icon,
 ) {
     let palette = app.palette;
-    if !app.network_reachable && empty {
+    if !app.engine.network_reachable && empty {
         widgets::empty_state(
             ui,
             &palette,

@@ -299,8 +299,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let mut any_visible = false;
     let open_folder = gettext(locale, "Open folder");
 
-    let wanted = app
-        .settings
+    let wanted = app.engine.settings
         .web_client_id
         .as_deref()
         .map(str::trim)
@@ -308,7 +307,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         .map(str::to_string);
     let in_use = wanted
         .as_deref()
-        .is_some_and(|wanted| app.web_app.as_deref() == Some(wanted));
+        .is_some_and(|wanted| app.engine.web_app.as_deref() == Some(wanted));
     let account = gettext(locale, "Account");
     let sign_out = gettext(locale, "Sign out");
     let account_rows = [
@@ -347,7 +346,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             gettext(locale, "Remove personal app"),
             gettext(locale, "Shared access remains signed in."),
         )
-        .when(!in_use && wanted.is_none() && app.web_app.is_some()),
+        .when(!in_use && wanted.is_none() && app.engine.web_app.is_some()),
         RowText::new(sign_out.clone(), account.clone()),
     ];
     if section_matches(&needle, &account, &account_rows) {
@@ -356,19 +355,17 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             if row_matches(&needle, &format!("{sign_out} {account}"), "") {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 14.0;
-                    let avatar = app.user.as_ref().and_then(|user| {
+                    let avatar = app.engine.user.as_ref().and_then(|user| {
                         pick_image(&user.images, app.art_px(56.0)).map(str::to_string)
                     });
                     widgets::cover(ui, &palette, avatar.as_deref(), 56.0, 28.0, Icon::User);
                     ui.vertical(|ui| {
-                        let name = app
-                            .user
+                        let name = app.engine.user
                             .as_ref()
                             .map(|user| user.name().to_string())
                             .unwrap_or_default();
                         theme::text(ui, name, theme::semibold(16.0), palette.text);
-                        let product = app
-                            .user
+                        let product = app.engine.user
                             .as_ref()
                             .and_then(|user| user.product.clone())
                             .map(|product| match product.as_str() {
@@ -382,7 +379,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             .unwrap_or_default();
                         theme::text(ui, product, theme::regular(13.0), palette.secondary);
                         if let Some(username) =
-                            app.local.connected.then(|| app.local.username.clone())
+                            app.engine.local.connected.then(|| app.engine.local.username.clone())
                             && !username.is_empty()
                         {
                             theme::text(
@@ -397,13 +394,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     });
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                         if theme::pill_button(ui, &palette, &sign_out, false).clicked() {
-                            app.actions.push(Action::SignOut);
+                            app.engine.actions.push(Action::SignOut);
                         }
                     });
                 });
                 ui.add_space(10.0);
             }
-            let mut client_id = app.settings.web_client_id.clone().unwrap_or_default();
+            let mut client_id = app.engine.settings.web_client_id.clone().unwrap_or_default();
             filtered_row(ui, &palette, &needle, &account, &account_rows[0], |ui| {
                 let response = Frame::new()
                     .fill(palette.surface)
@@ -434,7 +431,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 }
                 if response.changed() {
                     let trimmed = client_id.trim().to_string();
-                    app.settings.web_client_id = (!trimmed.is_empty()).then_some(trimmed);
+                    app.engine.settings.web_client_id = (!trimmed.is_empty()).then_some(trimmed);
                     changed = true;
                 }
             });
@@ -442,7 +439,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 if theme::pill_button(ui, &palette, &gettext(locale, "Setup guide"), false)
                     .clicked()
                 {
-                    app.actions.push(Action::OpenUrl(
+                    app.engine.actions.push(Action::OpenUrl(
                         "https://spotifast.rocks/make-it-even-faster/#make-a-spotify-app".into(),
                     ));
                 }
@@ -451,8 +448,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 filtered_row(ui, &palette, &needle, &account, &account_rows[2], |ui| {
                     if theme::pill_button(ui, &palette, &gettext(locale, "Remove"), false).clicked()
                     {
-                        app.settings.web_client_id = None;
-                        app.actions.push(Action::ConfigurePersonalWebApp);
+                        app.engine.settings.web_client_id = None;
+                        app.engine.actions.push(Action::ConfigurePersonalWebApp);
                     }
                 });
             } else if wanted.is_some() {
@@ -460,21 +457,21 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     if theme::pill_button(ui, &palette, &gettext(locale, "Authorize"), true)
                         .clicked()
                     {
-                        app.actions.push(Action::ConfigurePersonalWebApp);
+                        app.engine.actions.push(Action::ConfigurePersonalWebApp);
                     }
                 });
-            } else if app.web_app.is_some() {
+            } else if app.engine.web_app.is_some() {
                 filtered_row(ui, &palette, &needle, &account, &account_rows[4], |ui| {
                     if theme::pill_button(ui, &palette, &gettext(locale, "Remove"), false).clicked()
                     {
-                        app.actions.push(Action::ConfigurePersonalWebApp);
+                        app.engine.actions.push(Action::ConfigurePersonalWebApp);
                     }
                 });
             }
         });
     }
 
-    let (status, detail, action) = match &app.local_playback {
+    let (status, detail, action) = match &app.engine.local_playback {
         crate::backend::LocalPlayback::Ready { .. } => (
             pgettext(locale, "playback status", "Ready"),
             gettext(locale, "This computer is a Spotify Connect device."),
@@ -610,9 +607,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             filtered_row(ui, &palette, &needle, &playback, &playback_rows[0], |ui| {
                 if let Some(label) = action {
                     if theme::pill_button(ui, &palette, &label, true).clicked() {
-                        app.actions.push(Action::EnablePlayback);
+                        app.engine.actions.push(Action::EnablePlayback);
                     }
-                } else if app.local_ready
+                } else if app.engine.local_ready
                     && theme::soft_button(
                         ui,
                         &palette,
@@ -622,7 +619,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     )
                     .clicked()
                 {
-                    app.actions.push(Action::RestartEngine);
+                    app.engine.actions.push(Action::RestartEngine);
                 }
             });
             filtered_row(ui, &palette, &needle, &playback, &playback_rows[1], |ui| {
@@ -634,7 +631,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         widgets::text_edit(
                             ui,
                             locale,
-                            egui::TextEdit::singleline(&mut app.settings.device_name)
+                            egui::TextEdit::singleline(&mut app.engine.settings.device_name)
                                 .font(theme::regular(14.0))
                                 .frame(egui::Frame::NONE)
                                 .desired_width(200.0),
@@ -673,12 +670,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             &palette,
                             None,
                             label,
-                            app.settings.bitrate == kbps,
+                            app.engine.settings.bitrate == kbps,
                         )
                         .clicked()
-                            && app.settings.bitrate != kbps
+                            && app.engine.settings.bitrate != kbps
                         {
-                            app.settings.bitrate = kbps;
+                            app.engine.settings.bitrate = kbps;
                             changed = true;
                             playback_dirty = true;
                         }
@@ -707,7 +704,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     ui,
                     &palette,
                     &normalize_volume,
-                    &mut app.settings.normalisation,
+                    &mut app.engine.settings.normalisation,
                 )
                 .changed()
                 {
@@ -716,13 +713,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 }
             });
             filtered_row(ui, &palette, &needle, &playback, &playback_rows[4], |ui| {
-                if widgets::switch(ui, &palette, &autoplay, &mut app.settings.autoplay).changed() {
+                if widgets::switch(ui, &palette, &autoplay, &mut app.engine.settings.autoplay).changed() {
                     changed = true;
                     playback_dirty = true;
                 }
             });
             filtered_row(ui, &palette, &needle, &playback, &playback_rows[5], |ui| {
-                if widgets::switch(ui, &palette, &gapless, &mut app.settings.gapless).changed() {
+                if widgets::switch(ui, &palette, &gapless, &mut app.engine.settings.gapless).changed() {
                     changed = true;
                     playback_dirty = true;
                 }
@@ -732,7 +729,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     ui,
                     &palette,
                     &keep_playing,
-                    &mut app.settings.keep_playing_in_background,
+                    &mut app.engine.settings.keep_playing_in_background,
                 )
                 .changed()
                 {
@@ -745,7 +742,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     ui,
                     &palette,
                     &gettext(locale, "MacBook notch widget"),
-                    &mut app.settings.mac_notch_widget,
+                    &mut app.engine.settings.mac_notch_widget,
                 )
                 .changed()
                 {
@@ -757,7 +754,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     ui,
                     &palette,
                     &update_checks,
-                    &mut app.settings.check_for_updates,
+                    &mut app.engine.settings.check_for_updates,
                 )
                 .changed()
                 {
@@ -769,7 +766,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     ui,
                     &palette,
                     &download_updates,
-                    &mut app.settings.download_updates_automatically,
+                    &mut app.engine.settings.download_updates_automatically,
                 )
                 .changed()
                 {
@@ -778,8 +775,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
             if cfg!(target_os = "linux") {
                 filtered_row(ui, &palette, &needle, &playback, &playback_rows[8], |ui| {
-                    let current = app
-                        .settings
+                    let current = app.engine.settings
                         .platform_backend()
                         .unwrap_or_else(|| "rodio".into());
                     ui.horizontal(|ui| {
@@ -794,7 +790,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                 .clicked()
                                 && current != backend
                             {
-                                app.settings.audio_backend = Some(backend.to_string());
+                                app.engine.settings.audio_backend = Some(backend.to_string());
                                 changed = true;
                                 playback_dirty = true;
                             }
@@ -806,13 +802,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             filtered_row(ui, &palette, &needle, &playback, &playback_rows[9], |ui| {
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
-                    let current = app.settings.audio_buffer_ms;
+                    let current = app.engine.settings.audio_buffer_ms;
                     for ms in [50u32, 100, 200] {
                         let label = format!("{ms} ms");
                         if theme::soft_button(ui, &palette, None, &label, current == ms).clicked()
                             && current != ms
                         {
-                            app.settings.audio_buffer_ms = ms;
+                            app.engine.settings.audio_buffer_ms = ms;
                             changed = true;
                             playback_dirty = true;
                         }
@@ -823,13 +819,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 // The control area lays out right-to-left: add the rightmost item first.
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
-                    if widgets::switch(ui, &palette, &audio_cache, &mut app.settings.audio_cache)
+                    if widgets::switch(ui, &palette, &audio_cache, &mut app.engine.settings.audio_cache)
                         .changed()
                     {
                         changed = true;
                         playback_dirty = true;
                     }
-                    if app.settings.audio_cache {
+                    if app.engine.settings.audio_cache {
                         ui.add_space(6.0);
                         for (mb, label) in [(4096u64, "4 GB"), (1024, "1 GB"), (512, "512 MB")] {
                             if theme::soft_button(
@@ -837,12 +833,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                 &palette,
                                 None,
                                 label,
-                                app.settings.audio_cache_mb == mb,
+                                app.engine.settings.audio_cache_mb == mb,
                             )
                             .clicked()
-                                && app.settings.audio_cache_mb != mb
+                                && app.engine.settings.audio_cache_mb != mb
                             {
-                                app.settings.audio_cache_mb = mb;
+                                app.engine.settings.audio_cache_mb = mb;
                                 changed = true;
                                 playback_dirty = true;
                             }
@@ -858,7 +854,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 ui.horizontal(|ui| {
                     if playback_dirty {
                         if theme::pill_button(ui, &palette, &apply_playback, true).clicked() {
-                            app.actions.push(Action::RestartEngine);
+                            app.engine.actions.push(Action::RestartEngine);
                             playback_dirty = false;
                         }
                         theme::subtle(ui, &palette, &apply_playback_note);
@@ -887,7 +883,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             let detail = theme::catalog_detail(
                 &app.custom_themes,
                 locale,
-                app.settings.custom_theme.as_deref(),
+                app.engine.settings.custom_theme.as_deref(),
             );
             if !detail.is_empty() {
                 detail
@@ -987,12 +983,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 theme_buttons_width,
                 |ui| {
                     ui.with_layout(Layout::top_down(Align::Max), |ui| {
-                        let selected = app
-                            .settings
+                        let selected = app.engine.settings
                             .custom_theme
                             .as_deref()
                             .map(|filename| fastframe_theme::display_name(filename).into())
-                            .unwrap_or_else(|| app.settings.theme.label(locale));
+                            .unwrap_or_else(|| app.engine.settings.theme.label(locale));
                         let response = egui::ComboBox::from_id_salt("appearance_theme")
                             .selected_text(selected.as_ref())
                             .width(200.0_f32.min(ui.available_width()))
@@ -1000,13 +995,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                 for choice in ThemeChoice::ALL {
                                     if ui
                                         .selectable_label(
-                                            app.settings.custom_theme.is_none()
-                                                && app.settings.theme == choice,
+                                            app.engine.settings.custom_theme.is_none()
+                                                && app.engine.settings.theme == choice,
                                             choice.label(locale).as_ref(),
                                         )
                                         .clicked()
                                     {
-                                        app.actions.push(Action::SetTheme(choice));
+                                        app.engine.actions.push(Action::SetTheme(choice));
                                     }
                                 }
                                 if app.custom_themes.picker_themes().next().is_some() {
@@ -1015,13 +1010,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                 for theme in app.custom_themes.picker_themes() {
                                     if ui
                                         .selectable_label(
-                                            app.settings.custom_theme.as_deref()
+                                            app.engine.settings.custom_theme.as_deref()
                                                 == Some(theme.filename.as_str()),
                                             fastframe_theme::display_name(&theme.filename),
                                         )
                                         .clicked()
                                     {
-                                        app.actions
+                                        app.engine.actions
                                             .push(Action::SetCustomTheme(theme.filename.clone()));
                                     }
                                 }
@@ -1043,7 +1038,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             if theme::soft_button(ui, &palette, Some(Icon::Globe), guide, false)
                                 .clicked()
                             {
-                                app.actions.push(Action::OpenUrl(THEMES_GUIDE_URL.into()));
+                                app.engine.actions.push(Action::OpenUrl(THEMES_GUIDE_URL.into()));
                             }
                             if theme::soft_button(
                                 ui,
@@ -1054,7 +1049,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             )
                             .clicked()
                             {
-                                app.actions.push(Action::OpenThemesFolder);
+                                app.engine.actions.push(Action::OpenThemesFolder);
                             }
                         };
                         let both = theme::soft_button_width(ui, guide)
@@ -1091,7 +1086,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         ui,
                         &palette,
                         &accent_from_art,
-                        &mut app.settings.accent_from_art,
+                        &mut app.engine.settings.accent_from_art,
                     )
                     .changed()
                     {
@@ -1126,12 +1121,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                                 &palette,
                                 None,
                                 label,
-                                app.settings.player_bar_vis == mode,
+                                app.engine.settings.player_bar_vis == mode,
                             )
                             .clicked()
-                                && app.settings.player_bar_vis != mode
+                                && app.engine.settings.player_bar_vis != mode
                             {
-                                app.settings.player_bar_vis = mode;
+                                app.engine.settings.player_bar_vis = mode;
                                 changed = true;
                             }
                         };
@@ -1165,7 +1160,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         ui,
                         &palette,
                         &player_bar_vis_click,
-                        &mut app.settings.player_bar_vis_click,
+                        &mut app.engine.settings.player_bar_vis_click,
                     )
                     .changed()
                     {
@@ -1185,9 +1180,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         &palette,
                         locale,
                         app.visualiser_screen_hz(),
-                        app.settings.visualizer_fps,
+                        app.engine.settings.visualizer_fps,
                     ) {
-                        app.settings.visualizer_fps = rate;
+                        app.engine.settings.visualizer_fps = rate;
                         changed = true;
                     }
                 },
@@ -1203,7 +1198,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         ui,
                         &palette,
                         &sidebar_compact,
-                        &mut app.settings.sidebar_compact,
+                        &mut app.engine.settings.sidebar_compact,
                     )
                     .changed()
                     {
@@ -1222,7 +1217,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         ui,
                         &palette,
                         &tracklist_compact,
-                        &mut app.settings.tracklist_compact,
+                        &mut app.engine.settings.tracklist_compact,
                     )
                     .changed()
                     {
@@ -1239,7 +1234,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
-                        let mut zoom = app.settings.zoom;
+                        let mut zoom = app.engine.settings.zoom;
                         if theme::soft_button(ui, &palette, None, "+", false).clicked() {
                             zoom = (zoom + 0.1).min(2.5);
                         }
@@ -1252,8 +1247,8 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         if theme::soft_button(ui, &palette, None, "-", false).clicked() {
                             zoom = (zoom - 0.1).max(0.5);
                         }
-                        if (zoom - app.settings.zoom).abs() > 0.001 {
-                            app.settings.zoom = zoom;
+                        if (zoom - app.engine.settings.zoom).abs() > 0.001 {
+                            app.engine.settings.zoom = zoom;
                             ui.ctx().set_zoom_factor(zoom);
                             app.mark_settings_dirty();
                         }
@@ -1272,7 +1267,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             ui,
                             &palette,
                             &middle_click,
-                            &mut app.settings.middle_click_autoscroll,
+                            &mut app.engine.settings.middle_click_autoscroll,
                         )
                         .changed()
                         {
@@ -1289,9 +1284,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     &appearance,
                     &appearance_rows[7],
                     |ui| {
-                        let mut custom = app.settings.custom_titlebar;
+                        let mut custom = app.engine.settings.custom_titlebar;
                         if widgets::switch(ui, &palette, &custom_titlebar, &mut custom).changed() {
-                            app.actions.push(Action::SetCustomTitlebar(custom));
+                            app.engine.actions.push(Action::SetCustomTitlebar(custom));
                         }
                     },
                 );
@@ -1331,47 +1326,47 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     &palette,
                     None,
                     &choice.label(locale),
-                    app.settings.proxy_mode == choice,
+                    app.engine.settings.proxy_mode == choice,
                 )
                 .clicked()
-                    && app.settings.proxy_mode != choice
+                    && app.engine.settings.proxy_mode != choice
                 {
-                    app.settings.proxy_mode = choice;
+                    app.engine.settings.proxy_mode = choice;
                     changed = true;
-                    app.actions.push(Action::ProxyEdited);
+                    app.engine.actions.push(Action::ProxyEdited);
                     if choice.is_manual() {
                         proxy_dirty = true;
                     } else {
                         proxy_dirty = false;
-                        app.actions.push(Action::ApplyProxy);
+                        app.engine.actions.push(Action::ApplyProxy);
                     }
                 }
             }
         });
         ui.add_space(10.0);
-        if app.settings.proxy_mode.is_manual() {
+        if app.engine.settings.proxy_mode.is_manual() {
             if widgets::proxy_manual_form(
                 ui,
                 &palette,
                 app.locale,
-                &mut app.settings.proxy_host,
-                &mut app.settings.proxy_port,
-                &mut app.settings.proxy_username,
-                &mut app.settings.proxy_password,
+                &mut app.engine.settings.proxy_host,
+                &mut app.engine.settings.proxy_port,
+                &mut app.engine.settings.proxy_username,
+                &mut app.engine.settings.proxy_password,
             ) {
                 changed = true;
-                app.actions.push(Action::ProxyEdited);
+                app.engine.actions.push(Action::ProxyEdited);
                 proxy_dirty = true;
             }
             ui.add_space(6.0);
-            widgets::proxy_scope_note(ui, &palette, app.locale, app.settings.proxy_mode);
+            widgets::proxy_scope_note(ui, &palette, app.locale, app.engine.settings.proxy_mode);
             ui.add_space(10.0);
         }
-        if app.settings.proxy_mode.is_manual() {
+        if app.engine.settings.proxy_mode.is_manual() {
             ui.horizontal(|ui| {
                 if theme::pill_button(ui, &palette, &gettext(locale, "Apply settings"), true).clicked() {
-                    app.actions.push(Action::ApplyProxy);
-                    if app.settings.proxy_config().is_ok() {
+                    app.engine.actions.push(Action::ApplyProxy);
+                    if app.engine.settings.proxy_config().is_ok() {
                         proxy_dirty = false;
                     }
                 }
@@ -1380,7 +1375,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             theme::subtle(
                 ui,
                 &palette,
-                &match app.settings.proxy_mode {
+                &match app.engine.settings.proxy_mode {
                     ProxyMode::Off => gettext(locale, "Not using a proxy."),
                     ProxyMode::System => gettext(locale, "Using the system proxy."),
                     ProxyMode::Http | ProxyMode::Socks => "".into(),
@@ -1391,7 +1386,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         });
     }
 
-    let skins_folder = app.dirs.skins_dir();
+    let skins_folder = app.engine.dirs.skins_dir();
     app.winamp.refresh_choices(&skins_folder);
     let skins = gettext(locale, "Winamp skins");
     let always_on_top = gettext(locale, "Always on top");
@@ -1457,7 +1452,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 if theme::pill_button(ui, &palette, &gettext(locale, "Switch to it"), true)
                     .clicked()
                 {
-                    app.actions.push(Action::ToggleWinampWindow);
+                    app.engine.actions.push(Action::ToggleWinampWindow);
                 }
             });
             filtered_row(ui, &palette, &needle, &skins, &skins_rows[1], |ui| {
@@ -1472,7 +1467,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     )
                     .clicked()
                     {
-                        app.actions
+                        app.engine.actions
                             .push(Action::OpenUrl("https://skins.webamp.org/".into()));
                     }
                     if theme::soft_button(
@@ -1484,7 +1479,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     )
                     .clicked()
                     {
-                        app.actions.push(Action::OpenSkinsFolder);
+                        app.engine.actions.push(Action::OpenSkinsFolder);
                     }
                 });
             });
@@ -1501,13 +1496,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         .enumerate()
                         .map(|(index, choice)| (index + 1, choice.label())),
                 );
-                let showing = app
-                    .settings
+                let showing = app.engine.settings
                     .skin
                     .as_deref()
                     .and_then(|name| choices.iter().position(|choice| choice.name == name))
                     .map_or(0, |index| index + 1);
-                let current = if app.settings.random_skin {
+                let current = if app.engine.settings.random_skin {
                     RANDOM
                 } else {
                     showing
@@ -1516,15 +1510,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     && picked != current
                 {
                     if picked == RANDOM {
-                        app.actions.push(Action::SetRandomSkin(true));
+                        app.engine.actions.push(Action::SetRandomSkin(true));
                     } else {
                         let name = picked
                             .checked_sub(1)
                             .map(|index| choices[index].name.clone());
-                        app.actions.push(Action::SetSkin(name));
+                        app.engine.actions.push(Action::SetSkin(name));
                     }
                 }
-                if app.settings.random_skin {
+                if app.engine.settings.random_skin {
                     let label = options
                         .iter()
                         .find(|(value, _)| *value == showing)
@@ -1540,7 +1534,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             }
             filtered_row(ui, &palette, &needle, &skins, &skins_rows[2], |ui| {
                 let scale =
-                    crate::winamp::WinampState::scale(&app.settings, ui.ctx().pixels_per_point());
+                    crate::winamp::WinampState::scale(&app.engine.settings, ui.ctx().pixels_per_point());
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
                     for candidate in 1..=crate::winamp::MAX_SCALE {
@@ -1549,25 +1543,25 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             .clicked()
                             && candidate != scale
                         {
-                            app.actions.push(Action::SetSkinScale(candidate as u8));
+                            app.engine.actions.push(Action::SetSkinScale(candidate as u8));
                         }
                     }
                 });
             });
             filtered_row(ui, &palette, &needle, &skins, &skins_rows[3], |ui| {
                 ui.add_enabled_ui(app.window_level_supported, |ui| {
-                    let mut on_top = app.settings.winamp_on_top && app.window_level_supported;
+                    let mut on_top = app.engine.settings.winamp_on_top && app.window_level_supported;
                     if widgets::switch(ui, &palette, &always_on_top, &mut on_top).changed() {
-                        app.actions.push(Action::ToggleWinampOnTop);
+                        app.engine.actions.push(Action::ToggleWinampOnTop);
                     }
                 });
             });
             if app.taskbar_setting_visible() {
                 filtered_row(ui, &palette, &needle, &skins, &skins_rows[4], |ui| {
-                    let mut visible = app.settings.winamp_show_taskbar;
+                    let mut visible = app.engine.settings.winamp_show_taskbar;
                     let response = widgets::switch(ui, &palette, &show_in_taskbar, &mut visible);
                     if response.changed() {
-                        app.actions.push(Action::SetWinampTaskbar(visible));
+                        app.engine.actions.push(Action::SetWinampTaskbar(visible));
                     }
                     #[cfg(any(test, feature = "demo"))]
                     if app.demo_windows_controls {
@@ -1582,12 +1576,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         });
     }
 
-    let presets_folder = app.dirs.milkdrop_dir();
+    let presets_folder = app.engine.dirs.milkdrop_dir();
     app.winamp
         .presets
         .refresh(&presets_folder, Some(ui.ctx().clone()));
     let count = app.winamp.presets.count();
-    let screen_hz = app.settings.milkdrop_screen_hz;
+    let screen_hz = app.engine.settings.milkdrop_screen_hz;
     let milkdrop_window = gettext(locale, "MilkDrop window");
     let folder = presets_folder.display().to_string();
     let milkdrop_rows = [
@@ -1679,9 +1673,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         any_visible = true;
         section(ui, &palette, "MilkDrop", |ui| {
             filtered_row(ui, &palette, &needle, "MilkDrop", &milkdrop_rows[0], |ui| {
-                let mut open = app.settings.milkdrop_open;
+                let mut open = app.engine.settings.milkdrop_open;
                 if widgets::switch(ui, &palette, &milkdrop_window, &mut open).changed() {
-                    app.actions.push(Action::ToggleWinampMilkdrop);
+                    app.engine.actions.push(Action::ToggleWinampMilkdrop);
                 }
             });
             let downloading = app.winamp.presets.downloading();
@@ -1713,7 +1707,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             .clicked()
                             && downloading.is_none()
                         {
-                            app.actions.push(Action::DownloadMilkdropPack(index));
+                            app.engine.actions.push(Action::DownloadMilkdropPack(index));
                         }
                     }
                     if theme::soft_button(
@@ -1725,13 +1719,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     )
                     .clicked()
                     {
-                        app.actions.push(Action::OpenMilkdropFolder);
+                        app.engine.actions.push(Action::OpenMilkdropFolder);
                     }
                 });
                 ui.add_space(10.0);
             }
             filtered_row(ui, &palette, &needle, "MilkDrop", &milkdrop_rows[2], |ui| {
-                let mut seconds = app.settings.milkdrop_seconds.clamp(2, 300);
+                let mut seconds = app.engine.settings.milkdrop_seconds.clamp(2, 300);
                 let changed = setting_slider(
                     ui,
                     &palette,
@@ -1742,18 +1736,18 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .changed();
                 if changed {
-                    app.actions.push(Action::SetMilkdropSeconds(seconds));
+                    app.engine.actions.push(Action::SetMilkdropSeconds(seconds));
                 }
             });
             filtered_row(ui, &palette, &needle, "MilkDrop", &milkdrop_rows[3], |ui| {
                 if let Some(rate) =
-                    frame_rate_dial(ui, &palette, locale, screen_hz, app.settings.milkdrop_fps)
+                    frame_rate_dial(ui, &palette, locale, screen_hz, app.engine.settings.milkdrop_fps)
                 {
-                    app.actions.push(Action::SetMilkdropFps(rate));
+                    app.engine.actions.push(Action::SetMilkdropFps(rate));
                 }
             });
             filtered_row(ui, &palette, &needle, "MilkDrop", &milkdrop_rows[4], |ui| {
-                let current = app.settings.milkdrop_scale.max(1);
+                let current = app.engine.settings.milkdrop_scale.max(1);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 6.0;
                     for (scale, label) in [
@@ -1765,7 +1759,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             .clicked()
                             && scale != current
                         {
-                            app.actions.push(Action::SetMilkdropScale(scale));
+                            app.engine.actions.push(Action::SetMilkdropScale(scale));
                         }
                     }
                 });
@@ -1808,9 +1802,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 &equalizer,
                 &equalizer_rows[0],
                 |ui| {
-                    let mut on = app.settings.eq_on;
+                    let mut on = app.engine.settings.eq_on;
                     if widgets::switch(ui, &palette, &equalizer, &mut on).changed() {
-                        app.actions.push(Action::ToggleEq);
+                        app.engine.actions.push(Action::ToggleEq);
                     }
                 },
             );
@@ -1821,20 +1815,20 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 .collect();
             let current = crate::eq::PRESETS
                 .iter()
-                .position(|preset| preset.bands_db == app.settings.eq_bands_db)
+                .position(|preset| preset.bands_db == app.engine.settings.eq_bands_db)
                 .unwrap_or(usize::MAX);
             let eq_extra_visible = equalizer_rows[1].matches(&needle, &equalizer);
             if eq_extra_visible {
                 if let Some(picked) = widgets::chips(ui, &palette, &names, current) {
-                    app.actions.push(Action::ApplyEqPreset(picked));
+                    app.engine.actions.push(Action::ApplyEqPreset(picked));
                 }
                 ui.add_space(10.0);
-                eq_curve(ui, &palette, &crate::app::eq_settings(&app.settings));
+                eq_curve(ui, &palette, &crate::app::eq_settings(&app.engine.settings));
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 14.0;
-                    let on = app.settings.eq_on;
-                    let mut preamp = app.settings.eq_preamp_db;
+                    let on = app.engine.settings.eq_on;
+                    let mut preamp = app.engine.settings.eq_preamp_db;
                     if eq_slider(
                         ui,
                         &palette,
@@ -1843,12 +1837,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         &mut preamp,
                         on,
                     ) {
-                        app.actions.push(Action::SetEqPreamp(preamp));
+                        app.engine.actions.push(Action::SetEqPreamp(preamp));
                     }
                     for (band, hz) in crate::eq::BANDS.iter().enumerate() {
-                        let mut gain = app.settings.eq_bands_db[band];
+                        let mut gain = app.engine.settings.eq_bands_db[band];
                         if eq_slider(ui, &palette, &hertz(*hz), &mut gain, on) {
-                            app.actions.push(Action::SetEqBand(band, gain));
+                            app.engine.actions.push(Action::SetEqBand(band, gain));
                         }
                     }
                 });
@@ -1862,14 +1856,14 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             gettext(locale, "Artwork cache"),
             // Translators: {folder} is the path of a cache folder.
             gettext(locale, "Stored in {folder}")
-                .replace("{folder}", &app.dirs.art_cache_dir().display().to_string()),
+                .replace("{folder}", &app.engine.dirs.art_cache_dir().display().to_string()),
         ),
         RowText::new(
             audio_cache.clone(),
             // Translators: {folder} is the path of a cache folder.
             gettext(locale, "Stored in {folder}").replace(
                 "{folder}",
-                &app.dirs.audio_cache_dir().display().to_string(),
+                &app.engine.dirs.audio_cache_dir().display().to_string(),
             ),
         ),
         RowText::new(
@@ -1879,7 +1873,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 // Translators: {file} is the path of the play history file.
                 "Tracks played here are stored in {file}. This file is never uploaded.",
             )
-            .replace("{file}", &app.dirs.history_file().display().to_string()),
+            .replace("{file}", &app.engine.dirs.history_file().display().to_string()),
         ),
         RowText::new(
             gettext(locale, "Sign-in"),
@@ -1902,7 +1896,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .clicked()
                 {
-                    app.actions.push(Action::ClearArtCache);
+                    app.engine.actions.push(Action::ClearArtCache);
                 }
             });
             filtered_row(ui, &palette, &needle, &storage, &storage_rows[1], |_| {});
@@ -1916,7 +1910,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .clicked()
                 {
-                    app.actions.push(Action::ClearPlayHistory);
+                    app.engine.actions.push(Action::ClearPlayHistory);
                 }
             });
             filtered_row(ui, &palette, &needle, &storage, &storage_rows[3], |_| {});
@@ -1975,12 +1969,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     .clicked()
                     && !app.update_checking
                 {
-                    app.actions.push(Action::CheckForUpdates);
+                    app.engine.actions.push(Action::CheckForUpdates);
                 }
                 if theme::soft_button(ui, &palette, Some(Icon::Info), &keyboard_shortcuts, false)
                     .clicked()
                 {
-                    app.actions.push(Action::ShowDialog(Dialog::Shortcuts));
+                    app.engine.actions.push(Action::ShowDialog(Dialog::Shortcuts));
                 }
                 if theme::soft_button(ui, &palette, Some(Icon::ExternalLink), &source_code, false)
                     .clicked()
@@ -1991,7 +1985,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             });
             ui.add_space(14.0);
             if widgets::credit(ui, &palette, locale) {
-                app.actions
+                app.engine.actions
                     .push(Action::OpenUrl(widgets::AUTHOR_URL.to_owned()));
             }
         });
@@ -2011,7 +2005,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     ui.data_mut(|data| data.insert_temp(dirty_id, playback_dirty));
     ui.data_mut(|data| data.insert_temp(proxy_dirty_id, proxy_dirty));
     if changed {
-        app.actions.push(Action::SettingsChanged);
+        app.engine.actions.push(Action::SettingsChanged);
     }
 }
 
@@ -2021,7 +2015,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 fn language_picker(app: &mut App, ui: &mut egui::Ui) {
     let locale = app.locale;
     let system = pgettext(locale, "language", "System");
-    let current = app.settings.language;
+    let current = app.engine.settings.language;
     let selected = match current {
         LanguageChoice::System => system.clone(),
         LanguageChoice::Locale(chosen) => chosen.native_name().into(),
@@ -2043,7 +2037,7 @@ fn language_picker(app: &mut App, ui: &mut egui::Ui) {
                     .clicked()
                     && current != choice
                 {
-                    app.actions.push(Action::SetLanguage(choice));
+                    app.engine.actions.push(Action::SetLanguage(choice));
                 }
             }
         });

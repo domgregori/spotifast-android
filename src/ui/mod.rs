@@ -37,11 +37,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let ctx = &ctx;
     keys::handle(app, ctx);
     for path in winamp::dropped_skins(ctx) {
-        app.actions.push(Action::InstallSkin(path));
+        app.engine.actions.push(Action::InstallSkin(path));
     }
-    let signed_in = app.is_connected() && app.user.is_some();
-    let connecting = matches!(app.auth, AuthStatus::Connecting | AuthStatus::Starting)
-        || (app.is_connected() && app.user.is_none());
+    let signed_in = app.is_connected() && app.engine.user.is_some();
+    let connecting = matches!(app.engine.auth, AuthStatus::Connecting | AuthStatus::Starting)
+        || (app.is_connected() && app.engine.user.is_none());
     if !signed_in {
         player_bar::end_tint_session(ctx);
         login::show(app, ui, connecting);
@@ -64,16 +64,16 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         );
     }
     player_bar::show(app, ui);
-    if app.lyrics_fullscreen.is_some() {
+    if app.engine.lyrics_fullscreen.is_some() {
         lyrics::fullscreen(app, ui);
     } else {
-        if app.settings.sidebar_visible {
+        if app.engine.settings.sidebar_visible {
             sidebar::show(app, ui);
         }
-        if app.show_queue_panel {
+        if app.engine.show_queue_panel {
             queue::side_panel(app, ui);
         }
-        if app.show_lyrics_panel {
+        if app.engine.show_lyrics_panel {
             lyrics::side_panel(app, ui);
         }
         central(app, ui);
@@ -113,8 +113,8 @@ fn keep_room_for_panels(app: &App, ctx: &Context) {
     }
     let width = main_min_width(
         topbar::least_width(ctx),
-        app.settings.sidebar_visible,
-        app.show_queue_panel || app.show_lyrics_panel,
+        app.engine.settings.sidebar_visible,
+        app.engine.show_queue_panel || app.engine.show_lyrics_panel,
     )
     .round();
     let id = Id::new("main-min-width");
@@ -210,29 +210,25 @@ where
 fn page_tint(app: &mut App) -> Option<Color32> {
     let page = app.page().clone();
     let image = match &page {
-        Page::Playlist(id) => app
-            .playlist_pages
+        Page::Playlist(id) => app.engine.playlist_pages
             .get(id)
             .and_then(|page| page.playlist.get())
             .or_else(|| app.known_playlist(id))
             .and_then(|playlist| pick_image(&playlist.images, 64))
             .map(str::to_string),
-        Page::Album(id) => app
-            .album_pages
+        Page::Album(id) => app.engine.album_pages
             .get(id)
             .and_then(|page| page.album.get())
             .or_else(|| app.known_album(id))
             .and_then(|album| pick_image(&album.images, 64))
             .map(str::to_string),
-        Page::Artist(id) => app
-            .artist_pages
+        Page::Artist(id) => app.engine.artist_pages
             .get(id)
             .and_then(|page| page.artist.get())
             .or_else(|| app.known_artist(id))
             .and_then(|artist| pick_image(&artist.images, 64))
             .map(str::to_string),
-        Page::Show(id) => app
-            .show_pages
+        Page::Show(id) => app.engine.show_pages
             .get(id)
             .and_then(|page| page.show.get())
             .or_else(|| app.known_show(id))
@@ -240,14 +236,13 @@ fn page_tint(app: &mut App) -> Option<Color32> {
             .map(str::to_string),
         Page::Radio(seed) => pick_image(&app.radio_images(seed), 64).map(str::to_string),
         Page::LikedSongs => {
-            return app
-                .settings
+            return app.engine.settings
                 .accent_from_art
                 .then_some(Color32::from_rgb(0x50, 0x38, 0xc8));
         }
         _ => None,
     };
-    if !app.settings.accent_from_art && image.is_some() {
+    if !app.engine.settings.accent_from_art && image.is_some() {
         return None;
     }
     match image {
@@ -482,7 +477,7 @@ pub fn blend(base: Color32, tint: Color32, amount: f32) -> Color32 {
 }
 
 fn toasts(app: &mut App, ctx: &egui::Context, bottom_offset: f32) {
-    if app.toasts.is_empty() {
+    if app.engine.toasts.is_empty() {
         return;
     }
     let palette = app.palette;
@@ -492,7 +487,7 @@ fn toasts(app: &mut App, ctx: &egui::Context, bottom_offset: f32) {
         .interactable(false)
         .show(ctx, |ui| {
             ui.spacing_mut().item_spacing.y = 8.0;
-            for toast in &app.toasts {
+            for toast in &app.engine.toasts {
                 let age = toast.created.elapsed().as_secs_f32();
                 let alpha = if age < 0.15 {
                     age / 0.15

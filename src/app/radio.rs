@@ -11,21 +11,18 @@ impl App {
     pub fn radio_name(&self, seed: &str) -> Option<String> {
         let id = util::uri_id(seed)?;
         let name = match util::uri_kind(seed)? {
-            "track" => self.track_cache.get(id).map(|track| track.name.clone()),
-            "playlist" => self
-                .playlist_pages
+            "track" => self.engine.track_cache.get(id).map(|track| track.name.clone()),
+            "playlist" => self.engine.playlist_pages
                 .get(id)
                 .and_then(|page| page.playlist.get())
                 .or_else(|| self.known_playlist(id))
                 .map(|playlist| playlist.name.clone()),
-            "album" => self
-                .album_pages
+            "album" => self.engine.album_pages
                 .get(id)
                 .and_then(|page| page.album.get())
                 .or_else(|| self.known_album(id))
                 .map(|album| album.name.clone()),
-            "artist" => self
-                .artist_pages
+            "artist" => self.engine.artist_pages
                 .get(id)
                 .and_then(|page| page.artist.get())
                 .or_else(|| self.known_artist(id))
@@ -45,25 +42,21 @@ impl App {
             return Vec::new();
         };
         let images = match util::uri_kind(seed) {
-            Some("track") => self
-                .track_cache
+            Some("track") => self.engine.track_cache
                 .get(id)
                 .and_then(|track| track.album.as_ref())
                 .map(|album| album.images.clone()),
-            Some("playlist") => self
-                .playlist_pages
+            Some("playlist") => self.engine.playlist_pages
                 .get(id)
                 .and_then(|page| page.playlist.get())
                 .or_else(|| self.known_playlist(id))
                 .map(|playlist| playlist.images.clone()),
-            Some("album") => self
-                .album_pages
+            Some("album") => self.engine.album_pages
                 .get(id)
                 .and_then(|page| page.album.get())
                 .or_else(|| self.known_album(id))
                 .map(|album| album.images.clone()),
-            Some("artist") => self
-                .artist_pages
+            Some("artist") => self.engine.artist_pages
                 .get(id)
                 .and_then(|page| page.artist.get())
                 .or_else(|| self.known_artist(id))
@@ -82,15 +75,14 @@ impl App {
     /// an album's song list comes without the album.
     pub(crate) fn open_song_radio(&mut self, uri: &str, track: &Track) {
         if let Some(id) = util::uri_id(uri) {
-            let cached = self
-                .track_cache
+            let cached = self.engine.track_cache
                 .entry(id.to_owned())
                 .or_insert_with(|| track.clone());
             let has_art = |t: &Track| t.album.as_ref().is_some_and(|a| !a.images.is_empty());
             if !has_art(cached) && has_art(track) {
                 cached.album = track.album.clone();
             }
-            self.track_used.insert(id.to_owned(), Instant::now());
+            self.engine.track_used.insert(id.to_owned(), Instant::now());
         }
         self.open(Page::Radio(uri.to_string()));
     }
@@ -99,7 +91,7 @@ impl App {
     pub(super) fn load_radio(&mut self, seed: &str) {
         let name = self.radio_name(seed);
         let images = self.radio_images(seed);
-        let page = self.radio_pages.entry(seed.to_string()).or_default();
+        let page = self.engine.radio_pages.entry(seed.to_string()).or_default();
         if name.is_some() {
             page.name = name;
         }
@@ -109,10 +101,10 @@ impl App {
         if !page.songs.needs_load() {
             return;
         }
-        self.load_generation = self.load_generation.wrapping_add(1);
-        page.generation = self.load_generation;
+        self.engine.load_generation = self.engine.load_generation.wrapping_add(1);
+        page.generation = self.engine.load_generation;
         page.songs = Loadable::Loading;
-        self.backend.send(Command::Radio {
+        self.engine.backend.send(Command::Radio {
             seed: seed.to_string(),
             generation: page.generation,
         });
@@ -121,18 +113,17 @@ impl App {
     /// Asks for a new mix while the page keeps showing its songs. False
     /// when there are no songs to keep, so the page loads afresh.
     pub(super) fn refresh_radio(&mut self, seed: &str) -> bool {
-        let Some(page) = self
-            .radio_pages
+        let Some(page) = self.engine.radio_pages
             .get_mut(seed)
             .filter(|page| page.songs.get().is_some())
         else {
             return false;
         };
         if !page.refreshing {
-            self.load_generation = self.load_generation.wrapping_add(1);
-            page.generation = self.load_generation;
+            self.engine.load_generation = self.engine.load_generation.wrapping_add(1);
+            page.generation = self.engine.load_generation;
             page.refreshing = true;
-            self.backend.send(Command::Radio {
+            self.engine.backend.send(Command::Radio {
                 seed: seed.to_string(),
                 generation: page.generation,
             });
@@ -146,8 +137,7 @@ impl App {
         generation: u64,
         result: Result<Vec<Track>, String>,
     ) {
-        let Some(page) = self
-            .radio_pages
+        let Some(page) = self.engine.radio_pages
             .get_mut(seed)
             .filter(|page| page.generation == generation)
         else {
@@ -159,15 +149,15 @@ impl App {
                 let uris = songs.iter().map(|track| track.uri.clone()).collect();
                 for track in &songs {
                     if let Some(id) = &track.id {
-                        self.track_cache
+                        self.engine.track_cache
                             .entry(id.clone())
                             .or_insert_with(|| track.clone());
                     }
                 }
                 page.songs = Loadable::Loaded(songs);
                 // The table's cached rows follow the new songs.
-                self.load_generation = self.load_generation.wrapping_add(1);
-                page.generation = self.load_generation;
+                self.engine.load_generation = self.engine.load_generation.wrapping_add(1);
+                page.generation = self.engine.load_generation;
                 self.request_contains(uris);
             }
             // A failed refresh keeps the mix on screen and says why.
@@ -178,7 +168,7 @@ impl App {
 
     /// Saves the radio's songs, as shown, to a new playlist named after it.
     pub(super) fn save_radio(&mut self, seed: &str) {
-        let Some(songs) = self.radio_pages.get(seed).and_then(|page| page.songs.get()) else {
+        let Some(songs) = self.engine.radio_pages.get(seed).and_then(|page| page.songs.get()) else {
             return;
         };
         let add_uris: Vec<String> = songs.iter().map(|track| track.uri.clone()).collect();
@@ -187,9 +177,9 @@ impl App {
         }
         let name = self
             .radio_name(seed)
-            .or_else(|| self.radio_pages.get(seed)?.name.clone())
+            .or_else(|| self.engine.radio_pages.get(seed)?.name.clone())
             .unwrap_or_else(|| gettext(self.locale, "Radio").into_owned());
-        self.actions.push(Action::CreatePlaylist {
+        self.engine.actions.push(Action::CreatePlaylist {
             name,
             public: false,
             add_uris,

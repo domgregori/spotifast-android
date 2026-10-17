@@ -26,7 +26,7 @@ pub fn page(app: &mut App, ui: &mut egui::Ui) {
         );
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             if save_button(ui, &palette, offer_save, app.locale) {
-                app.actions.push(Action::SaveQueueAsPlaylist);
+                app.engine.actions.push(Action::SaveQueueAsPlaylist);
             }
         });
     });
@@ -40,12 +40,12 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
         ui.ctx(),
         "queue-panel",
         theme::SIDE_PANEL_MIN_WIDTH..=560.0,
-        app.settings.queue_width,
+        app.engine.settings.queue_width,
         ui.available_width() - super::topbar::least_width(ui.ctx()),
     );
     let panel = egui::Panel::right("queue-panel")
         .resizable(true)
-        .default_size(app.settings.queue_width)
+        .default_size(app.engine.settings.queue_width)
         .size_range(fit.range.clone())
         .show_separator_line(false)
         .frame(
@@ -56,14 +56,14 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
     let response = panel.show(ui, |ui| {
         let window_controls = super::window_controls_reservation(
             ui.ctx(),
-            app.show_queue_panel,
-            app.show_lyrics_panel,
+            app.engine.show_queue_panel,
+            app.engine.show_lyrics_panel,
             ui.available_width(),
         );
         ui.add_space(window_controls.queue_top);
         // Measure buttons first and give the remaining width to the chips.
         // Without `shrink_left`, wrapped chips can overlap the close button.
-        let tab = app.queue_tab;
+        let tab = app.engine.queue_tab;
         let offer_save = tab == QueueTab::Queue && !app.queue_playlist_uris().is_empty();
         let mut picked = None;
         let mut close = false;
@@ -96,23 +96,23 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
             },
         );
         if let Some(tab) = picked {
-            app.actions.push(Action::SetQueueTab(tab));
+            app.engine.actions.push(Action::SetQueueTab(tab));
         }
         if close {
-            app.actions.push(Action::ToggleQueuePanel);
+            app.engine.actions.push(Action::ToggleQueuePanel);
         }
         if save {
-            app.actions.push(Action::SaveQueueAsPlaylist);
+            app.engine.actions.push(Action::SaveQueueAsPlaylist);
         }
         ui.add_space(8.0);
         // Lazy load recents when tab becomes visible.
-        if app.queue_tab == QueueTab::Recents
-            && !app.recents.loading
-            && !app.recents.complete
-            && app.recents.items.is_empty()
-            && app.recents.error.is_none()
+        if app.engine.queue_tab == QueueTab::Recents
+            && !app.engine.recents.loading
+            && !app.engine.recents.complete
+            && app.engine.recents.items.is_empty()
+            && app.engine.recents.error.is_none()
         {
-            app.actions.push(Action::LoadMoreRecents);
+            app.engine.actions.push(Action::LoadMoreRecents);
         }
         crate::autoscroll::show(
             ui,
@@ -120,18 +120,18 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
                 .id_salt("queue-panel-scroll")
                 .auto_shrink([false, false]),
             egui::Vec2b::new(false, true),
-            |ui| match app.queue_tab {
+            |ui| match app.engine.queue_tab {
                 QueueTab::Queue => contents(app, ui, true),
                 QueueTab::Recents => recents_contents(app, ui),
             },
         );
     });
     let width = response.response.rect.width();
-    if (width - app.settings.queue_width).abs() > 1.0
+    if (width - app.engine.settings.queue_width).abs() > 1.0
         && super::panel_width_chosen(ui.ctx(), "queue-panel", &fit)
     {
-        app.settings.queue_width = width;
-        app.actions.push(Action::SettingsChanged);
+        app.engine.settings.queue_width = width;
+        app.engine.actions.push(Action::SettingsChanged);
     }
 }
 
@@ -170,7 +170,7 @@ fn clear_button(app: &mut App, ui: &mut egui::Ui) {
     )
     .clicked()
     {
-        app.actions.push(Action::ClearQueue);
+        app.engine.actions.push(Action::ClearQueue);
     }
 }
 
@@ -197,7 +197,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
     // appends, same as the "Add to queue" menu item.
     let reorderable = app.queue_locally_reorderable();
     if !reorderable && let Some(track) = queue_drop(ui, ui.clip_rect()) {
-        app.actions.push(Action::QueueMany {
+        app.engine.actions.push(Action::QueueMany {
             songs: track
                 .items
                 .iter()
@@ -205,7 +205,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
                 .collect(),
         });
     }
-    match &app.queue {
+    match &app.engine.queue {
         Loadable::Loaded(_) => {}
         Loadable::Loading | Loadable::NotLoaded => {
             widgets::loading_row(ui, &palette, app.locale);
@@ -221,14 +221,12 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
     // Prefer the player's current track because the Web API can lag after a
     // skip.
     let current: Option<PlayableItem> = match &now {
-        Some(now) => app
-            .queue
+        Some(now) => app.engine.queue
             .get()
             .and_then(|queue| queue.currently_playing.clone())
             .filter(|item| item.uri() == now.uri)
             .or_else(|| app.now_playing_item()),
-        None => app
-            .queue
+        None => app.engine.queue
             .get()
             .and_then(|queue| queue.currently_playing.clone()),
     };
@@ -245,7 +243,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
             match from.page {
                 Some(page) => {
                     if theme::link(ui, from.name, theme::semibold(13.0), palette.text).clicked() {
-                        app.actions.push(Action::Open(page));
+                        app.engine.actions.push(Action::Open(page));
                     }
                 }
                 None => {
@@ -290,7 +288,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
         // Nothing queued at all yet: the only slot a drop could land on is
         // the first one.
         if reorderable && let Some(track) = queue_drop(ui, ui.clip_rect()) {
-            app.actions.push(Action::InsertInQueue {
+            app.engine.actions.push(Action::InsertInQueue {
                 items: track.items.clone(),
                 position: 0,
             });
@@ -309,7 +307,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
     } else {
         theme::ROW_HEIGHT
     };
-    let queue_len = app.queue.get().map(|queue| queue.queue.len()).unwrap_or(0);
+    let queue_len = app.engine.queue.get().map(|queue| queue.queue.len()).unwrap_or(0);
     // The user's own songs get their own section on top; the playing
     // context's rows follow under the usual heading. One numbering runs
     // through both, because that is the order things play.
@@ -397,21 +395,21 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
                         // names the dragged song, otherwise find where that
                         // song actually sits now. Not there at all means it
                         // left the queue, so there is nothing left to move.
-                        let from = if app.manual_queue.get(from).map(String::as_str) == Some(uri) {
+                        let from = if app.engine.manual_queue.get(from).map(String::as_str) == Some(uri) {
                             Some(from)
                         } else {
-                            app.manual_queue.iter().position(|queued| queued == uri)
+                            app.engine.manual_queue.iter().position(|queued| queued == uri)
                         };
                         // A row dropped back on its own edges moves nothing.
                         if let Some(from) = from
                             && slot != from
                             && slot != from + 1
                         {
-                            app.actions.push(Action::MoveInQueue { from, to: slot });
+                            app.engine.actions.push(Action::MoveInQueue { from, to: slot });
                         }
                     }
                     _ => {
-                        app.actions.push(Action::InsertInQueue {
+                        app.engine.actions.push(Action::InsertInQueue {
                             items: track.items.clone(),
                             position: slot,
                         });
@@ -443,7 +441,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
 }
 
 fn queue_is_empty(app: &App) -> bool {
-    app.queue.get().is_none_or(|queue| queue.queue.is_empty())
+    app.engine.queue.get().is_none_or(|queue| queue.queue.is_empty())
 }
 
 fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
@@ -451,11 +449,11 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
     // Snapshot to avoid borrow issues while drawing. The rows are both
     // histories as one: what was played here, which Spotify is never told
     // about, and what Spotify knows of every other device.
-    let items = app.recents_view.clone();
-    let loading = app.recents.loading;
-    let error = app.recents.error.clone();
-    let complete = app.recents.complete;
-    let loaded_once = app.recents.loaded_once;
+    let items = app.engine.recents_view.clone();
+    let loading = app.engine.recents.loading;
+    let error = app.engine.recents.error.clone();
+    let complete = app.engine.recents.complete;
+    let loaded_once = app.engine.recents.loaded_once;
 
     if items.is_empty() {
         if loading {
@@ -476,7 +474,7 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
                 )
                 .clicked()
                 {
-                    app.actions.push(Action::ReloadRecents);
+                    app.engine.actions.push(Action::ReloadRecents);
                 }
             });
             return;
@@ -509,7 +507,7 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
             )
             .clicked()
             {
-                app.actions.push(Action::LoadMoreRecents);
+                app.engine.actions.push(Action::LoadMoreRecents);
             }
         });
         ui.add_space(6.0);
@@ -551,12 +549,12 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
     } else if !complete {
         ui.add_space(8.0);
         // Auto-load when near end, plus manual button as fallback.
-        let can_load = app.recents.can_load_more();
+        let can_load = app.engine.recents.can_load_more();
         // Check if scroll is near end (same heuristic as widgets::load_more_when_near_end)
         let clip = ui.clip_rect();
         let cursor = ui.cursor().top();
         if can_load && cursor - clip.bottom() < 900.0 {
-            app.actions.push(Action::LoadMoreRecents);
+            app.engine.actions.push(Action::LoadMoreRecents);
         }
         if theme::soft_button(
             ui,
@@ -567,7 +565,7 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
         )
         .clicked()
         {
-            app.actions.push(Action::LoadMoreRecents);
+            app.engine.actions.push(Action::LoadMoreRecents);
         }
     }
 }
@@ -576,8 +574,7 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
 /// queue, whichever section it sits in. `shift` parts rows around the slot
 /// a dragged row would land in, in the "Playing next" section only.
 fn queue_row(app: &mut App, ui: &mut egui::Ui, index: usize, compact: bool, shift: f32) {
-    let Some(item) = app
-        .queue
+    let Some(item) = app.engine.queue
         .get()
         .and_then(|queue| queue.queue.get(index))
         .cloned()

@@ -178,7 +178,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                     if let Some((label, action)) = action
                         && theme::pill_button(ui, &palette, &label, true).clicked()
                     {
-                        app.actions.push(action);
+                        app.engine.actions.push(action);
                     }
                     ui.add_space(8.0);
                     ui.add(egui::Hyperlink::from_label_and_url(

@@ -19,10 +19,10 @@ pub const EPISODE_ROW_HEIGHT: f32 = 128.0;
 const EPISODE_ART: f32 = 96.0;
 
 pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
-    if !app.show_pages.contains_key(id) {
+    if !app.engine.show_pages.contains_key(id) {
         app.ensure_loaded(Page::Show(id.to_string()));
     }
-    let Some(page) = app.show_pages.remove(id) else {
+    let Some(page) = app.engine.show_pages.remove(id) else {
         return;
     };
     let preview = super::loading_preview(ui.ctx(), id, &page.show, || app.known_show(id).cloned());
@@ -52,7 +52,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
             ui.add_space(6.0);
             let episodes = page.episodes.items.clone();
             let show_image = pick_image(&show.images, app.art_px(EPISODE_ART)).map(str::to_string);
-            if episodes.is_empty() && !app.network_reachable {
+            if episodes.is_empty() && !app.engine.network_reachable {
                 widgets::empty_state(
                     ui,
                     &palette,
@@ -69,7 +69,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                         episode_row(app, ui, &episodes[index], show_image.as_deref());
                     });
                 };
-                if !app.network_reachable {
+                if !app.engine.network_reachable {
                     ui.add_enabled_ui(false, |ui| {
                         ui.multiply_opacity(0.55);
                         render_episodes(ui, app);
@@ -98,7 +98,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
             } else {
                 ui.add_space(40.0);
             }
-            if !app.network_reachable {
+            if !app.engine.network_reachable {
                 widgets::empty_state(
                     ui,
                     &palette,
@@ -125,7 +125,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
             } else {
                 ui.add_space(40.0);
             }
-            if !app.network_reachable
+            if !app.engine.network_reachable
                 || error.contains("network error")
                 || error.contains("Network connection error")
             {
@@ -149,7 +149,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
             }
         }
     }
-    app.show_pages.insert(id.to_string(), page);
+    app.engine.show_pages.insert(id.to_string(), page);
 }
 
 fn show_hero(app: &mut App, ui: &mut egui::Ui, show: &Show, preview: Option<&Show>) {
@@ -216,7 +216,7 @@ fn show_actions(app: &mut App, ui: &mut egui::Ui, show: &Show, latest: Option<&E
             )
             .clicked()
             {
-                app.actions.push(Action::PlayEpisode {
+                app.engine.actions.push(Action::PlayEpisode {
                     uri: latest.uri.clone(),
                     resume_ms: latest.resume_ms(),
                 });
@@ -236,7 +236,7 @@ fn show_actions(app: &mut App, ui: &mut egui::Ui, show: &Show, latest: Option<&E
             )
         };
         if theme::icon_button(ui, icon, 26.0, color, palette.text, &tooltip).clicked() {
-            app.actions.push(Action::ToggleSaved(show.uri.clone()));
+            app.engine.actions.push(Action::ToggleSaved(show.uri.clone()));
         }
         let more = theme::icon_button(
             ui,
@@ -373,9 +373,9 @@ pub fn episode_row(
     .clicked()
     {
         if is_current {
-            app.actions.push(Action::TogglePlay);
+            app.engine.actions.push(Action::TogglePlay);
         } else {
-            app.actions.push(Action::PlayEpisode {
+            app.engine.actions.push(Action::PlayEpisode {
                 uri: episode.uri.clone(),
                 resume_ms: episode.resume_ms(),
             });
@@ -456,7 +456,7 @@ pub fn episode_row(
         .frame(widgets::menu_frame(&palette))
         .show(|ui| widgets::item_menu(ui, app, &item, None, None));
     if response.double_clicked() {
-        app.actions.push(Action::PlayEpisode {
+        app.engine.actions.push(Action::PlayEpisode {
             uri: episode.uri.clone(),
             resume_ms: episode.resume_ms(),
         });

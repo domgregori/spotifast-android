@@ -51,7 +51,7 @@ fn enable_playback_row(app: &mut App, ui: &mut egui::Ui) {
     use egui::{Rect, Sense, Vec2, pos2, vec2};
     let palette = app.palette;
     let authorizing = matches!(
-        app.local_playback,
+        app.engine.local_playback,
         crate::backend::LocalPlayback::Authorizing
             | crate::backend::LocalPlayback::Connecting
             | crate::backend::LocalPlayback::WaitingForNetwork
@@ -71,7 +71,7 @@ fn enable_playback_row(app: &mut App, ui: &mut egui::Ui) {
         pos2(rect.left() + 48.0, rect.center().y - 9.0),
         egui::Align2::LEFT_CENTER,
         // Translators: {name} is the name this computer uses in Spotify Connect.
-        gettext(app.locale, "{name} (this computer)").replace("{name}", &app.settings.device_name),
+        gettext(app.locale, "{name} (this computer)").replace("{name}", &app.engine.settings.device_name),
         theme::medium(14.0),
         palette.text,
     );
@@ -100,7 +100,7 @@ fn enable_playback_row(app: &mut App, ui: &mut egui::Ui) {
         theme::spinner(&mut spin, 16.0, palette.accent);
     }
     if response.clicked() && !authorizing {
-        app.actions.push(Action::EnablePlayback);
+        app.engine.actions.push(Action::EnablePlayback);
     }
     ui.painter().hline(
         rect.x_range().shrink(6.0),
@@ -116,7 +116,7 @@ fn enable_playback_row(app: &mut App, ui: &mut egui::Ui) {
 fn receiver_row(app: &mut App, ui: &mut egui::Ui, receiver: &crate::zeroconf::Receiver) {
     use egui::{Rect, Sense, Vec2, pos2, vec2};
     let palette = app.palette;
-    let activating = app.activating_receiver.as_deref() == Some(receiver.name.as_str());
+    let activating = app.engine.activating_receiver.as_deref() == Some(receiver.name.as_str());
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 52.0), Sense::click());
     if response.hovered() && !activating {
         ui.painter()
@@ -165,13 +165,13 @@ fn receiver_row(app: &mut App, ui: &mut egui::Ui, receiver: &crate::zeroconf::Re
         theme::spinner(&mut spin, 16.0, palette.accent);
     }
     if response.clicked() && !activating {
-        app.actions
+        app.engine.actions
             .push(Action::ActivateReceiver(Box::new(receiver.clone())));
     }
 }
 
 pub fn popup(app: &mut App, ctx: &egui::Context) {
-    if !app.show_devices {
+    if !app.engine.show_devices {
         return;
     }
     let palette = app.palette;
@@ -200,7 +200,7 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                         palette.text,
                     );
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if app.devices_loading {
+                        if app.engine.devices_loading {
                             theme::spinner(ui, 16.0, palette.accent);
                         } else if theme::icon_button(
                             ui,
@@ -212,14 +212,14 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                         )
                         .clicked()
                         {
-                            app.actions.push(Action::RefreshDevices);
+                            app.engine.actions.push(Action::RefreshDevices);
                         }
                     });
                 });
                 ui.add_space(4.0);
-                let local_id = app.local_device_id.clone();
-                let mut devices: Vec<Device> = app.devices.clone();
-                if app.local_ready
+                let local_id = app.engine.local_device_id.clone();
+                let mut devices: Vec<Device> = app.engine.devices.clone();
+                if app.engine.local_ready
                     && let Some(local_id) = &local_id
                     && !devices
                         .iter()
@@ -230,10 +230,10 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                         Device {
                             id: Some(local_id.clone()),
                             // Named without its suffix; the row below adds it.
-                            name: app.settings.device_name.clone(),
-                            is_active: app.local.is_active(),
+                            name: app.engine.settings.device_name.clone(),
+                            is_active: app.engine.local.is_active(),
                             is_restricted: false,
-                            volume_percent: Some(crate::app::volume_to_percent(app.local.volume)),
+                            volume_percent: Some(crate::app::volume_to_percent(app.engine.local.volume)),
                             supports_volume: Some(true),
                             kind: "computer".into(),
                         },
@@ -245,7 +245,7 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                 };
                 // Spotify leaves a Sonos out of its list; it is offered from
                 // the network instead and driven over Connect.
-                for receiver in &app.receivers {
+                for receiver in &app.engine.receivers {
                     let listed = devices
                         .iter()
                         .any(|device| device.id.is_some() && device.id == receiver.device_id);
@@ -257,7 +257,7 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                     }
                 }
                 devices.sort_by_key(|device| device.id != active_id);
-                name_devices(&mut devices, &app.receivers);
+                name_devices(&mut devices, &app.engine.receivers);
                 let mut seen = std::collections::HashSet::new();
                 devices
                     .retain(|device| device.id.as_ref().is_none_or(|id| seen.insert(id.clone())));
@@ -265,8 +265,7 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                 // Receivers on the network that Spotify has not listed yet.
                 // They are real speakers the user can see in the official
                 // client, so offering them here is the whole point.
-                let waiting: Vec<crate::zeroconf::Receiver> = app
-                    .receivers
+                let waiting: Vec<crate::zeroconf::Receiver> = app.engine.receivers
                     .iter()
                     .filter(|receiver| !receiver_is_listed(receiver, &devices))
                     .cloned()
@@ -283,10 +282,10 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                         .max_height(max_height),
                     egui::Vec2b::new(false, true),
                     |ui| {
-                        if !app.local_ready {
+                        if !app.engine.local_ready {
                             enable_playback_row(app, ui);
                         }
-                        if devices.is_empty() && waiting.is_empty() && app.local_ready {
+                        if devices.is_empty() && waiting.is_empty() && app.engine.local_ready {
                             ui.add_space(8.0);
                             theme::subtle(
                                 ui,
@@ -366,7 +365,7 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                                 && !active
                                 && let Some(id) = &device.id
                             {
-                                app.actions.push(Action::Transfer(id.clone()));
+                                app.engine.actions.push(Action::Transfer(id.clone()));
                             }
                         }
                         for receiver in &waiting {
@@ -385,7 +384,7 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
                 .is_some_and(|pos| !popup_rect.contains(pos) && !button.contains(pos))
     });
     if clicked_outside {
-        app.show_devices = false;
+        app.engine.show_devices = false;
     }
 }
 

@@ -50,7 +50,7 @@ impl Entry {
 /// account's collection instead.
 fn entry_play_uri(app: &App, entry: &Entry) -> Option<String> {
     if entry.liked {
-        app.user
+        app.engine.user
             .as_ref()
             .map(|user| format!("spotify:user:{}:collection", user.id))
     } else if entry.uri.is_empty() {
@@ -129,9 +129,9 @@ fn cover_play_button(
     // The first click of a double click plays; the second must not play again.
     if !play.double_clicked() {
         if current_context {
-            app.actions.push(Action::TogglePlay);
+            app.engine.actions.push(Action::TogglePlay);
         } else {
-            app.actions.push(Action::PlayContext {
+            app.engine.actions.push(Action::PlayContext {
                 uri,
                 offset_uri: None,
                 offset_index: None,
@@ -214,9 +214,9 @@ fn grid_play_button(
         return false;
     }
     if playing_here {
-        app.actions.push(Action::TogglePlay);
+        app.engine.actions.push(Action::TogglePlay);
     } else {
-        app.actions.push(Action::PlayContext {
+        app.engine.actions.push(Action::PlayContext {
             uri,
             offset_uri: None,
             offset_index: None,
@@ -237,7 +237,7 @@ fn finish_entry_interaction(
     if response.hovered()
         && let Some(image) = &entry.image
     {
-        app.actions.push(Action::PrepareTint(image.clone()));
+        app.engine.actions.push(Action::PrepareTint(image.clone()));
     }
     if !entry.ordering_key().is_empty() && response.drag_started_by(egui::PointerButton::Primary) {
         egui::DragAndDrop::set_payload(
@@ -255,7 +255,7 @@ fn finish_entry_interaction(
         && let Some(track) = response.dnd_release_payload::<DragTrack>()
     {
         if entry.liked {
-            app.actions.push(Action::SetSavedMany {
+            app.engine.actions.push(Action::SetSavedMany {
                 uris: track
                     .items
                     .iter()
@@ -264,7 +264,7 @@ fn finish_entry_interaction(
                 saved: true,
             });
         } else if let Page::Playlist(id) = &entry.page {
-            app.actions.push(Action::AddToPlaylist {
+            app.engine.actions.push(Action::AddToPlaylist {
                 playlist_id: id.clone(),
                 playlist_name: entry.name.clone(),
                 items: track.items.clone(),
@@ -274,19 +274,19 @@ fn finish_entry_interaction(
     theme::focus_ring(ui, response);
     if response.clicked() && !cover_took_click {
         if let Some((folder_id, _, _)) = &entry.folder {
-            app.actions
+            app.engine.actions
                 .push(Action::ToggleLibraryFolder(folder_id.clone()));
         } else {
-            app.actions.push(Action::Open(entry.page.clone()));
+            app.engine.actions.push(Action::Open(entry.page.clone()));
         }
     }
-    if !app.settings.sidebar_grid
+    if !app.engine.settings.sidebar_grid
         && response.double_clicked()
         && entry.folder.is_none()
         && !cover_took_click
         && let Some(uri) = entry_play_uri(app, entry)
     {
-        app.actions.push(Action::PlayContext {
+        app.engine.actions.push(Action::PlayContext {
             uri,
             offset_uri: None,
             offset_index: None,
@@ -297,12 +297,11 @@ fn finish_entry_interaction(
 }
 
 fn liked_entry(app: &App) -> Entry {
-    let subtitle = match app.library.liked.total {
+    let subtitle = match app.engine.library.liked.total {
         Some(total) => app.locale.liked_song_count(total),
         None => gettext(app.locale, "Playlist").into_owned(),
     };
-    let grid_subtitle = app
-        .library
+    let grid_subtitle = app.engine.library
         .liked
         .total
         .map_or_else(String::new, |total| app.locale.song_count(total));
@@ -326,17 +325,16 @@ fn liked_entry(app: &App) -> Entry {
 }
 
 pub(crate) fn selected_sort(app: &App, shelf: Filter) -> LibrarySort {
-    if let Some(sort) = app.settings.library_sort.get(&shelf).copied()
+    if let Some(sort) = app.engine.settings.library_sort.get(&shelf).copied()
         && sort.supports(shelf)
     {
         return sort;
     }
     if shelf != Filter::Playlists {
         LibrarySort::Library
-    } else if !app.settings.sidebar_order.is_empty() {
+    } else if !app.engine.settings.sidebar_order.is_empty() {
         LibrarySort::Local
-    } else if app
-        .rootlist
+    } else if app.engine.rootlist
         .iter()
         .any(|row| matches!(row, crate::player::RootlistEntry::FolderStart { .. }))
     {
@@ -398,7 +396,7 @@ fn sort_menu(app: &mut App, ui: &mut egui::Ui, shelf: Filter, selected: LibraryS
             for (sort, label) in &labels {
                 if !sort.supports(shelf)
                     || (*sort == LibrarySort::Library && shelf == Filter::Playlists)
-                    || (*sort == LibrarySort::Local && app.settings.sidebar_order.is_empty())
+                    || (*sort == LibrarySort::Local && app.engine.settings.sidebar_order.is_empty())
                 {
                     continue;
                 }
@@ -408,7 +406,7 @@ fn sort_menu(app: &mut App, ui: &mut egui::Ui, shelf: Filter, selected: LibraryS
                     (*sort == selected).then_some(Icon::Check),
                     label,
                 ) {
-                    app.actions
+                    app.engine.actions
                         .push(Action::SetLibrarySort { shelf, sort: *sort });
                 }
             }
@@ -443,7 +441,7 @@ fn order_entries(app: &App, shelf: Filter, sort: LibrarySort, entries: &mut [Ent
             entries.sort_by_cached_key(|entry| (entry.name.to_lowercase(), entry.uri.clone()))
         }
         LibrarySort::RecentlyPlayed => {
-            let ranks = first_ranks(app.recent_contexts.iter().map(String::as_str));
+            let ranks = first_ranks(app.engine.recent_contexts.iter().map(String::as_str));
             let liked_uri = app
                 .user_id()
                 .map(|id| format!("spotify:user:{id}:collection"));
@@ -461,14 +459,14 @@ fn order_entries(app: &App, shelf: Filter, sort: LibrarySort, entries: &mut [Ent
         LibrarySort::RecentlyAdded => entries
             .sort_by_key(|entry| (entry.added_at.is_none(), std::cmp::Reverse(entry.added_at))),
         LibrarySort::Local => {
-            let ranks = first_ranks(app.settings.sidebar_order.iter().map(String::as_str));
+            let ranks = first_ranks(app.engine.settings.sidebar_order.iter().map(String::as_str));
             entries.sort_by_cached_key(|entry| match ranks.get(entry.ordering_key()) {
                 Some(&rank) => (1, rank),
                 None => (0, entry.playlist_index.unwrap_or(0)),
             });
         }
         LibrarySort::Spotify if !entries.iter().any(|entry| entry.folder.is_some()) => {
-            let ranks = first_ranks(app.rootlist.iter().filter_map(|row| match row {
+            let ranks = first_ranks(app.engine.rootlist.iter().filter_map(|row| match row {
                 crate::player::RootlistEntry::Playlist(uri) => Some(uri.as_str()),
                 _ => None,
             }));
@@ -482,7 +480,7 @@ fn order_entries(app: &App, shelf: Filter, sort: LibrarySort, entries: &mut [Ent
         LibrarySort::Spotify => entries.sort_by_key(|entry| entry.liked),
         LibrarySort::Library => {}
     }
-    let pins = app.settings.library_pins();
+    let pins = app.engine.settings.library_pins();
     let ranks = first_ranks(pins.iter().map(String::as_str));
     entries.sort_by_cached_key(|entry| {
         ranks
@@ -492,7 +490,7 @@ fn order_entries(app: &App, shelf: Filter, sort: LibrarySort, entries: &mut [Ent
     });
     if shelf == Filter::Playlists {
         for entry in entries {
-            if app.settings.pinned_contexts.contains(&entry.uri) {
+            if app.engine.settings.pinned_contexts.contains(&entry.uri) {
                 entry.depth = 0;
             }
         }
@@ -502,13 +500,13 @@ fn order_entries(app: &App, shelf: Filter, sort: LibrarySort, entries: &mut [Ent
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
     let expanded_art = has_expanded_art(app);
-    let floating_art = app.settings.sidebar_grid && expanded_art;
+    let floating_art = app.engine.settings.sidebar_grid && expanded_art;
     // The traffic lights float over the top-left of the sidebar now, so the
     // first nav row has to start below them.
     let top = 12
         + theme::titlebar_inset(ui.ctx()) as i8
         + super::linux_left_controls_inset(ui.ctx()) as i8;
-    let beside = if app.show_queue_panel || app.show_lyrics_panel {
+    let beside = if app.engine.show_queue_panel || app.engine.show_lyrics_panel {
         theme::SIDE_PANEL_MIN_WIDTH
     } else {
         0.0
@@ -517,12 +515,12 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         ui.ctx(),
         "sidebar",
         super::SIDEBAR_MIN_WIDTH..=600.0,
-        app.settings.sidebar_width,
+        app.engine.settings.sidebar_width,
         ui.available_width() - super::topbar::least_width(ui.ctx()) - beside,
     );
     let panel = egui::Panel::left("sidebar")
         .resizable(true)
-        .default_size(app.settings.sidebar_width)
+        .default_size(app.engine.settings.sidebar_width)
         .size_range(fit.range.clone())
         .show_separator_line(false)
         .frame(Frame::new().fill(palette.panel).inner_margin(Margin {
@@ -545,11 +543,11 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         }
     });
     let width = response.response.rect.width();
-    if (width - app.settings.sidebar_width).abs() > 1.0
+    if (width - app.engine.settings.sidebar_width).abs() > 1.0
         && super::panel_width_chosen(ui.ctx(), "sidebar", &fit)
     {
-        app.settings.sidebar_width = width;
-        app.actions.push(Action::SettingsChanged);
+        app.engine.settings.sidebar_width = width;
+        app.engine.actions.push(Action::SettingsChanged);
     }
 }
 
@@ -596,7 +594,7 @@ fn paint_grid_art_mask(app: &App, ui: &egui::Ui, rect: Rect) {
 }
 
 fn has_expanded_art(app: &App) -> bool {
-    app.settings.art_expanded
+    app.engine.settings.art_expanded
         && app
             .now_playing()
             .is_some_and(|now| now.art_url.is_some() || now.art_small.is_some())
@@ -659,15 +657,15 @@ fn paint_expanded_art(app: &mut App, ui: &mut egui::Ui, rect: Rect) {
             Rect::from_center_size(chevron_rect.center(), Vec2::splat(14.0)),
         );
         if chevron.clicked() {
-            app.settings.art_expanded = false;
-            app.actions.push(Action::SettingsChanged);
+            app.engine.settings.art_expanded = false;
+            app.engine.actions.push(Action::SettingsChanged);
         }
     }
     if art.clicked() && !over_chevron {
         if let Some(id) = album_id {
-            app.actions.push(Action::Open(Page::Album(id)));
+            app.engine.actions.push(Action::Open(Page::Album(id)));
         } else if let Some(id) = show_id {
-            app.actions.push(Action::Open(Page::Show(id)));
+            app.engine.actions.push(Action::Open(Page::Show(id)));
         }
     }
 }
@@ -681,11 +679,11 @@ fn playlist_rows(app: &App, sort: LibrarySort, needle: &str, entries: &mut Vec<E
         entries.push(liked);
     }
     let user_id = app.user_id().filter(|id| !id.is_empty());
-    if sort == LibrarySort::Spotify && needle.is_empty() && !app.settings.library_by_you {
+    if sort == LibrarySort::Spotify && needle.is_empty() && !app.engine.settings.library_by_you {
         folder_rows(app, user_id.unwrap_or(""), entries);
-    } else if let Some(playlists) = app.library.playlists.get() {
+    } else if let Some(playlists) = app.engine.library.playlists.get() {
         for (index, playlist) in playlists.iter().enumerate() {
-            if app.settings.library_by_you && !user_id.is_some_and(|id| playlist.owned_by(id)) {
+            if app.engine.settings.library_by_you && !user_id.is_some_and(|id| playlist.owned_by(id)) {
                 continue;
             }
             if !needle.is_empty() && !playlist.name.to_lowercase().contains(needle) {
@@ -707,7 +705,7 @@ fn playlist_rows(app: &App, sort: LibrarySort, needle: &str, entries: &mut Vec<E
 /// Playlist rows in account order, including collapsible folders (#95).
 fn folder_rows(app: &App, user_id: &str, entries: &mut Vec<Entry>) {
     use crate::player::RootlistEntry;
-    let Some(playlists) = app.library.playlists.get() else {
+    let Some(playlists) = app.engine.library.playlists.get() else {
         return;
     };
     let by_uri: std::collections::HashMap<&str, (usize, &crate::api::models::Playlist)> = playlists
@@ -720,12 +718,12 @@ fn folder_rows(app: &App, user_id: &str, entries: &mut Vec<Entry>) {
     // how deep the rolled-up one sits.
     let mut hidden_from: Option<u8> = None;
     let mut seen: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    for row in &app.rootlist {
+    for row in &app.engine.rootlist {
         match row {
             RootlistEntry::FolderStart { id, name } => {
-                let collapsed = app.collapsed_folders.contains(id);
+                let collapsed = app.engine.collapsed_folders.contains(id);
                 if hidden_from.is_none() {
-                    let count = folder_playlists(&app.rootlist, id);
+                    let count = folder_playlists(&app.engine.rootlist, id);
                     entries.push(Entry {
                         image: None,
                         grid_image: None,
@@ -766,7 +764,7 @@ fn folder_rows(app: &App, user_id: &str, entries: &mut Vec<Entry>) {
                 if !seen.insert(uri.as_str()) {
                     continue;
                 }
-                if hidden_from.is_some() && !app.settings.pinned_contexts.contains(uri) {
+                if hidden_from.is_some() && !app.engine.settings.pinned_contexts.contains(uri) {
                     continue;
                 }
                 entries.push(playlist_entry(
@@ -920,7 +918,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
     )
     .clicked()
     {
-        app.actions.push(Action::Open(Page::Home));
+        app.engine.actions.push(Action::Open(Page::Home));
     }
     if nav_row(
         ui,
@@ -931,7 +929,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
     )
     .clicked()
     {
-        app.actions.push(Action::FocusSearch);
+        app.engine.actions.push(Action::FocusSearch);
     }
     ui.add_space(10.0);
     ui.painter().hline(
@@ -971,9 +969,9 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
             )
             .clicked()
             {
-                app.actions.push(Action::ToggleSidebar);
+                app.engine.actions.push(Action::ToggleSidebar);
             }
-            let grid = app.settings.sidebar_grid;
+            let grid = app.engine.settings.sidebar_grid;
             let (icon, label) = if grid {
                 (Icon::LayoutList, gettext(locale, "Show as list"))
             } else {
@@ -981,7 +979,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
             };
             if theme::icon_button(ui, icon, 16.0, palette.secondary, palette.text, &label).clicked()
             {
-                app.actions.push(Action::SetLibraryGrid(!grid));
+                app.engine.actions.push(Action::SetLibraryGrid(!grid));
             }
             // One item never deserved a menu: the plus creates directly.
             if theme::icon_button(
@@ -994,7 +992,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
             )
             .clicked()
             {
-                app.actions.push(Action::ShowDialog(Dialog::CreatePlaylist {
+                app.engine.actions.push(Action::ShowDialog(Dialog::CreatePlaylist {
                     name: String::new(),
                     public: false,
                     add_uris: Vec::new(),
@@ -1014,7 +1012,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                 if show_search {
                     focus_search = true;
                 } else {
-                    app.library.filter.clear();
+                    app.engine.library.filter.clear();
                 }
             }
             // The buttons come first; the heading takes the space left,
@@ -1059,7 +1057,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
         if filter == Filter::Playlists {
             // Translators: Library filter for playlists created by the signed-in user.
             let label = gettext(locale, "By You");
-            let by_you = app.settings.library_by_you;
+            let by_you = app.engine.settings.library_by_you;
             let response = theme::soft_button(ui, &palette, None, &label, by_you);
             response.widget_info(|| {
                 egui::WidgetInfo::selected(
@@ -1070,7 +1068,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                 )
             });
             if response.clicked() {
-                app.actions.push(Action::SetLibraryByYou(!by_you));
+                app.engine.actions.push(Action::SetLibraryByYou(!by_you));
             }
         }
     });
@@ -1085,7 +1083,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
             &palette,
             app.locale,
             egui::Id::new("sidebar-search"),
-            &mut app.library.filter,
+            &mut app.engine.library.filter,
             &gettext(locale, "Search in Your Library"),
             ui.available_width() - 4.0,
         );
@@ -1099,35 +1097,35 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
     match filter {
         Filter::Playlists => {}
         Filter::Albums => {
-            if !app.library.albums.loading
-                && app.library.albums.error.is_none()
-                && (!app.library.albums.loaded_once
-                    || (sort != LibrarySort::Library && app.library.albums.can_load_more()))
+            if !app.engine.library.albums.loading
+                && app.engine.library.albums.error.is_none()
+                && (!app.engine.library.albums.loaded_once
+                    || (sort != LibrarySort::Library && app.engine.library.albums.can_load_more()))
             {
-                app.actions.push(Action::LoadMore(Page::Albums));
+                app.engine.actions.push(Action::LoadMore(Page::Albums));
             }
         }
         Filter::Artists => {
-            if !app.library.artists.loading
-                && app.library.artists.error.is_none()
-                && (!app.library.artists.loaded_once
-                    || (sort != LibrarySort::Library && app.library.artists.can_load_more()))
+            if !app.engine.library.artists.loading
+                && app.engine.library.artists.error.is_none()
+                && (!app.engine.library.artists.loaded_once
+                    || (sort != LibrarySort::Library && app.engine.library.artists.can_load_more()))
             {
-                app.actions.push(Action::LoadMore(Page::Artists));
+                app.engine.actions.push(Action::LoadMore(Page::Artists));
             }
         }
         Filter::Podcasts => {
-            if !app.library.shows.loading
-                && app.library.shows.error.is_none()
-                && (!app.library.shows.loaded_once
-                    || (sort != LibrarySort::Library && app.library.shows.can_load_more()))
+            if !app.engine.library.shows.loading
+                && app.engine.library.shows.error.is_none()
+                && (!app.engine.library.shows.loaded_once
+                    || (sort != LibrarySort::Library && app.engine.library.shows.can_load_more()))
             {
-                app.actions.push(Action::LoadMore(Page::Podcasts));
+                app.engine.actions.push(Action::LoadMore(Page::Podcasts));
             }
         }
     }
 
-    let needle = app.library.filter.trim().to_lowercase();
+    let needle = app.engine.library.filter.trim().to_lowercase();
     let mut entries: Vec<Entry> = Vec::new();
     let art = EntryArt::of(app);
     let mut loading = false;
@@ -1136,14 +1134,14 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
     match filter {
         Filter::Playlists => {
             playlist_rows(app, sort, &needle, &mut entries);
-            match &app.library.playlists {
+            match &app.engine.library.playlists {
                 Loadable::Loaded(_) => {}
                 Loadable::Loading | Loadable::NotLoaded => loading = true,
                 Loadable::Failed(message) => error = Some(message.clone()),
             }
         }
         Filter::Albums => {
-            for saved in &app.library.albums.items {
+            for saved in &app.engine.library.albums.items {
                 let album = &saved.album;
                 if !needle.is_empty()
                     && !album.name.to_lowercase().contains(&needle)
@@ -1175,14 +1173,14 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                     added_at: saved_time(saved.added_at.as_deref()),
                 });
             }
-            loading = app.library.albums.loading && app.library.albums.items.is_empty();
-            error = app.library.albums.error.clone();
-            if app.library.albums.error.is_none() && app.library.albums.can_load_more() {
+            loading = app.engine.library.albums.loading && app.engine.library.albums.items.is_empty();
+            error = app.engine.library.albums.error.clone();
+            if app.engine.library.albums.error.is_none() && app.engine.library.albums.can_load_more() {
                 more_page = Some(Page::Albums);
             }
         }
         Filter::Artists => {
-            for artist in &app.library.artists.items {
+            for artist in &app.engine.library.artists.items {
                 if !needle.is_empty() && !artist.name.to_lowercase().contains(&needle) {
                     continue;
                 }
@@ -1204,17 +1202,17 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                     added_at: None,
                 });
             }
-            loading = app.library.artists.loading && app.library.artists.items.is_empty();
-            error = app.library.artists.error.clone();
-            if app.library.artists.error.is_none() && app.library.artists.can_load_more() {
+            loading = app.engine.library.artists.loading && app.engine.library.artists.items.is_empty();
+            error = app.engine.library.artists.error.clone();
+            if app.engine.library.artists.error.is_none() && app.engine.library.artists.can_load_more() {
                 more_page = Some(Page::Artists);
             }
         }
         Filter::Podcasts => {
-            for saved in &app.library.shows.items {
+            for saved in &app.engine.library.shows.items {
                 let show = &saved.show;
                 // Audiobooks arrive as shows, but librespot can't play them.
-                if app.audiobook_shows.contains(&show.uri) {
+                if app.engine.audiobook_shows.contains(&show.uri) {
                     continue;
                 }
                 if !needle.is_empty() && !show.name.to_lowercase().contains(&needle) {
@@ -1240,9 +1238,9 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                     added_at: saved_time(saved.added_at.as_deref()),
                 });
             }
-            loading = app.library.shows.loading && app.library.shows.items.is_empty();
-            error = app.library.shows.error.clone();
-            if app.library.shows.error.is_none() && app.library.shows.can_load_more() {
+            loading = app.engine.library.shows.loading && app.engine.library.shows.items.is_empty();
+            error = app.engine.library.shows.error.clone();
+            if app.engine.library.shows.error.is_none() && app.engine.library.shows.can_load_more() {
                 more_page = Some(Page::Podcasts);
             }
         }
@@ -1250,7 +1248,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
 
     order_entries(app, filter, sort, &mut entries);
     let custom_order = filter == Filter::Playlists && sort == LibrarySort::Local;
-    let pins = app.settings.library_pins();
+    let pins = app.engine.settings.library_pins();
     let pinned_rows = entries
         .iter()
         .take_while(|entry| pins.iter().any(|key| key == entry.ordering_key()))
@@ -1289,7 +1287,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                     },
                 );
             }
-            if app.settings.sidebar_grid {
+            if app.engine.settings.sidebar_grid {
                 library_grid(
                     app,
                     ui,
@@ -1306,7 +1304,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                 return;
             }
 
-            let compact = app.settings.sidebar_compact;
+            let compact = app.engine.settings.sidebar_compact;
             let row_height = if compact {
                 COMPACT_ROW_HEIGHT
             } else {
@@ -1336,7 +1334,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
             let art = app.art.clone();
             super::widgets::virtual_rows(ui, entries.len(), row_height, |ui, index| {
                 let entry = &entries[index];
-                if !app.settings.sidebar_compact
+                if !app.engine.settings.sidebar_compact
                     && let Some(image) = &entry.image
                 {
                     // Prepare the enlarged preview before this row is opened.
@@ -1681,7 +1679,7 @@ fn library_grid(
         return;
     }
     let palette = app.palette;
-    let pins = app.settings.library_pins();
+    let pins = app.engine.settings.library_pins();
     let playing_context = app.playing_context_uri();
     let context_playing = app.believed_playing();
     let current_page = app.page().clone();
@@ -1892,7 +1890,7 @@ fn entry_menu(app: &mut App, response: &egui::Response, entry: &Entry, custom_or
             .then_some(entry.playlist_index)
             .flatten()
             .and_then(|index| {
-                app.library
+                app.engine.library
                     .playlists
                     .get()
                     .and_then(|list| list.get(index))
@@ -1917,7 +1915,7 @@ fn entry_menu(app: &mut App, response: &egui::Response, entry: &Entry, custom_or
                         &gettext(app.locale, "Sort by recently played"),
                     )
                 {
-                    app.actions.push(Action::SetLibrarySort {
+                    app.engine.actions.push(Action::SetLibrarySort {
                         shelf: Filter::Playlists,
                         sort: LibrarySort::RecentlyPlayed,
                     });
@@ -1936,9 +1934,9 @@ fn entry_menu(app: &mut App, response: &egui::Response, entry: &Entry, custom_or
                     &app.palette,
                     Some(Icon::Play),
                     &gettext(app.locale, "Play"),
-                ) && let Some(user) = &app.user
+                ) && let Some(user) = &app.engine.user
                 {
-                    app.actions.push(Action::PlayContext {
+                    app.engine.actions.push(Action::PlayContext {
                         uri: format!("spotify:user:{}:collection", user.id),
                         offset_uri: None,
                         offset_index: None,
@@ -1950,7 +1948,7 @@ fn entry_menu(app: &mut App, response: &egui::Response, entry: &Entry, custom_or
 }
 
 fn pin_menu(app: &mut App, ui: &mut egui::Ui, key: &str) {
-    let mut pins = app.settings.library_pins();
+    let mut pins = app.engine.settings.library_pins();
     let pinned = pins.iter().any(|held| held == key);
     let label = if pinned {
         gettext(app.locale, "Unpin")
@@ -1968,7 +1966,7 @@ fn pin_menu(app: &mut App, ui: &mut egui::Ui, key: &str) {
         } else {
             pins.push(key.to_string());
         }
-        app.actions.push(Action::ArrangeLibrary {
+        app.engine.actions.push(Action::ArrangeLibrary {
             pinned: pins,
             playlist_order: None,
         });
@@ -1979,20 +1977,19 @@ fn pin_menu(app: &mut App, ui: &mut egui::Ui, key: &str) {
 /// moved row and saves the full playlist arrangement at the chosen gap.
 fn drop_playlist_row(app: &mut App, entries: &[Entry], pinned_rows: usize, slot: usize, key: &str) {
     if key != LIKED_SONGS_KEY
-        && !app
-            .library
+        && !app.engine.library
             .playlists
             .get()
             .is_some_and(|playlists| playlists.iter().any(|playlist| playlist.uri == key))
     {
         return;
     }
-    let was_pinned = app.settings.library_pins().iter().any(|held| held == key);
+    let was_pinned = app.engine.settings.library_pins().iter().any(|held| held == key);
     if slot < pinned_rows || (was_pinned && slot == pinned_rows) {
         drop_row(app, entries, pinned_rows, slot, key);
         return;
     }
-    let mut pins = app.settings.library_pins();
+    let mut pins = app.engine.settings.library_pins();
     pins.retain(|held| held != key);
     let mut order = full_playlist_order(app);
     let anchor = entries
@@ -2002,8 +1999,8 @@ fn drop_playlist_row(app: &mut App, entries: &[Entry], pinned_rows: usize, slot:
             if let Some((id, _, _)) = &entry.folder {
                 // A drop before a collapsed folder precedes its first child
                 // when switching to the flat local arrangement.
-                let start = app.rootlist.iter().position(|row| matches!(row, crate::player::RootlistEntry::FolderStart { id: found, .. } if found == id))?;
-                app.rootlist[start + 1..].iter().find_map(|row| match row {
+                let start = app.engine.rootlist.iter().position(|row| matches!(row, crate::player::RootlistEntry::FolderStart { id: found, .. } if found == id))?;
+                app.engine.rootlist[start + 1..].iter().find_map(|row| match row {
                     crate::player::RootlistEntry::Playlist(held) if held != key && order.contains(held) => Some(held.as_str()),
                     _ => None,
                 })
@@ -2018,7 +2015,7 @@ fn drop_playlist_row(app: &mut App, entries: &[Entry], pinned_rows: usize, slot:
         .and_then(|anchor| order.iter().position(|held| *held == anchor))
         .unwrap_or(order.len());
     order.insert(at, key.to_string());
-    app.actions.push(Action::ArrangeLibrary {
+    app.engine.actions.push(Action::ArrangeLibrary {
         pinned: pins,
         playlist_order: Some(order),
     });
@@ -2028,7 +2025,7 @@ fn drop_playlist_row(app: &mut App, entries: &[Entry], pinned_rows: usize, slot:
 /// rows hidden by a search or collapsed folder. A drag snapshots this
 /// whole arrangement before applying its new local position.
 fn full_playlist_order(app: &App) -> Vec<String> {
-    let Some(playlists) = app.library.playlists.get() else {
+    let Some(playlists) = app.engine.library.playlists.get() else {
         return Vec::new();
     };
     let mut entries: Vec<_> = playlists
@@ -2053,7 +2050,7 @@ fn full_playlist_order(app: &App) -> Vec<String> {
         selected_sort(app, Filter::Playlists),
         &mut entries,
     );
-    let pins = app.settings.library_pins();
+    let pins = app.engine.settings.library_pins();
     entries
         .iter()
         .map(|entry| entry.ordering_key().to_string())
@@ -2063,7 +2060,7 @@ fn full_playlist_order(app: &App) -> Vec<String> {
 
 /// Reorders the pin block without disturbing pins on another shelf.
 fn drop_row(app: &mut App, entries: &[Entry], pinned_rows: usize, slot: usize, key: &str) {
-    let mut pins = app.settings.library_pins();
+    let mut pins = app.engine.settings.library_pins();
     pins.retain(|held| held != key);
     if slot <= pinned_rows {
         let anchor = entries[..pinned_rows]
@@ -2076,7 +2073,7 @@ fn drop_row(app: &mut App, entries: &[Entry], pinned_rows: usize, slot: usize, k
             .unwrap_or(pins.len());
         pins.insert(at, key.to_string());
     }
-    app.actions.push(Action::ArrangeLibrary {
+    app.engine.actions.push(Action::ArrangeLibrary {
         pinned: pins,
         playlist_order: None,
     });
@@ -2165,7 +2162,7 @@ mod ordering_tests {
             },
         );
         crate::demo::populate(&mut app);
-        app.library.playlists = Loadable::Loaded(
+        app.engine.library.playlists = Loadable::Loaded(
             [
                 ("a", "Zebra"),
                 ("b", "Alpha"),
@@ -2181,14 +2178,14 @@ mod ordering_tests {
             })
             .collect(),
         );
-        app.recent_contexts = vec![uri("d"), uri("a")];
+        app.engine.recent_contexts = vec![uri("d"), uri("a")];
         app
     }
 
     /// Drain queued UI actions through the real handler before checking the
     /// resulting saved order, pin state, or filter preference.
     fn apply_actions(app: &mut App) {
-        for action in std::mem::take(&mut app.actions) {
+        for action in std::mem::take(&mut app.engine.actions) {
             app.apply(action, &egui::Context::default());
         }
     }
@@ -2201,7 +2198,7 @@ mod ordering_tests {
     /// Project every fixture playlist as a flat row, retaining its library index
     /// and leaving ownership and edit permissions disabled for ordering-only tests.
     fn rows(app: &App) -> Vec<Entry> {
-        app.library
+        app.engine.library
             .playlists
             .get()
             .unwrap()
@@ -2227,7 +2224,7 @@ mod ordering_tests {
     fn ownership_app(name: &str) -> App {
         let mut app = app(name);
         let id = app.user_id().unwrap().to_string();
-        let playlists = app.library.playlists.get_mut().unwrap();
+        let playlists = app.engine.library.playlists.get_mut().unwrap();
         playlists[0].owner.id = Some(id.clone());
         playlists[1].owner.id = Some("someone-else".into());
         playlists[1].collaborative = true;
@@ -2260,8 +2257,8 @@ mod ordering_tests {
     #[test]
     fn by_you_uses_account_ownership_and_composes_with_search_sort_and_pins() {
         let mut app = ownership_app("by-you");
-        app.settings.sidebar_order = [uri("b"), uri("c"), uri("a"), uri("d")].to_vec();
-        app.settings.pinned_contexts = [uri("b"), uri("a")].to_vec();
+        app.engine.settings.sidebar_order = [uri("b"), uri("c"), uri("a"), uri("d")].to_vec();
+        app.engine.settings.pinned_contexts = [uri("b"), uri("a")].to_vec();
         app.apply(Action::SetLibraryByYou(true), &egui::Context::default());
         let entries = projected(&app, "");
         assert!(entries.iter().any(|entry| entry.liked));
@@ -2282,11 +2279,11 @@ mod ordering_tests {
         );
         assert_eq!(ids(&projected(&app, "alpha")), ["c"]);
         assert!(projected(&app, "no match").is_empty());
-        app.settings
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Name);
         assert_eq!(ids(&projected(&app, "alpha")), ["c"]);
-        app.settings.pinned_contexts.clear();
+        app.engine.settings.pinned_contexts.clear();
         let named = projected(&app, "");
         assert_eq!(
             named
@@ -2299,11 +2296,11 @@ mod ordering_tests {
         app.apply(Action::SetLibraryByYou(false), &egui::Context::default());
         assert_eq!(projected(&app, "").len(), 5);
         assert_eq!(
-            app.settings.sidebar_order,
+            app.engine.settings.sidebar_order,
             [uri("b"), uri("c"), uri("a"), uri("d")]
         );
         assert_eq!(selected_sort(&app, Filter::Playlists), LibrarySort::Name);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Ensure changing accounts reevaluates ownership and that missing or empty
@@ -2311,14 +2308,14 @@ mod ordering_tests {
     #[test]
     fn by_you_rechecks_ownership_after_account_changes_and_keeps_missing_owners_out() {
         let mut app = ownership_app("by-you-account");
-        app.settings.library_by_you = true;
-        app.user.as_mut().unwrap().id = "someone-else".into();
+        app.engine.settings.library_by_you = true;
+        app.engine.user.as_mut().unwrap().id = "someone-else".into();
         assert_eq!(ids(&projected(&app, "alpha")), ["b"]);
-        app.user = None;
+        app.engine.user = None;
         assert!(projected(&app, "").iter().all(|entry| entry.liked));
-        app.library.playlists.get_mut().unwrap()[3].owner.id = Some(String::new());
+        app.engine.library.playlists.get_mut().unwrap()[3].owner.id = Some(String::new());
         assert!(projected(&app, "beta").is_empty());
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Ensure the flat owned view reveals matching rows inside collapsed folders
@@ -2327,7 +2324,7 @@ mod ordering_tests {
     fn by_you_reveals_owned_playlists_in_collapsed_folders_and_restores_the_tree() {
         use crate::player::RootlistEntry;
         let mut app = ownership_app("by-you-folders");
-        app.rootlist = vec![
+        app.engine.rootlist = vec![
             RootlistEntry::FolderStart {
                 id: "folder".into(),
                 name: "Folder".into(),
@@ -2335,8 +2332,8 @@ mod ordering_tests {
             RootlistEntry::Playlist(uri("c")),
             RootlistEntry::FolderEnd,
         ];
-        app.collapsed_folders = vec!["folder".into()];
-        app.settings
+        app.engine.collapsed_folders = vec!["folder".into()];
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Spotify);
         assert!(
@@ -2349,7 +2346,7 @@ mod ordering_tests {
                 .iter()
                 .any(|entry| entry.uri == uri("c"))
         );
-        app.settings.library_by_you = true;
+        app.engine.settings.library_by_you = true;
         let entries = projected(&app, "");
         assert!(
             entries
@@ -2357,14 +2354,14 @@ mod ordering_tests {
                 .all(|entry| entry.folder.is_none() && entry.depth == 0)
         );
         assert!(entries.iter().any(|entry| entry.uri == uri("c")));
-        app.settings.library_by_you = false;
+        app.engine.settings.library_by_you = false;
         assert!(
             projected(&app, "")
                 .iter()
                 .any(|entry| entry.folder.is_some())
         );
-        assert_eq!(app.collapsed_folders, ["folder"]);
-        app.backend.shutdown();
+        assert_eq!(app.engine.collapsed_folders, ["folder"]);
+        app.engine.backend.shutdown();
     }
 
     /// Verify indexed Spotify ordering uses the first duplicate rootlist entry,
@@ -2374,13 +2371,13 @@ mod ordering_tests {
         use crate::player::RootlistEntry;
         let mut app = ownership_app("by-you-rootlist-index");
         let owner = app.user_id().unwrap().to_string();
-        app.library.playlists.get_mut().unwrap()[3].owner.id = Some(owner);
-        app.settings.library_by_you = true;
-        app.settings.liked_songs_pinned = false;
-        app.settings
+        app.engine.library.playlists.get_mut().unwrap()[3].owner.id = Some(owner);
+        app.engine.settings.library_by_you = true;
+        app.engine.settings.liked_songs_pinned = false;
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Spotify);
-        app.rootlist = vec![
+        app.engine.rootlist = vec![
             RootlistEntry::FolderStart {
                 id: "folder".into(),
                 name: "Folder".into(),
@@ -2391,13 +2388,13 @@ mod ordering_tests {
             RootlistEntry::Playlist(uri("a")),
             RootlistEntry::Playlist(uri("c")),
         ];
-        let rootlist = app.rootlist.clone();
+        let rootlist = app.engine.rootlist.clone();
         assert_eq!(ids(&projected(&app, "")), ["c", "a", "d", ""]);
-        app.settings.pinned_contexts = vec![uri("a")];
+        app.engine.settings.pinned_contexts = vec![uri("a")];
         assert_eq!(ids(&projected(&app, "")), ["a", "c", "d", ""]);
-        assert_eq!(app.rootlist, rootlist);
+        assert_eq!(app.engine.rootlist, rootlist);
         assert_eq!(
-            app.library
+            app.engine.library
                 .playlists
                 .get()
                 .unwrap()
@@ -2406,7 +2403,7 @@ mod ordering_tests {
                 .collect::<Vec<_>>(),
             ["a", "b", "c", "d"]
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Check that pre-filter settings load with By You disabled and an enabled
@@ -2502,11 +2499,11 @@ mod ordering_tests {
         assert_eq!(ids(&entries), ["d", "a", "b", "c"]);
         order_entries(&app, Filter::Playlists, LibrarySort::Name, &mut entries);
         assert_eq!(ids(&entries), ["b", "c", "d", "a"]);
-        app.settings.pinned_contexts = vec![uri("a")];
+        app.engine.settings.pinned_contexts = vec![uri("a")];
         order_entries(&app, Filter::Playlists, LibrarySort::Name, &mut entries);
         assert_eq!(ids(&entries), ["a", "b", "c", "d"]);
         assert_eq!(ids(&rows(&app)), ["a", "b", "c", "d"]);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     /// Duplicate saved keys keep their first rank, while rows absent from
@@ -2516,11 +2513,11 @@ mod ordering_tests {
         use crate::player::RootlistEntry;
 
         let mut app = app("ranked-sorts");
-        app.settings.liked_songs_pinned = false;
-        app.settings.pinned_contexts.clear();
-        app.recent_contexts = ["c", "a", "c"].map(uri).to_vec();
-        app.settings.sidebar_order = ["c", "a", "c"].map(uri).to_vec();
-        app.rootlist = ["c", "a", "c"]
+        app.engine.settings.liked_songs_pinned = false;
+        app.engine.settings.pinned_contexts.clear();
+        app.engine.recent_contexts = ["c", "a", "c"].map(uri).to_vec();
+        app.engine.settings.sidebar_order = ["c", "a", "c"].map(uri).to_vec();
+        app.engine.rootlist = ["c", "a", "c"]
             .map(|id| RootlistEntry::Playlist(uri(id)))
             .to_vec();
 
@@ -2534,27 +2531,27 @@ mod ordering_tests {
             assert_eq!(ids(&entries), expected, "{sort:?}");
         }
 
-        app.settings.pinned_contexts = ["c", "a", "c"].map(uri).to_vec();
+        app.engine.settings.pinned_contexts = ["c", "a", "c"].map(uri).to_vec();
         let mut entries = rows(&app);
         order_entries(&app, Filter::Playlists, LibrarySort::Library, &mut entries);
         assert_eq!(ids(&entries), ["c", "a", "b", "d"]);
         assert_eq!(ids(&rows(&app)), ["a", "b", "c", "d"]);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn switching_sort_and_filtered_drag_preserve_the_full_local_arrangement() {
         let mut app = app("saved");
-        app.settings.sidebar_order = ["c", "a", "b", "d"].map(uri).to_vec();
-        let saved = app.settings.sidebar_order.clone();
+        app.engine.settings.sidebar_order = ["c", "a", "b", "d"].map(uri).to_vec();
+        let saved = app.engine.settings.sidebar_order.clone();
         assert_eq!(selected_sort(&app, Filter::Playlists), LibrarySort::Local);
-        app.settings
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Name);
         assert_eq!(full_playlist_order(&app), ["b", "c", "d", "a"].map(uri));
-        assert_eq!(app.settings.sidebar_order, saved);
-        app.rootlist = vec![crate::player::RootlistEntry::Playlist(uri("d"))];
-        app.settings
+        assert_eq!(app.engine.settings.sidebar_order, saved);
+        app.engine.rootlist = vec![crate::player::RootlistEntry::Playlist(uri("d"))];
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Local);
         assert_eq!(
@@ -2562,7 +2559,7 @@ mod ordering_tests {
             saved,
             "a late rootlist cannot replace the chosen local order"
         );
-        app.settings
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Name);
         let filtered: Vec<_> = rows(&app)
@@ -2572,27 +2569,27 @@ mod ordering_tests {
             .collect();
         drop_playlist_row(&mut app, &filtered, 0, 0, &uri("a"));
         apply_actions(&mut app);
-        assert_eq!(app.settings.sidebar_order, ["b", "a", "c", "d"].map(uri));
+        assert_eq!(app.engine.settings.sidebar_order, ["b", "a", "c", "d"].map(uri));
         assert_eq!(selected_sort(&app, Filter::Playlists), LibrarySort::Local);
-        app.settings
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Name);
         drop_playlist_row(&mut app, &filtered, 0, 0, &uri("a"));
         apply_actions(&mut app);
-        assert_eq!(app.settings.sidebar_order, ["b", "a", "c", "d"].map(uri));
+        assert_eq!(app.engine.settings.sidebar_order, ["b", "a", "c", "d"].map(uri));
         assert_eq!(
             selected_sort(&app, Filter::Playlists),
             LibrarySort::Local,
             "recreating a saved arrangement still leaves the automatic sort"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn spotify_order_keeps_nested_folders_and_pins_visible_when_collapsed() {
         use crate::player::RootlistEntry::{FolderEnd, FolderStart, Playlist};
         let mut app = app("folders");
-        app.rootlist = vec![
+        app.engine.rootlist = vec![
             FolderStart {
                 id: "outer".into(),
                 name: "Outer".into(),
@@ -2609,8 +2606,8 @@ mod ordering_tests {
             Playlist(uri("d")),
             Playlist(uri("b")),
         ];
-        app.collapsed_folders = vec!["inner".into()];
-        app.settings.pinned_contexts = vec![uri("b")];
+        app.engine.collapsed_folders = vec!["inner".into()];
+        app.engine.settings.pinned_contexts = vec![uri("b")];
         let mut entries = vec![];
         folder_rows(&app, "", &mut entries);
         order_entries(&app, Filter::Playlists, LibrarySort::Spotify, &mut entries);
@@ -2627,7 +2624,7 @@ mod ordering_tests {
                 ("Beta", 0)
             ]
         );
-        app.collapsed_folders.clear();
+        app.engine.collapsed_folders.clear();
         let mut entries = vec![];
         folder_rows(&app, "", &mut entries);
         order_entries(&app, Filter::Playlists, LibrarySort::Spotify, &mut entries);
@@ -2645,14 +2642,14 @@ mod ordering_tests {
                 ("Beta", 0)
             ]
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn dragging_before_a_collapsed_folder_and_unpinning_keep_the_drop_position() {
         use crate::player::RootlistEntry::{FolderEnd, FolderStart, Playlist};
         let mut app = app("folder-drop");
-        app.rootlist = vec![
+        app.engine.rootlist = vec![
             FolderStart {
                 id: "folder".into(),
                 name: "Folder".into(),
@@ -2663,25 +2660,25 @@ mod ordering_tests {
             Playlist(uri("d")),
             Playlist(uri("a")),
         ];
-        app.collapsed_folders = vec!["folder".into()];
+        app.engine.collapsed_folders = vec!["folder".into()];
         let mut entries = vec![];
         folder_rows(&app, "", &mut entries);
         order_entries(&app, Filter::Playlists, LibrarySort::Spotify, &mut entries);
         drop_playlist_row(&mut app, &entries, 0, 0, &uri("a"));
         apply_actions(&mut app);
-        assert_eq!(app.settings.sidebar_order, ["a", "b", "c", "d"].map(uri));
-        app.settings.sidebar_order.clear();
-        app.settings
+        assert_eq!(app.engine.settings.sidebar_order, ["a", "b", "c", "d"].map(uri));
+        app.engine.settings.sidebar_order.clear();
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Name);
-        app.settings.pinned_contexts = vec![uri("a")];
+        app.engine.settings.pinned_contexts = vec![uri("a")];
         let mut entries = rows(&app);
         order_entries(&app, Filter::Playlists, LibrarySort::Name, &mut entries);
         drop_playlist_row(&mut app, &entries, 1, 2, &uri("a"));
         apply_actions(&mut app);
-        assert_eq!(app.settings.library_pins(), [LIKED_SONGS_KEY]);
-        assert_eq!(app.settings.sidebar_order, ["b", "a", "c", "d"].map(uri));
-        app.backend.shutdown();
+        assert_eq!(app.engine.settings.library_pins(), [LIKED_SONGS_KEY]);
+        assert_eq!(app.engine.settings.sidebar_order, ["b", "a", "c", "d"].map(uri));
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -2690,7 +2687,7 @@ mod ordering_tests {
         use crate::player::RootlistEntry::{FolderEnd, FolderStart, Playlist};
         let mut app = app("folder-locale");
         app.locale = Locale::German;
-        app.rootlist = vec![
+        app.engine.rootlist = vec![
             FolderStart {
                 id: "folder".into(),
                 name: String::new(),
@@ -2704,7 +2701,7 @@ mod ordering_tests {
         assert_eq!(entries[0].name, "Ordner");
         assert_eq!(entries[0].subtitle, "Ordner • 2 Playlists");
         assert_eq!(entries[0].grid_subtitle, "2 Playlists");
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
@@ -2730,35 +2727,35 @@ mod ordering_tests {
         assert!(!LibrarySort::RecentlyAdded.supports(Filter::Playlists));
         assert!(!LibrarySort::RecentlyAdded.supports(Filter::Artists));
         assert!(LibrarySort::RecentlyAdded.supports(Filter::Podcasts));
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn preferences_round_trip_and_new_playlists_still_precede_saved_order() {
         let mut app = app("migration");
-        app.settings = serde_json::from_str(
+        app.engine.settings = serde_json::from_str(
             r#"{"sidebar_order":["spotify:playlist:c","spotify:playlist:a","spotify:playlist:b"]}"#,
         )
         .unwrap();
         assert_eq!(selected_sort(&app, Filter::Playlists), LibrarySort::Local);
         assert_eq!(selected_sort(&app, Filter::Albums), LibrarySort::Library);
         assert_eq!(full_playlist_order(&app), ["d", "c", "a", "b"].map(uri));
-        app.settings
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Spotify);
-        app.settings
+        app.engine.settings
             .library_sort
             .insert(Filter::Albums, LibrarySort::RecentlyAdded);
         let restored: Settings =
-            serde_json::from_str(&serde_json::to_string(&app.settings).unwrap()).unwrap();
-        assert_eq!(restored, app.settings);
-        app.backend.shutdown();
+            serde_json::from_str(&serde_json::to_string(&app.engine.settings).unwrap()).unwrap();
+        assert_eq!(restored, app.engine.settings);
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn dropping_at_the_end_of_the_pin_block_keeps_the_item_pinned() {
         let mut app = app("pin-boundary");
-        app.settings.pinned_contexts = [uri("d"), uri("a")].to_vec();
+        app.engine.settings.pinned_contexts = [uri("d"), uri("a")].to_vec();
         let mut entries = rows(&app);
         entries.push(liked_entry(&app));
         order_entries(
@@ -2772,16 +2769,16 @@ mod ordering_tests {
         apply_actions(&mut app);
 
         assert_eq!(
-            app.settings.library_pins(),
+            app.engine.settings.library_pins(),
             [uri("d"), uri("a"), LIKED_SONGS_KEY.into()]
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn liked_songs_moves_among_pins_and_retains_its_local_position() {
         let mut app = app("liked-position");
-        app.settings.pinned_contexts = [uri("d"), uri("a")].to_vec();
+        app.engine.settings.pinned_contexts = [uri("d"), uri("a")].to_vec();
         let ordered = |app: &App| {
             let mut entries = rows(app);
             entries.push(liked_entry(app));
@@ -2797,36 +2794,36 @@ mod ordering_tests {
         assert_eq!(entries[0].ordering_key(), LIKED_SONGS_KEY);
         drop_playlist_row(&mut app, &entries, 3, 2, LIKED_SONGS_KEY);
         assert_eq!(
-            app.settings.library_pins()[0],
+            app.engine.settings.library_pins()[0],
             LIKED_SONGS_KEY,
             "the view only emits an action"
         );
         apply_actions(&mut app);
         assert_eq!(
-            app.settings.library_pins(),
+            app.engine.settings.library_pins(),
             [uri("d"), LIKED_SONGS_KEY.into(), uri("a")]
         );
-        assert!(app.settings.sidebar_order.is_empty());
+        assert!(app.engine.settings.sidebar_order.is_empty());
         let entries = ordered(&app);
         drop_playlist_row(&mut app, &entries, 3, 4, LIKED_SONGS_KEY);
         apply_actions(&mut app);
-        assert!(!app.settings.liked_songs_pinned);
+        assert!(!app.engine.settings.liked_songs_pinned);
         let saved = [uri("b"), LIKED_SONGS_KEY.into(), uri("c")];
         assert_eq!(full_playlist_order(&app), saved);
-        app.settings
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Name);
         assert_eq!(
             full_playlist_order(&app),
             [uri("b"), uri("c"), LIKED_SONGS_KEY.into()]
         );
-        app.settings
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Local);
-        app.rootlist = vec![crate::player::RootlistEntry::Playlist(uri("c"))];
-        app.user.as_mut().unwrap().id = "another-account".into();
-        app.settings =
-            serde_json::from_str(&serde_json::to_string(&app.settings).unwrap()).unwrap();
+        app.engine.rootlist = vec![crate::player::RootlistEntry::Playlist(uri("c"))];
+        app.engine.user.as_mut().unwrap().id = "another-account".into();
+        app.engine.settings =
+            serde_json::from_str(&serde_json::to_string(&app.engine.settings).unwrap()).unwrap();
         assert_eq!(
             full_playlist_order(&app),
             saved,
@@ -2847,20 +2844,20 @@ mod ordering_tests {
             liked_entry(&app).uri.is_empty(),
             "the ordering key is never a Spotify URI"
         );
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 
     #[test]
     fn unpinned_liked_songs_follows_recent_play_and_spotify_order_without_entering_folders() {
         use crate::player::RootlistEntry::{FolderEnd, FolderStart, Playlist};
         let mut app = app("liked-sorts");
-        app.settings.liked_songs_pinned = false;
-        app.recent_contexts = vec![
+        app.engine.settings.liked_songs_pinned = false;
+        app.engine.recent_contexts = vec![
             uri("a"),
             format!("spotify:user:{}:collection", app.user_id().unwrap()),
             uri("c"),
         ];
-        app.settings
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::RecentlyPlayed);
         assert_eq!(
@@ -2873,7 +2870,7 @@ mod ordering_tests {
                 uri("d")
             ]
         );
-        app.rootlist = vec![
+        app.engine.rootlist = vec![
             FolderStart {
                 id: "folder".into(),
                 name: "Folder".into(),
@@ -2882,8 +2879,8 @@ mod ordering_tests {
             FolderEnd,
             Playlist(uri("a")),
         ];
-        app.collapsed_folders = vec!["folder".into()];
-        app.settings
+        app.engine.collapsed_folders = vec!["folder".into()];
+        app.engine.settings
             .library_sort
             .insert(Filter::Playlists, LibrarySort::Spotify);
         let mut entries = vec![liked_entry(&app)];
@@ -2909,6 +2906,6 @@ mod ordering_tests {
         drop_playlist_row(&mut app, &entries, 0, end, LIKED_SONGS_KEY);
         apply_actions(&mut app);
         assert_eq!(full_playlist_order(&app).last().unwrap(), LIKED_SONGS_KEY);
-        app.backend.shutdown();
+        app.engine.backend.shutdown();
     }
 }

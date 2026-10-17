@@ -88,7 +88,7 @@ pub fn dropped_skins(ctx: &egui::Context) -> Vec<PathBuf> {
 /// Logical points per skin pixel: a whole number of screen pixels.
 fn unit(app: &App, ctx: &egui::Context) -> f32 {
     let pixels_per_point = ctx.pixels_per_point();
-    WinampState::scale(&app.settings, pixels_per_point) as f32 / pixels_per_point
+    WinampState::scale(&app.engine.settings, pixels_per_point) as f32 / pixels_per_point
 }
 
 /// Fits the window to the skin after the display scale is known.
@@ -297,19 +297,19 @@ impl View<'_> {
 pub fn show(app: &mut App, ui: &mut Ui) {
     let ctx = ui.ctx().clone();
     let unit = unit(app, &ctx);
-    fit_window(&ctx, &app.settings, unit);
+    fit_window(&ctx, &app.engine.settings, unit);
     let origin = ui.max_rect().min;
     let focused = ctx.input(|input| input.viewport().focused.unwrap_or(true));
     super::keys::handle(app, &ctx);
     for path in dropped_skins(&ctx) {
-        app.actions.push(Action::InstallSkin(path));
+        app.engine.actions.push(Action::InstallSkin(path));
     }
 
     let textures = app.winamp.textures(&ctx);
     let skin = app.winamp.skin.clone();
     let now = app.now_playing();
     let time = ctx.input(|input| input.time);
-    let shaded = app.settings.winamp_shaded;
+    let shaded = app.engine.settings.winamp_shaded;
     let mask = if shaded {
         skin.regions.shade.as_ref()
     } else {
@@ -336,8 +336,8 @@ pub fn show(app: &mut App, ui: &mut Ui) {
     } else {
         layout::WINDOW_HEIGHT
     };
-    if app.settings.eq_open {
-        let eq_shaded = app.settings.eq_shaded;
+    if app.engine.settings.eq_open {
+        let eq_shaded = app.engine.settings.eq_shaded;
         let mut below = View {
             ui: view.ui,
             origin: origin + vec2(0.0, below_y as f32 * unit),
@@ -357,7 +357,7 @@ pub fn show(app: &mut App, ui: &mut Ui) {
             layout::EQ_HEIGHT
         };
     }
-    if app.settings.playlist_open {
+    if app.engine.settings.playlist_open {
         let mut below = View {
             ui: view.ui,
             origin: origin + vec2(0.0, below_y as f32 * unit),
@@ -409,7 +409,7 @@ fn full_window(
         ))
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
 
     vis_moving
@@ -442,7 +442,7 @@ fn shade_bar(
         ctx.send_viewport_cmd(ViewportCommand::StartDrag);
     }
     if title.double_clicked() {
-        app.actions.push(Action::ToggleWinampShade);
+        app.engine.actions.push(Action::ToggleWinampShade);
     }
     let unit = view.unit;
     menu(egui::Popup::context_menu(&title), view.skin, unit, |ui| {
@@ -463,7 +463,7 @@ fn shade_bar(
         .on_hover_text(big_window.as_ref())
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
     if view
         .button(
@@ -486,7 +486,7 @@ fn shade_bar(
         .on_hover_text(gettext(app.locale, "Roll the window down").as_ref())
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampShade);
+        app.engine.actions.push(Action::ToggleWinampShade);
     }
     if view
         .button(
@@ -498,7 +498,7 @@ fn shade_bar(
         .on_hover_text(big_window.as_ref())
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
 
     // The time, in the small font; a click counts down instead.
@@ -510,7 +510,7 @@ fn shade_bar(
     }
     let playing = now.is_some_and(|now| now.playing);
     if let Some(now) = now.filter(|now| !stopped(Some(now))) {
-        let position = match app.seek_preview {
+        let position = match app.engine.seek_preview {
             Some(fraction) => (fraction * now.duration_ms as f32) as u32,
             None => now.position_ms,
         };
@@ -543,21 +543,21 @@ fn shade_bar(
             continue;
         }
         match name {
-            "previous" => app.actions.push(Action::Previous),
-            "play" => app.actions.push(if playing {
+            "previous" => app.engine.actions.push(Action::Previous),
+            "play" => app.engine.actions.push(if playing {
                 Action::Seek(0)
             } else {
                 Action::TogglePlay
             }),
-            "pause" if now.is_some() => app.actions.push(Action::TogglePlay),
+            "pause" if now.is_some() => app.engine.actions.push(Action::TogglePlay),
             "stop" if now.is_some() => {
                 if playing {
-                    app.actions.push(Action::TogglePlay);
+                    app.engine.actions.push(Action::TogglePlay);
                 }
-                app.actions.push(Action::Seek(0));
+                app.engine.actions.push(Action::Seek(0));
             }
-            "next" => app.actions.push(Action::Next),
-            "eject" => app.actions.push(Action::ToggleWinampWindow),
+            "next" => app.engine.actions.push(Action::Next),
+            "eject" => app.engine.actions.push(Action::ToggleWinampWindow),
             _ => {}
         }
     }
@@ -569,16 +569,15 @@ fn shade_bar(
     };
     let (response, event) = view.slider(layout::SHADE_POSITION, "shade-position", 3);
     match event {
-        SliderEvent::Dragging(value) => app.seek_preview = Some(value),
+        SliderEvent::Dragging(value) => app.engine.seek_preview = Some(value),
         SliderEvent::Committed(value) => {
-            app.seek_preview = None;
-            app.actions
+            app.engine.seek_preview = None;
+            app.engine.actions
                 .push(Action::Seek((value * now.duration_ms as f32) as u32));
         }
         SliderEvent::None => {}
     }
-    let fraction = app
-        .seek_preview
+    let fraction = app.engine.seek_preview
         .unwrap_or(now.position_ms as f32 / now.duration_ms as f32)
         .clamp(0.0, 1.0);
     let travel = layout::SHADE_POSITION.width - 3;
@@ -606,7 +605,7 @@ fn title_bar(app: &mut App, view: &mut View, ctx: &egui::Context, focused: bool)
         ctx.send_viewport_cmd(ViewportCommand::StartDrag);
     }
     if title.double_clicked() {
-        app.actions.push(Action::ToggleWinampShade);
+        app.engine.actions.push(Action::ToggleWinampShade);
     }
     let unit = view.unit;
     menu(egui::Popup::context_menu(&title), view.skin, unit, |ui| {
@@ -630,7 +629,7 @@ fn title_bar(app: &mut App, view: &mut View, ctx: &egui::Context, focused: bool)
         .on_hover_text(big_window.as_ref())
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
     if view
         .button(
@@ -653,7 +652,7 @@ fn title_bar(app: &mut App, view: &mut View, ctx: &egui::Context, focused: bool)
         .on_hover_text(gettext(app.locale, "Roll the window up").as_ref())
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampShade);
+        app.engine.actions.push(Action::ToggleWinampShade);
     }
     if view
         .button(
@@ -665,7 +664,7 @@ fn title_bar(app: &mut App, view: &mut View, ctx: &egui::Context, focused: bool)
         .on_hover_text(big_window.as_ref())
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
 }
 
@@ -675,7 +674,7 @@ fn options_menu(app: &mut App, ui: &mut Ui, unit: f32) {
     let locale = app.locale;
     let font = menu_font(unit);
     ui.set_min_width(font * 11.0);
-    let scale = WinampState::scale(&app.settings, ui.ctx().pixels_per_point());
+    let scale = WinampState::scale(&app.engine.settings, ui.ctx().pixels_per_point());
     ui.horizontal(|ui| {
         ui.label(gettext(locale, "Size").as_ref());
         for candidate in 1..=MAX_SCALE {
@@ -683,49 +682,49 @@ fn options_menu(app: &mut App, ui: &mut Ui, unit: f32) {
                 .selectable_label(candidate == scale, format!("{candidate}x"))
                 .clicked()
             {
-                app.actions.push(Action::SetSkinScale(candidate as u8));
+                app.engine.actions.push(Action::SetSkinScale(candidate as u8));
             }
         }
     });
     ui.add_enabled_ui(app.window_level_supported, |ui| {
-        let mut on_top = app.settings.winamp_on_top && app.window_level_supported;
+        let mut on_top = app.engine.settings.winamp_on_top && app.window_level_supported;
         if ui
             .checkbox(&mut on_top, gettext(locale, "Always on top").as_ref())
             .on_disabled_hover_text(crate::window::on_top_unavailable(locale).as_ref())
             .clicked()
         {
-            app.actions.push(Action::ToggleWinampOnTop);
+            app.engine.actions.push(Action::ToggleWinampOnTop);
         }
     });
     if app.taskbar_setting_visible() {
-        let mut visible = app.settings.winamp_show_taskbar;
+        let mut visible = app.engine.settings.winamp_show_taskbar;
         if ui
             .checkbox(&mut visible, gettext(locale, "Show in taskbar").as_ref())
             .changed()
         {
-            app.actions.push(Action::SetWinampTaskbar(visible));
+            app.engine.actions.push(Action::SetWinampTaskbar(visible));
         }
     }
-    let mut milkdrop = app.settings.milkdrop_open;
+    let mut milkdrop = app.engine.settings.milkdrop_open;
     if ui
         .checkbox(&mut milkdrop, "MilkDrop")
         .on_hover_text(super::keys::MILKDROP_SHORTCUT)
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampMilkdrop);
+        app.engine.actions.push(Action::ToggleWinampMilkdrop);
     }
     if ui
         .button(gettext(locale, "Choose a skin").as_ref())
         .clicked()
     {
-        app.actions.push(Action::Open(Page::Settings));
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::Open(Page::Settings));
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
     if ui.button(gettext(locale, "Big window").as_ref()).clicked() {
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
     if ui.button(gettext(locale, "Quit").as_ref()).clicked() {
-        app.actions.push(Action::Quit);
+        app.engine.actions.push(Action::Quit);
     }
 }
 
@@ -831,7 +830,7 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         .lamp_button(
             layout::CLUTTER_A,
             sprites::CLUTTER_A_LIT,
-            app.settings.winamp_on_top && app.window_level_supported,
+            app.engine.settings.winamp_on_top && app.window_level_supported,
             "clutter-a",
         )
         .on_hover_text(
@@ -845,7 +844,7 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         .clicked()
         && app.window_level_supported
     {
-        app.actions.push(Action::ToggleWinampOnTop);
+        app.engine.actions.push(Action::ToggleWinampOnTop);
     }
     if view
         .lamp_button(
@@ -859,15 +858,15 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         && let Some(now) = now
     {
         if let Some(id) = &now.album_id {
-            app.actions.push(Action::Open(Page::Album(id.clone())));
+            app.engine.actions.push(Action::Open(Page::Album(id.clone())));
         } else if let Some(id) = &now.show_id {
-            app.actions.push(Action::Open(Page::Show(id.clone())));
+            app.engine.actions.push(Action::Open(Page::Show(id.clone())));
         }
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
     // D goes round the sizes worth having on today's displays, 2x to 4x;
     // 1x is in the menu for whoever wants it.
-    let scale = WinampState::scale(&app.settings, view.ui.ctx().pixels_per_point());
+    let scale = WinampState::scale(&app.engine.settings, view.ui.ctx().pixels_per_point());
     if view
         .lamp_button(
             layout::CLUTTER_D,
@@ -883,7 +882,7 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         } else {
             scale.max(1) + 1
         };
-        app.actions.push(Action::SetSkinScale(next as u8));
+        app.engine.actions.push(Action::SetSkinScale(next as u8));
     }
     // V opened Winamp's visualisation menu; this one has the display's
     // three looks and MilkDrop.
@@ -891,7 +890,7 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         .lamp_button(
             layout::CLUTTER_V,
             sprites::CLUTTER_V_LIT,
-            app.settings.milkdrop_open,
+            app.engine.settings.milkdrop_open,
             "clutter-v",
         )
         .on_hover_text(gettext(app.locale, "Visualisation").as_ref());
@@ -904,20 +903,20 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
             (VisMode::Off, pgettext(locale, "visualiser", "Nothing")),
         ] {
             if ui
-                .selectable_label(app.settings.vis == mode, label.as_ref())
+                .selectable_label(app.engine.settings.vis == mode, label.as_ref())
                 .clicked()
             {
-                app.actions.push(Action::SetVisualiser(mode));
+                app.engine.actions.push(Action::SetVisualiser(mode));
             }
         }
         ui.separator();
-        let mut milkdrop = app.settings.milkdrop_open;
+        let mut milkdrop = app.engine.settings.milkdrop_open;
         if ui
             .checkbox(&mut milkdrop, "MilkDrop")
             .on_hover_text(super::keys::MILKDROP_SHORTCUT)
             .clicked()
         {
-            app.actions.push(Action::ToggleWinampMilkdrop);
+            app.engine.actions.push(Action::ToggleWinampMilkdrop);
         }
     });
 }
@@ -929,9 +928,9 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
 fn visualiser(app: &mut App, view: &mut View, now: Option<&NowPlaying>) -> bool {
     let area = layout::VISUALIZER;
     if view.interact(area, "visualiser", Sense::click()).clicked() {
-        app.actions.push(Action::CycleVisualiser);
+        app.engine.actions.push(Action::CycleVisualiser);
     }
-    let mode = app.settings.vis;
+    let mode = app.engine.settings.vis;
     if mode == VisMode::Off {
         return false;
     }
@@ -1022,7 +1021,7 @@ fn status(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         layout::WORK_INDICATOR,
     );
     let sounding = now.is_some() && !stopped(now);
-    let mono = app.settings.mono;
+    let mono = app.engine.settings.mono;
     let (stereo, mono_lamp) = match (sounding, mono) {
         (false, _) => (sprites::STEREO_OFF, sprites::MONO_OFF),
         (true, true) => (sprites::STEREO_OFF, sprites::MONO_ON),
@@ -1036,7 +1035,7 @@ fn status(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         .clicked()
         && !mono
     {
-        app.actions.push(Action::ToggleMono);
+        app.engine.actions.push(Action::ToggleMono);
     }
     if view
         .interact(layout::STEREO, "stereo", Sense::click())
@@ -1044,7 +1043,7 @@ fn status(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         .clicked()
         && mono
     {
-        app.actions.push(Action::ToggleMono);
+        app.engine.actions.push(Action::ToggleMono);
     }
 }
 
@@ -1086,7 +1085,7 @@ fn time_display(app: &mut App, view: &mut View, now: Option<&NowPlaying>, time: 
         blank(view);
         return;
     }
-    let position = match app.seek_preview {
+    let position = match app.engine.seek_preview {
         Some(fraction) => (fraction * now.duration_ms as f32) as u32,
         None => now.position_ms,
     };
@@ -1180,12 +1179,12 @@ pub fn marquee_text(
 }
 
 fn marquee(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
-    let notice = app.toasts.last().map(|toast| toast.message.clone());
+    let notice = app.engine.toasts.last().map(|toast| toast.message.clone());
     let text = marquee_text(
         app.locale,
         now,
-        app.seek_preview,
-        app.volume_preview,
+        app.engine.seek_preview,
+        app.engine.volume_preview,
         app.winamp.balance_preview,
         notice.as_deref(),
     );
@@ -1288,7 +1287,7 @@ fn rates(app: &App, view: &mut View, now: Option<&NowPlaying>) {
         return;
     };
     if now.local {
-        view.text(&format!("{:>3}", app.settings.bitrate), layout::KBPS);
+        view.text(&format!("{:>3}", app.engine.settings.bitrate), layout::KBPS);
     }
     view.text("44", layout::KHZ);
 }
@@ -1297,29 +1296,29 @@ fn sliders(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
     // Volume: the track is drawn at the level, the thumb rides on it.
     let volume = now
         .map(|now| now.volume_percent)
-        .unwrap_or_else(|| crate::app::volume_to_percent(app.local.volume));
+        .unwrap_or_else(|| crate::app::volume_to_percent(app.engine.local.volume));
     let (response, event) = view.slider(layout::VOLUME, "volume", 14);
     let notches = wheel_notches(view.ui, &response);
     if notches != 0 {
         let level = (i32::from(volume) + 5 * notches).clamp(0, 100);
-        app.actions.push(Action::SetVolume(level as u8));
+        app.engine.actions.push(Action::SetVolume(level as u8));
     }
     match event {
         SliderEvent::Dragging(value) => {
-            app.volume_preview = Some(value);
+            app.engine.volume_preview = Some(value);
             if now.is_none_or(|now| now.local) {
-                app.actions
+                app.engine.actions
                     .push(Action::PreviewVolume((value * 100.0).round() as u8));
             }
         }
         SliderEvent::Committed(value) => {
-            app.volume_preview = None;
-            app.actions
+            app.engine.volume_preview = None;
+            app.engine.actions
                 .push(Action::SetVolume((value * 100.0).round() as u8));
         }
         SliderEvent::None => {}
     }
-    let shown = match app.volume_preview {
+    let shown = match app.engine.volume_preview {
         Some(fraction) => (fraction * 100.0).round() as u32,
         None => u32::from(volume),
     };
@@ -1340,15 +1339,15 @@ fn sliders(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         SliderEvent::Dragging(value) => {
             let balance = balance_of(value);
             app.winamp.balance_preview = Some(balance);
-            app.actions.push(Action::SetBalance(balance));
+            app.engine.actions.push(Action::SetBalance(balance));
         }
         SliderEvent::Committed(value) => {
             app.winamp.balance_preview = None;
-            app.actions.push(Action::SetBalance(balance_of(value)));
+            app.engine.actions.push(Action::SetBalance(balance_of(value)));
         }
         SliderEvent::None => {}
     }
-    let balance = app.winamp.balance_preview.unwrap_or(app.settings.balance);
+    let balance = app.winamp.balance_preview.unwrap_or(app.engine.settings.balance);
     let frame = (balance.abs() * (sprites::SLIDER_FRAMES - 1) as f32).round() as u32;
     view.sprite(sprites::balance_frame(frame), layout::BALANCE);
     let thumb = if response.dragged() || response.is_pointer_button_down_on() {
@@ -1368,16 +1367,15 @@ fn sliders(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
     };
     let (response, event) = view.slider(layout::POSITION, "position", 29);
     match event {
-        SliderEvent::Dragging(value) => app.seek_preview = Some(value),
+        SliderEvent::Dragging(value) => app.engine.seek_preview = Some(value),
         SliderEvent::Committed(value) => {
-            app.seek_preview = None;
-            app.actions
+            app.engine.seek_preview = None;
+            app.engine.actions
                 .push(Action::Seek((value * now.duration_ms as f32) as u32));
         }
         SliderEvent::None => {}
     }
-    let fraction = app
-        .seek_preview
+    let fraction = app.engine.seek_preview
         .unwrap_or(now.position_ms as f32 / now.duration_ms as f32)
         .clamp(0.0, 1.0);
     let thumb = if response.dragged() || response.is_pointer_button_down_on() {
@@ -1398,7 +1396,7 @@ fn balance_of(value: f32) -> f32 {
 
 /// The EQ and PL toggles, each lit while its window hangs below.
 fn windows_buttons(app: &mut App, view: &mut View) {
-    let (normal, pressed) = if app.settings.eq_open {
+    let (normal, pressed) = if app.engine.settings.eq_open {
         (sprites::EQ_ON, sprites::EQ_ON_PRESSED)
     } else {
         (sprites::EQ_OFF, sprites::EQ_OFF_PRESSED)
@@ -1407,9 +1405,9 @@ fn windows_buttons(app: &mut App, view: &mut View) {
         .button(layout::EQ_BUTTON, normal, pressed, "equalizer")
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampEq);
+        app.engine.actions.push(Action::ToggleWinampEq);
     }
-    let (normal, pressed) = if app.settings.playlist_open {
+    let (normal, pressed) = if app.engine.settings.playlist_open {
         (sprites::PLAYLIST_ON, sprites::PLAYLIST_ON_PRESSED)
     } else {
         (sprites::PLAYLIST_OFF, sprites::PLAYLIST_OFF_PRESSED)
@@ -1418,7 +1416,7 @@ fn windows_buttons(app: &mut App, view: &mut View) {
         .button(layout::PLAYLIST_BUTTON, normal, pressed, "playlist")
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampPlaylist);
+        app.engine.actions.push(Action::ToggleWinampPlaylist);
     }
 }
 
@@ -1433,7 +1431,7 @@ fn transport(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         )
         .clicked()
     {
-        app.actions.push(Action::Previous);
+        app.engine.actions.push(Action::Previous);
     }
     // Play sits pressed in while the music plays, pause while it waits.
     let play = if playing {
@@ -1447,9 +1445,9 @@ fn transport(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
     {
         // Play on a playing song starts it over, as it did.
         if playing {
-            app.actions.push(Action::Seek(0));
+            app.engine.actions.push(Action::Seek(0));
         } else {
-            app.actions.push(Action::TogglePlay);
+            app.engine.actions.push(Action::TogglePlay);
         }
     }
     let pause = if now.is_some() && !playing && !stopped(now) {
@@ -1462,7 +1460,7 @@ fn transport(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         .clicked()
         && now.is_some()
     {
-        app.actions.push(Action::TogglePlay);
+        app.engine.actions.push(Action::TogglePlay);
     }
     let stop = if stopped(now) {
         sprites::STOP_PRESSED
@@ -1475,15 +1473,15 @@ fn transport(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         && now.is_some()
     {
         if playing {
-            app.actions.push(Action::TogglePlay);
+            app.engine.actions.push(Action::TogglePlay);
         }
-        app.actions.push(Action::Seek(0));
+        app.engine.actions.push(Action::Seek(0));
     }
     if view
         .button(layout::NEXT, sprites::NEXT, sprites::NEXT_PRESSED, "next")
         .clicked()
     {
-        app.actions.push(Action::Next);
+        app.engine.actions.push(Action::Next);
     }
     if view
         .button(
@@ -1495,7 +1493,7 @@ fn transport(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         .on_hover_text(gettext(app.locale, "Open the big window").as_ref())
         .clicked()
     {
-        app.actions.push(Action::ToggleWinampWindow);
+        app.engine.actions.push(Action::ToggleWinampWindow);
     }
 }
 
@@ -1510,7 +1508,7 @@ fn shuffle_repeat(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         .button(layout::SHUFFLE, normal, pressed, "shuffle")
         .clicked()
     {
-        app.actions.push(Action::ToggleShuffle);
+        app.engine.actions.push(Action::ToggleShuffle);
     }
     let repeat = now.is_some_and(|now| now.repeat != RepeatMode::Off);
     let (normal, pressed) = if repeat {
@@ -1523,7 +1521,7 @@ fn shuffle_repeat(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         .clicked()
     {
         // Winamp's repeat is on or off; on means the whole list.
-        app.actions.push(Action::SetRepeat(if repeat {
+        app.engine.actions.push(Action::SetRepeat(if repeat {
             RepeatMode::Off
         } else {
             RepeatMode::Context

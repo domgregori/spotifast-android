@@ -37,7 +37,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                 .unwrap_or(false);
             let card_height: f32 = if !proxy_open {
                 400.0
-            } else if app.settings.proxy_mode.is_manual() {
+            } else if app.engine.settings.proxy_mode.is_manual() {
                 720.0
             } else {
                 500.0
@@ -73,7 +73,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                     theme::text(ui, "Spotifast", theme::bold(30.0), palette.text);
                     theme::text(ui, gettext(locale, "A native Spotify client."), theme::regular(14.5), palette.secondary);
                     ui.add_space(22.0);
-                    match &app.auth {
+                    match &app.engine.auth {
                         AuthStatus::WaitingForBrowser { url } => {
                             let url = url.clone();
                             ui.horizontal(|ui| {
@@ -87,7 +87,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                             }
                             ui.add_space(14.0);
                             if theme::pill_button(ui, &palette, &gettext(locale, "Cancel"), false).clicked() {
-                                app.actions.push(Action::CancelSignIn);
+                                app.engine.actions.push(Action::CancelSignIn);
                             }
                         }
                         _ if connecting => {
@@ -104,9 +104,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                             );
                             ui.add_space(12.0);
                             if big_button(ui, app, &gettext(locale, "Try again")) {
-                                app.actions.push(Action::SignIn);
+                                app.engine.actions.push(Action::SignIn);
                             }
-                            if app.settings.web_client_id.is_some() {
+                            if app.engine.settings.web_client_id.is_some() {
                                 ui.add_space(10.0);
                                 if theme::pill_button(
                                     ui,
@@ -118,15 +118,15 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                                 {
                                     // A wrong personal Client ID trapped the
                                     // user here with Settings out of reach.
-                                    app.settings.web_client_id = None;
+                                    app.engine.settings.web_client_id = None;
                                     app.mark_settings_dirty();
-                                    app.actions.push(Action::ConfigurePersonalWebApp);
+                                    app.engine.actions.push(Action::ConfigurePersonalWebApp);
                                 }
                             }
                         }
                         _ => {
                             if big_button(ui, app, &gettext(locale, "Sign in with Spotify")) {
-                                app.actions.push(Action::SignIn);
+                                app.engine.actions.push(Action::SignIn);
                             }
                             ui.add_space(10.0);
                             ui.add(
@@ -137,7 +137,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                                 )
                                 .wrap(),
                             );
-                            if app.settings.web_client_id.is_some() {
+                            if app.engine.settings.web_client_id.is_some() {
                                 // A wrong personal Client ID dead-ends in the
                                 // browser on Spotify's side, so the app never
                                 // hears it failed; the way out has to stand
@@ -151,9 +151,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                                 )
                                 .clicked()
                                 {
-                                    app.settings.web_client_id = None;
+                                    app.engine.settings.web_client_id = None;
                                     app.mark_settings_dirty();
-                                    app.actions.push(Action::ConfigurePersonalWebApp);
+                                    app.engine.actions.push(Action::ConfigurePersonalWebApp);
                                 }
                             }
                         }
@@ -218,32 +218,32 @@ fn proxy_fields(ui: &mut egui::Ui, app: &mut App) {
                 &palette,
                 None,
                 &choice.label(app.locale),
-                app.settings.proxy_mode == choice,
+                app.engine.settings.proxy_mode == choice,
             )
             .clicked()
-                && app.settings.proxy_mode != choice
+                && app.engine.settings.proxy_mode != choice
             {
-                app.settings.proxy_mode = choice;
+                app.engine.settings.proxy_mode = choice;
                 changed = true;
                 apply = !choice.is_manual();
             }
         }
     });
-    if app.settings.proxy_mode.is_manual() {
+    if app.engine.settings.proxy_mode.is_manual() {
         ui.add_space(10.0);
         if super::widgets::proxy_manual_form(
             ui,
             &palette,
             app.locale,
-            &mut app.settings.proxy_host,
-            &mut app.settings.proxy_port,
-            &mut app.settings.proxy_username,
-            &mut app.settings.proxy_password,
+            &mut app.engine.settings.proxy_host,
+            &mut app.engine.settings.proxy_port,
+            &mut app.engine.settings.proxy_username,
+            &mut app.engine.settings.proxy_password,
         ) {
             changed = true;
         }
         ui.add_space(6.0);
-        super::widgets::proxy_scope_note(ui, &palette, app.locale, app.settings.proxy_mode);
+        super::widgets::proxy_scope_note(ui, &palette, app.locale, app.engine.settings.proxy_mode);
         ui.add_space(8.0);
         ui.horizontal(|ui| {
             if theme::pill_button(ui, &palette, &gettext(app.locale, "Apply settings"), true)
@@ -254,11 +254,11 @@ fn proxy_fields(ui: &mut egui::Ui, app: &mut App) {
         });
     }
     if changed {
-        app.actions.push(Action::ProxyEdited);
+        app.engine.actions.push(Action::ProxyEdited);
         app.mark_settings_dirty();
     }
     if apply {
-        app.actions.push(Action::ApplyProxy);
+        app.engine.actions.push(Action::ApplyProxy);
     }
 }
 
@@ -317,7 +317,7 @@ mod tests {
                 tray: false,
             },
         );
-        app.auth = AuthStatus::SignedOut;
+        app.engine.auth = AuthStatus::SignedOut;
         ctx.data_mut(|data| data.insert_temp(egui::Id::new("login-proxy-open"), true));
         let screen = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(760.0, 520.0));
         let mut frame = |events| {
