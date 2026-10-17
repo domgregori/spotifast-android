@@ -11,7 +11,7 @@ use crate::theme;
 
 pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let ctx = ui.ctx().clone();
     egui::CentralPanel::default()
         .frame(Frame::new().fill(palette.window))
@@ -119,7 +119,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                                     // A wrong personal Client ID trapped the
                                     // user here with Settings out of reach.
                                     app.engine.settings.web_client_id = None;
-                                    app.mark_settings_dirty();
+                                    app.engine.mark_settings_dirty();
                                     app.engine.actions.push(Action::ConfigurePersonalWebApp);
                                 }
                             }
@@ -152,7 +152,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, connecting: bool) {
                                 .clicked()
                                 {
                                     app.engine.settings.web_client_id = None;
-                                    app.mark_settings_dirty();
+                                    app.engine.mark_settings_dirty();
                                     app.engine.actions.push(Action::ConfigurePersonalWebApp);
                                 }
                             }
@@ -203,7 +203,7 @@ fn proxy_fields(ui: &mut egui::Ui, app: &mut App) {
             .iter()
             .map(|choice| {
                 let galley = ui.painter().layout_no_wrap(
-                    choice.label(app.locale).into_owned(),
+                    choice.label(app.engine.locale).into_owned(),
                     theme::medium(13.0),
                     palette.text,
                 );
@@ -217,7 +217,7 @@ fn proxy_fields(ui: &mut egui::Ui, app: &mut App) {
                 ui,
                 &palette,
                 None,
-                &choice.label(app.locale),
+                &choice.label(app.engine.locale),
                 app.engine.settings.proxy_mode == choice,
             )
             .clicked()
@@ -234,7 +234,7 @@ fn proxy_fields(ui: &mut egui::Ui, app: &mut App) {
         if super::widgets::proxy_manual_form(
             ui,
             &palette,
-            app.locale,
+            app.engine.locale,
             &mut app.engine.settings.proxy_host,
             &mut app.engine.settings.proxy_port,
             &mut app.engine.settings.proxy_username,
@@ -243,10 +243,10 @@ fn proxy_fields(ui: &mut egui::Ui, app: &mut App) {
             changed = true;
         }
         ui.add_space(6.0);
-        super::widgets::proxy_scope_note(ui, &palette, app.locale, app.engine.settings.proxy_mode);
+        super::widgets::proxy_scope_note(ui, &palette, app.engine.locale, app.engine.settings.proxy_mode);
         ui.add_space(8.0);
         ui.horizontal(|ui| {
-            if theme::pill_button(ui, &palette, &gettext(app.locale, "Apply settings"), true)
+            if theme::pill_button(ui, &palette, &gettext(app.engine.locale, "Apply settings"), true)
                 .clicked()
             {
                 apply = true;
@@ -255,7 +255,7 @@ fn proxy_fields(ui: &mut egui::Ui, app: &mut App) {
     }
     if changed {
         app.engine.actions.push(Action::ProxyEdited);
-        app.mark_settings_dirty();
+        app.engine.mark_settings_dirty();
     }
     if apply {
         app.engine.actions.push(Action::ApplyProxy);

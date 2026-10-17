@@ -22,7 +22,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     ui.add_space(4.0);
     let labels: Vec<_> = SearchFilter::ALL
         .iter()
-        .map(|f| (*f, f.label(app.locale)))
+        .map(|f| (*f, f.label(app.engine.locale)))
         .collect();
     let options: Vec<(SearchFilter, &str)> = labels
         .iter()
@@ -34,7 +34,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     ui.add_space(12.0);
     let pending = app.engine.search.catalogue_pending || app.engine.search.playlists_pending;
     if pending {
-        widgets::loading_row(ui, &palette, app.locale);
+        widgets::loading_row(ui, &palette, app.engine.locale);
     }
     if let Some(error) = app.engine.search.error.clone() {
         widgets::error_row(ui, app, &error, None);
@@ -43,7 +43,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         Loadable::Loaded(results) => results.clone(),
         Loadable::Loading | Loadable::NotLoaded => {
             if !pending {
-                widgets::loading_row(ui, &palette, app.locale);
+                widgets::loading_row(ui, &palette, app.engine.locale);
             }
             return;
         }
@@ -64,9 +64,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             &palette,
             Icon::Search,
             // Translators: {query} is the text the user searched for.
-            &gettext(app.locale, "No results for “{query}”")
+            &gettext(app.engine.locale, "No results for “{query}”")
                 .replace("{query}", &app.engine.search.committed),
-            &gettext(app.locale, "Check the spelling, or try fewer words."),
+            &gettext(app.engine.locale, "Check the spelling, or try fewer words."),
         );
         return;
     }
@@ -89,9 +89,9 @@ fn recent(app: &mut App, ui: &mut egui::Ui) {
             ui,
             &palette,
             Icon::WifiOff,
-            &gettext(app.locale, "You're offline"),
+            &gettext(app.engine.locale, "You're offline"),
             &gettext(
-                app.locale,
+                app.engine.locale,
                 "Connect to the internet to search songs, artists, and playlists.",
             ),
         );
@@ -102,15 +102,15 @@ fn recent(app: &mut App, ui: &mut egui::Ui) {
             ui,
             &palette,
             Icon::Search,
-            &gettext(app.locale, "Search Spotify"),
+            &gettext(app.engine.locale, "Search Spotify"),
             &gettext(
-                app.locale,
+                app.engine.locale,
                 "Find songs, artists, albums, playlists, and podcasts.",
             ),
         );
         return;
     }
-    theme::section_title(ui, &palette, &gettext(app.locale, "Recent searches"));
+    theme::section_title(ui, &palette, &gettext(app.engine.locale, "Recent searches"));
     ui.add_space(6.0);
     let history = app.engine.settings.search_history.clone();
     ui.horizontal_wrapped(|ui| {
@@ -128,7 +128,7 @@ fn recent(app: &mut App, ui: &mut egui::Ui) {
 
 fn all(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let query = app.engine.search.committed.to_lowercase();
     let top_artist = results
         .artists
@@ -365,7 +365,7 @@ fn top_result(
                 theme::text(
                     &mut child,
                     // Translators: Precedes the song's artist names, which follow as links.
-                    gettext(app.locale, "Song • ").as_ref(),
+                    gettext(app.engine.locale, "Song • ").as_ref(),
                     theme::regular(13.5),
                     palette.secondary,
                 );
@@ -406,7 +406,7 @@ fn top_result(
                 palette.accent,
                 palette.accent_hover,
                 palette.on_accent,
-                &gettext(app.locale, "Play"),
+                &gettext(app.engine.locale, "Play"),
             )
             .clicked()
             {
@@ -441,7 +441,7 @@ fn songs(app: &mut App, ui: &mut egui::Ui, results: &SearchResults, limit: usize
     if page.items.is_empty() {
         return;
     }
-    theme::section_title(ui, &palette, &gettext(app.locale, "Songs"));
+    theme::section_title(ui, &palette, &gettext(app.engine.locale, "Songs"));
     ui.add_space(4.0);
     let uris: Arc<[String]> = page
         .items
@@ -489,7 +489,7 @@ fn artist_card(app: &mut App, ui: &mut egui::Ui, artist: &Artist) {
         app,
         pick_image(&artist.images, card_art),
         &artist.name,
-        &gettext(app.locale, "Artist"),
+        &gettext(app.engine.locale, "Artist"),
         widgets::CardCover::portrait(playing_here),
     );
     if card.play {
@@ -525,7 +525,7 @@ fn shelf_artists(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
         ui,
         &palette,
         "search-artists",
-        &gettext(app.locale, "Artists"),
+        &gettext(app.engine.locale, "Artists"),
         |ui| {
             for artist in &page.items {
                 artist_card(app, ui, artist);
@@ -593,7 +593,7 @@ fn shelf_albums(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
         ui,
         &palette,
         "search-albums",
-        &gettext(app.locale, "Albums"),
+        &gettext(app.engine.locale, "Albums"),
         |ui| {
             for album in &page.items {
                 album_card(app, ui, album);
@@ -621,7 +621,7 @@ fn playlist_card(app: &mut App, ui: &mut egui::Ui, playlist: &crate::api::models
         pick_image(&playlist.images, card_art),
         &playlist.name,
         // Translators: {owner} is the name of the playlist's owner.
-        &gettext(app.locale, "By {owner}").replace("{owner}", playlist.owner_name()),
+        &gettext(app.engine.locale, "By {owner}").replace("{owner}", playlist.owner_name()),
         widgets::CardCover::square(playing_here),
     );
     if card.play {
@@ -666,7 +666,7 @@ fn shelf_playlists(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
         ui,
         &palette,
         "search-playlists",
-        &gettext(app.locale, "Playlists"),
+        &gettext(app.engine.locale, "Playlists"),
         |ui| {
             for playlist in &page.items {
                 playlist_card(app, ui, playlist);
@@ -717,7 +717,7 @@ fn shelf_shows(app: &mut App, ui: &mut egui::Ui, results: &SearchResults) {
         ui,
         &palette,
         "search-shows",
-        &gettext(app.locale, "Podcasts"),
+        &gettext(app.engine.locale, "Podcasts"),
         |ui| {
             for show in &page.items {
                 show_card(app, ui, show);

@@ -679,7 +679,7 @@ pub fn picked_menu(
     editable_playlist: Option<&(String, Option<String>)>,
 ) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     ui.set_min_width(220.0);
     ui.set_max_width(300.0);
     let count = songs.len();
@@ -759,7 +759,7 @@ fn add_to_playlist_menu(ui: &mut Ui, app: &mut App, items: &[PlayableItem]) {
         ui,
         &palette,
         Some(Icon::ListPlus),
-        &gettext(app.locale, "Add to playlist"),
+        &gettext(app.engine.locale, "Add to playlist"),
         |ui| {
             let frame = ui.ctx().cumulative_frame_nr();
             let previous = ui
@@ -788,7 +788,7 @@ pub(crate) fn playlist_picker(
     query: &mut String,
 ) -> egui::Response {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     ui.set_min_width(220.0);
     ui.set_max_width(300.0);
     let width = ui.available_width();
@@ -932,7 +932,7 @@ pub fn item_menu(
     index: Option<usize>,
 ) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     ui.set_min_width(220.0);
     ui.set_max_width(300.0);
     let uri = item.uri().to_string();
@@ -1137,7 +1137,7 @@ pub fn context_menu_items(
     owned_playlist: Option<&Playlist>,
 ) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     ui.set_min_width(200.0);
     ui.set_max_width(300.0);
     let kind = util::uri_kind(uri).unwrap_or("");
@@ -1411,7 +1411,7 @@ fn track_row_contents(
             ui.is_enabled() && !unavailable,
             row.picked,
             gettext(
-                app.locale,
+                app.engine.locale,
                 // Translators: {title} is a song or episode name, {subtitle} its artists or podcast.
                 "Play {title}, {subtitle}",
             )
@@ -1645,7 +1645,7 @@ fn track_row_contents(
                     && cols.added == 0.0
                 {
                     let label =
-                        util::format_relative_date(app.locale, added, jiff::Timestamp::now());
+                        util::format_relative_date(app.engine.locale, added, jiff::Timestamp::now());
                     theme::text(
                         &mut child,
                         "•",
@@ -1691,7 +1691,7 @@ fn track_row_contents(
                         palette.secondary.gamma_multiply(0.6),
                     );
                     let label =
-                        util::format_relative_date(app.locale, added, jiff::Timestamp::now());
+                        util::format_relative_date(app.engine.locale, added, jiff::Timestamp::now());
                     theme::text(&mut child, &label, theme::regular(12.0), palette.secondary);
                     if label.ends_with(" ago") {
                         ui.ctx()
@@ -1739,7 +1739,7 @@ fn track_row_contents(
                             palette.secondary.gamma_multiply(0.6),
                         );
                         let label =
-                            util::format_relative_date(app.locale, added, jiff::Timestamp::now());
+                            util::format_relative_date(app.engine.locale, added, jiff::Timestamp::now());
                         theme::text(ui, &label, theme::regular(12.0), palette.secondary);
                         if label.ends_with(" ago") {
                             ui.ctx()
@@ -1770,7 +1770,7 @@ fn track_row_contents(
                             palette.secondary.gamma_multiply(0.6),
                         );
                         let label =
-                            util::format_relative_date(app.locale, added, jiff::Timestamp::now());
+                            util::format_relative_date(app.engine.locale, added, jiff::Timestamp::now());
                         theme::text(ui, &label, theme::regular(12.0), palette.secondary);
                         if label.ends_with(" ago") {
                             ui.ctx()
@@ -1840,7 +1840,7 @@ fn track_row_contents(
             .filter(|added| !added.starts_with("1970-01-01"))
         {
             let cell = Rect::from_min_size(pos2(x, rect.top()), vec2(cols.added, row_height));
-            let label = util::format_relative_date(app.locale, added, jiff::Timestamp::now());
+            let label = util::format_relative_date(app.engine.locale, added, jiff::Timestamp::now());
             painter.text(
                 pos2(cell.left(), cell.center().y),
                 egui::Align2::LEFT_CENTER,
@@ -1881,9 +1881,9 @@ fn track_row_contents(
                 (Icon::Heart, palette.secondary, palette.text)
             };
             let tooltip = if saved == Some(true) {
-                gettext(app.locale, "Remove from Liked Songs")
+                gettext(app.engine.locale, "Remove from Liked Songs")
             } else {
-                gettext(app.locale, "Save to Liked Songs")
+                gettext(app.engine.locale, "Save to Liked Songs")
             };
             if theme::icon_button(&mut child, icon, 16.0, color, hover, &tooltip).clicked() {
                 app.engine.actions
@@ -1928,7 +1928,7 @@ fn track_row_contents(
             18.0,
             palette.secondary,
             palette.text,
-            &gettext(app.locale, "More"),
+            &gettext(app.engine.locale, "More"),
         );
         egui::Popup::menu(&more)
             .id(menu_id)
@@ -2584,7 +2584,7 @@ pub fn card(
                 palette.accent,
                 palette.accent_hover,
                 palette.on_accent,
-                &gettext(app.locale, if playing { "Pause" } else { "Play" }),
+                &gettext(app.engine.locale, if playing { "Pause" } else { "Play" }),
             )
             .clicked();
         }
@@ -2654,7 +2654,7 @@ pub fn sanitize_error_message<'a>(message: &'a str, locale: Locale) -> std::borr
 
 pub fn error_row(ui: &mut Ui, app: &mut App, message: &str, retry: Option<Page>) {
     let palette = app.palette;
-    let sanitized = sanitize_error_message(message, app.locale);
+    let sanitized = sanitize_error_message(message, app.engine.locale);
     ui.horizontal(|ui| {
         ui.add_space(8.0);
         theme::icon(ui, Icon::CircleAlert, 16.0, palette.danger);
@@ -2669,7 +2669,7 @@ pub fn error_row(ui: &mut Ui, app: &mut App, message: &str, retry: Option<Page>)
                 ui,
                 &palette,
                 Some(Icon::Refresh),
-                &gettext(app.locale, "Retry"),
+                &gettext(app.engine.locale, "Retry"),
                 false,
             )
             .clicked()

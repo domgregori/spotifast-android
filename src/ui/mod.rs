@@ -47,7 +47,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         login::show(app, ui, connecting);
         update::show(app, ctx);
         toasts(app, ctx, 20.0);
-        caption_buttons(ui, &app.palette, app.locale);
+        caption_buttons(ui, &app.palette, app.engine.locale);
         fastframe_titlebar::resize(ui);
         return;
     }
@@ -82,9 +82,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     devices::popup(app, ctx);
     dialogs::show(app, ctx);
     update::show(app, ctx);
-    widgets::drag_ghost(ctx, &app.palette, app.locale);
+    widgets::drag_ghost(ctx, &app.palette, app.engine.locale);
     toasts(app, ctx, theme::PLAYER_BAR_HEIGHT + 16.0);
-    caption_buttons(ui, &app.palette, app.locale);
+    caption_buttons(ui, &app.palette, app.engine.locale);
     fastframe_titlebar::resize(ui);
 }
 
@@ -208,7 +208,7 @@ where
 }
 
 fn page_tint(app: &mut App) -> Option<Color32> {
-    let page = app.page().clone();
+    let page = app.engine.page().clone();
     let image = match &page {
         Page::Playlist(id) => app.engine.playlist_pages
             .get(id)
@@ -258,7 +258,7 @@ fn central(app: &mut App, ui: &mut egui::Ui) {
         .frame(Frame::new().fill(palette.window))
         .show(ui, |ui| {
             let rect = ui.max_rect();
-            let page = app.page().clone();
+            let page = app.engine.page().clone();
             let overview = matches!(
                 page,
                 Page::Home | Page::Search | Page::Settings | Page::Queue

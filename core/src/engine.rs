@@ -8,10 +8,12 @@
 //! UI action asks for: the desktop adapts `egui::Context`, Android adapts its
 //! own surface (or no-ops where there is no equivalent).
 
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use crate::api::models::{Device, PlayableItem, PlaybackState, Playlist, Queue, Track, User};
+use crate::locale::Locale;
 use crate::api::PlayRequest;
 use crate::backend::{AuthStatus, Backend, LocalPlayback};
 use crate::model::{
@@ -22,6 +24,13 @@ use crate::now_playing::NowPlaying;
 use crate::paths::AppDirs;
 use crate::player::LocalState;
 use crate::settings::Settings;
+
+/// Translates the interface's strings, supplied by the front end. The desktop
+/// uses gettext; Android resolves its own language or no-ops.
+pub trait Localize: Send + Sync {
+    fn t(&self, locale: Locale, source: &'static str) -> Cow<'static, str>;
+    fn tn(&self, locale: Locale, singular: &'static str, plural: &'static str, count: u32) -> Cow<'static, str>;
+}
 
 pub trait UiContext: Send {
     fn fullscreen(&self, on: bool);
@@ -143,6 +152,8 @@ pub struct Listening {
 /// The portable application state: the data and intents the views read and the
 /// actions mutate, without the window, tray, media, and update wiring.
 pub struct Engine {
+    pub localize: std::sync::Arc<dyn Localize>,
+    pub locale: Locale,
     pub dirs: AppDirs,
     pub settings: Settings,
     /// Proxy policy actually handed to network workers. Manual form edits are

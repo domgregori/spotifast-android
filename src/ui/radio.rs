@@ -28,7 +28,7 @@ pub fn radio(app: &mut App, ui: &mut egui::Ui, seed: &str) {
     let Some(page) = app.engine.radio_pages.get(seed) else {
         return;
     };
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let name = app
         .radio_name(seed)
         .or_else(|| page.name.clone())
@@ -108,7 +108,7 @@ pub fn radio(app: &mut App, ui: &mut egui::Ui, seed: &str) {
                     None,
                 );
             } else {
-                widgets::loading_row(ui, &app.palette, app.locale);
+                widgets::loading_row(ui, &app.palette, app.engine.locale);
             }
             return;
         }

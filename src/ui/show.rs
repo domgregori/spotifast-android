@@ -27,7 +27,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
     };
     let preview = super::loading_preview(ui.ctx(), id, &page.show, || app.known_show(id).cloned());
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     match &page.show {
         Loadable::Loaded(show) => {
             show_hero(app, ui, show, preview.as_deref());
@@ -78,7 +78,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     render_episodes(ui, app);
                 }
                 if page.episodes.loading {
-                    widgets::loading_row(ui, &palette, app.locale);
+                    widgets::loading_row(ui, &palette, app.engine.locale);
                 }
                 if let Some(error) = &page.episodes.error {
                     let error = error.clone();
@@ -103,9 +103,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     ui,
                     &palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
@@ -115,7 +115,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                         show_actions(app, ui, show, None);
                     });
                 }
-                widgets::loading_row(ui, &palette, app.locale);
+                widgets::loading_row(ui, &palette, app.engine.locale);
             }
         }
         Loadable::Failed(error) => {
@@ -133,9 +133,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     ui,
                     &palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
@@ -153,7 +153,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
 }
 
 fn show_hero(app: &mut App, ui: &mut egui::Ui, show: &Show, preview: Option<&Show>) {
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let mut byline = vec![(show.publisher.clone(), None)];
     if let Some(total) = show.total_episodes {
         byline.push((
@@ -192,7 +192,7 @@ fn show_hero(app: &mut App, ui: &mut egui::Ui, show: &Show, preview: Option<&Sho
 
 fn show_actions(app: &mut App, ui: &mut egui::Ui, show: &Show, latest: Option<&Episode>) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let saved = app.is_saved(&show.uri).unwrap_or(false);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 18.0;
@@ -261,7 +261,7 @@ pub fn episode_row(
     fallback_image: Option<&str>,
 ) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let (rect, response) = ui.allocate_exact_size(
         vec2(ui.available_width(), EPISODE_ROW_HEIGHT),
         Sense::click(),
@@ -383,7 +383,7 @@ pub fn episode_row(
     }
     let mut meta = Vec::new();
     if let Some(date) = &episode.release_date {
-        meta.push(util::format_date(app.locale, date));
+        meta.push(util::format_date(app.engine.locale, date));
     }
     let resume = episode.resume_point.as_ref();
     let remaining = resume
@@ -397,9 +397,9 @@ pub fn episode_row(
         Some(left) => meta.push(
             // Translators: {duration} is the time left in an episode, such as "12 min".
             gettext(locale, "{duration} left")
-                .replace("{duration}", &util::format_episode_ms(app.locale, left)),
+                .replace("{duration}", &util::format_episode_ms(app.engine.locale, left)),
         ),
-        None => meta.push(util::format_episode_ms(app.locale, episode.duration_ms)),
+        None => meta.push(util::format_episode_ms(app.engine.locale, episode.duration_ms)),
     }
     let meta_text = meta.join(" • ");
     let meta_galley =

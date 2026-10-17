@@ -64,7 +64,7 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(4.0);
             theme::text(
                 ui,
-                gettext(app.locale, "Lyrics"),
+                gettext(app.engine.locale, "Lyrics"),
                 theme::bold(18.0),
                 palette.text,
             );
@@ -75,7 +75,7 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
                     18.0,
                     palette.secondary,
                     palette.text,
-                    &gettext(app.locale, "Close"),
+                    &gettext(app.engine.locale, "Close"),
                 )
                 .clicked()
                 {
@@ -87,7 +87,7 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
                     18.0,
                     palette.secondary,
                     palette.text,
-                    &gettext(app.locale, "Full screen lyrics"),
+                    &gettext(app.engine.locale, "Full screen lyrics"),
                 )
                 .clicked()
                 {
@@ -99,7 +99,7 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
                     && theme::pill_button(
                         ui,
                         &palette,
-                        &pgettext(app.locale, "lyrics", "Follow"),
+                        &pgettext(app.engine.locale, "lyrics", "Follow"),
                         false,
                     )
                     .clicked()
@@ -128,8 +128,8 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
             ui,
             &palette,
             Icon::Mic,
-            &gettext(app.locale, "Nothing playing"),
-            &gettext(app.locale, "Play a song to see its lyrics."),
+            &gettext(app.engine.locale, "Nothing playing"),
+            &gettext(app.engine.locale, "Play a song to see its lyrics."),
         );
         return;
     };
@@ -140,14 +140,14 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
                     ui,
                     &palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
             } else {
-                widgets::loading_row(ui, &palette, app.locale);
+                widgets::loading_row(ui, &palette, app.engine.locale);
             }
             return;
         }
@@ -157,16 +157,16 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
                     ui,
                     &palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
                 return;
             }
             let message = gettext(
-                app.locale,
+                app.engine.locale,
                 // Translators: Keep {error} unchanged. It is the original failure detail.
                 "Couldn't fetch the lyrics: {error}",
             )
@@ -174,7 +174,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(8.0);
             theme::text(ui, message, theme::regular(13.0), palette.secondary);
             ui.add_space(8.0);
-            if theme::pill_button(ui, &palette, &gettext(app.locale, "Try again"), false).clicked()
+            if theme::pill_button(ui, &palette, &gettext(app.engine.locale, "Try again"), false).clicked()
             {
                 app.request_lyrics();
             }
@@ -185,8 +185,8 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 Icon::Mic,
-                &gettext(app.locale, "No lyrics"),
-                &gettext(app.locale, "No lyrics found for this track."),
+                &gettext(app.engine.locale, "No lyrics"),
+                &gettext(app.engine.locale, "No lyrics found for this track."),
             );
             return;
         }
@@ -195,8 +195,8 @@ fn contents(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 Icon::Music,
-                &gettext(app.locale, "Instrumental"),
-                &gettext(app.locale, "No timed lyrics for this track."),
+                &gettext(app.engine.locale, "Instrumental"),
+                &gettext(app.engine.locale, "No timed lyrics for this track."),
             );
             return;
         }
@@ -390,16 +390,16 @@ fn with_cover(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: f32) {
         // are still being fetched.
         let (heading, detail) = match &app.engine.lyrics {
             Loadable::Loaded(Some(_)) => (
-                gettext(app.locale, "Instrumental"),
-                gettext(app.locale, "No timed lyrics for this track."),
+                gettext(app.engine.locale, "Instrumental"),
+                gettext(app.engine.locale, "No timed lyrics for this track."),
             ),
             Loadable::Loaded(None) => (
-                gettext(app.locale, "No lyrics"),
-                gettext(app.locale, "No lyrics found for this track."),
+                gettext(app.engine.locale, "No lyrics"),
+                gettext(app.engine.locale, "No lyrics found for this track."),
             ),
             Loadable::Failed(error) => (
                 gettext(
-                    app.locale,
+                    app.engine.locale,
                     // Translators: Keep {error} unchanged. It is the original failure detail.
                     "Couldn't fetch the lyrics: {error}",
                 )
@@ -408,7 +408,7 @@ fn with_cover(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: f32) {
                 Default::default(),
             ),
             Loadable::NotLoaded | Loadable::Loading => {
-                (gettext(app.locale, "Loading…"), Default::default())
+                (gettext(app.engine.locale, "Loading…"), Default::default())
             }
         };
         let heading = ui.painter().text(
@@ -428,7 +428,7 @@ fn with_cover(app: &mut App, ui: &mut egui::Ui, rect: Rect, top: f32) {
                     .max_rect(retry)
                     .layout(Layout::top_down(Align::Center)),
             );
-            let label = gettext(app.locale, "Try again");
+            let label = gettext(app.engine.locale, "Try again");
             if theme::pill_button(&mut retry_ui, &theme::Palette::dark(), &label, false).clicked() {
                 app.engine.actions.push(Action::RetryLyrics);
             }
@@ -546,7 +546,7 @@ fn fullscreen_header(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         theme::text(
             ui,
-            gettext(app.locale, "Lyrics"),
+            gettext(app.engine.locale, "Lyrics"),
             theme::bold(18.0),
             palette.text,
         );
@@ -557,7 +557,7 @@ fn fullscreen_header(app: &mut App, ui: &mut egui::Ui) {
                 18.0,
                 palette.text,
                 palette.text,
-                &gettext(app.locale, "Leave full screen (Esc)"),
+                &gettext(app.engine.locale, "Leave full screen (Esc)"),
             )
             .clicked()
             {
@@ -569,7 +569,7 @@ fn fullscreen_header(app: &mut App, ui: &mut egui::Ui) {
                 && theme::pill_button(
                     ui,
                     &palette,
-                    &pgettext(app.locale, "lyrics", "Follow"),
+                    &pgettext(app.engine.locale, "lyrics", "Follow"),
                     false,
                 )
                 .clicked()
@@ -623,19 +623,19 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
             ui,
             &palette,
             Icon::Mic,
-            &gettext(app.locale, "Nothing playing"),
-            &gettext(app.locale, "Play a song to see its lyrics."),
+            &gettext(app.engine.locale, "Nothing playing"),
+            &gettext(app.engine.locale, "Play a song to see its lyrics."),
         );
         return;
     };
     let lyrics = match &app.engine.lyrics {
         Loadable::NotLoaded | Loadable::Loading => {
-            widgets::loading_row(ui, &palette, app.locale);
+            widgets::loading_row(ui, &palette, app.engine.locale);
             return;
         }
         Loadable::Failed(error) => {
             let message = gettext(
-                app.locale,
+                app.engine.locale,
                 // Translators: Keep {error} unchanged. It is the original failure detail.
                 "Couldn't fetch the lyrics: {error}",
             )
@@ -643,7 +643,7 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(8.0);
             theme::text(ui, message, theme::regular(13.0), palette.text);
             ui.add_space(8.0);
-            if theme::pill_button(ui, &palette, &gettext(app.locale, "Try again"), false).clicked()
+            if theme::pill_button(ui, &palette, &gettext(app.engine.locale, "Try again"), false).clicked()
             {
                 app.engine.actions.push(Action::RetryLyrics);
             }
@@ -654,8 +654,8 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 Icon::Mic,
-                &gettext(app.locale, "No lyrics"),
-                &gettext(app.locale, "No lyrics found for this track."),
+                &gettext(app.engine.locale, "No lyrics"),
+                &gettext(app.engine.locale, "No lyrics found for this track."),
             );
             return;
         }
@@ -664,8 +664,8 @@ fn fullscreen_contents(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 Icon::Music,
-                &gettext(app.locale, "Instrumental"),
-                &gettext(app.locale, "No timed lyrics for this track."),
+                &gettext(app.engine.locale, "Instrumental"),
+                &gettext(app.engine.locale, "No timed lyrics for this track."),
             );
             return;
         }

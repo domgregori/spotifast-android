@@ -422,3 +422,16 @@ mod tests {
         }
     }
 }
+
+/// The desktop [`Localize`] implementation, through gettext.
+pub struct GettextLocalize;
+
+impl spotifast_core::engine::Localize for GettextLocalize {
+    fn t(&self, locale: Locale, source: &'static str) -> Cow<'static, str> {
+        gettext(locale, source)
+    }
+
+    fn tn(&self, locale: Locale, singular: &'static str, plural: &'static str, count: u32) -> Cow<'static, str> {
+        ngettext(locale, singular, plural, count)
+    }
+}

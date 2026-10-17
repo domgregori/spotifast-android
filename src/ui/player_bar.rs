@@ -75,7 +75,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 // space itself is hovered, not the controls over it.
                 let empty = if empty.hovered() {
                     empty.on_hover_text_at_pointer(gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Click to change the visualizer",
                     ))
                 } else {
@@ -398,13 +398,13 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
         text_ui.spacing_mut().item_spacing.y = 2.0;
         theme::text(
             &mut text_ui,
-            gettext(app.locale, "Nothing playing"),
+            gettext(app.engine.locale, "Nothing playing"),
             theme::medium(14.0),
             palette.secondary,
         );
         theme::text(
             &mut text_ui,
-            gettext(app.locale, "Pick a song, album, or playlist"),
+            gettext(app.engine.locale, "Pick a song, album, or playlist"),
             theme::regular(12.0),
             palette.dim,
         );
@@ -538,14 +538,14 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
                 Icon::HeartFilled,
                 palette.accent,
                 palette.accent_hover,
-                gettext(app.locale, "Remove from Liked Songs"),
+                gettext(app.engine.locale, "Remove from Liked Songs"),
             )
         } else {
             (
                 Icon::Heart,
                 palette.secondary,
                 palette.text,
-                gettext(app.locale, "Save to Liked Songs"),
+                gettext(app.engine.locale, "Save to Liked Songs"),
             )
         };
         // Sit the heart just past the actual text, not at the region's far
@@ -627,14 +627,14 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
         } else {
             palette.text
         },
-        &gettext(app.locale, "Shuffle"),
+        &gettext(app.engine.locale, "Shuffle"),
     );
     shuffle_button.widget_info(|| {
         egui::WidgetInfo::selected(
             egui::WidgetType::Checkbox,
             cell.is_enabled(),
             shuffle,
-            gettext(app.locale, "Shuffle"),
+            gettext(app.engine.locale, "Shuffle"),
         )
     });
     if shuffle_button.clicked() {
@@ -648,7 +648,7 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
         18.0,
         dim,
         palette.text,
-        &gettext(app.locale, "Previous"),
+        &gettext(app.engine.locale, "Previous"),
     )
     .clicked()
     {
@@ -681,9 +681,9 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
             hover,
             palette.window,
             &if playing {
-                gettext(app.locale, "Pause")
+                gettext(app.engine.locale, "Pause")
             } else {
-                gettext(app.locale, "Play")
+                gettext(app.engine.locale, "Play")
             },
         )
         .clicked()
@@ -699,7 +699,7 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
         18.0,
         dim,
         palette.text,
-        &gettext(app.locale, "Next"),
+        &gettext(app.engine.locale, "Next"),
     )
     .clicked()
     {
@@ -707,16 +707,16 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
     }
 
     let (repeat_icon, repeat_color, tooltip) = match repeat {
-        RepeatMode::Off => (Icon::Repeat, dim, gettext(app.locale, "Repeat")),
+        RepeatMode::Off => (Icon::Repeat, dim, gettext(app.engine.locale, "Repeat")),
         RepeatMode::Context => (
             Icon::Repeat,
             palette.accent,
-            gettext(app.locale, "Repeat one"),
+            gettext(app.engine.locale, "Repeat one"),
         ),
         RepeatMode::Track => (
             Icon::Repeat1,
             palette.accent,
-            gettext(app.locale, "Repeat off"),
+            gettext(app.engine.locale, "Repeat off"),
         ),
     };
     let mut cell = centered(ui, slot(widths[4]));
@@ -777,7 +777,7 @@ fn transport(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>, region:
         &mut slider_ui,
         &palette,
         egui::Id::new("seek-slider"),
-        &gettext(app.locale, "Playback position (%)"),
+        &gettext(app.engine.locale, "Playback position (%)"),
         fraction,
         slider_width,
         None,
@@ -820,7 +820,7 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
             ui,
             &palette,
             egui::Id::new("volume-slider"),
-            &gettext(app.locale, "Volume (%)"),
+            &gettext(app.engine.locale, "Volume (%)"),
             shown as f32 / 100.0,
             92.0,
             Some(0.05),
@@ -853,9 +853,9 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
             palette.secondary,
             palette.text,
             &if shown == 0 {
-                gettext(app.locale, "Unmute")
+                gettext(app.engine.locale, "Unmute")
             } else {
-                gettext(app.locale, "Mute")
+                gettext(app.engine.locale, "Mute")
             },
         )
         .clicked()
@@ -870,7 +870,7 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
             egui::Sense::hover(),
         )
         .on_hover_text(gettext(
-            app.locale,
+            app.engine.locale,
             "This device's volume can't be changed from Spotifast",
         ));
     }
@@ -891,7 +891,7 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
             palette.secondary
         },
         palette.text,
-        &gettext(app.locale, "Connect to a device"),
+        &gettext(app.engine.locale, "Connect to a device"),
     );
     ui.ctx().data_mut(|data| {
         data.insert_temp(egui::Id::new(super::devices::BUTTON_RECT_ID), devices.rect)
@@ -899,7 +899,7 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
     if devices.clicked() {
         app.engine.actions.push(Action::ToggleDevicesPopup);
     }
-    let queue_open = app.engine.show_queue_panel || matches!(app.page(), Page::Queue);
+    let queue_open = app.engine.show_queue_panel || matches!(app.engine.page(), Page::Queue);
     let queue_button = theme::icon_button(
         ui,
         Icon::ListVideo,
@@ -910,7 +910,7 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
             palette.secondary
         },
         palette.text,
-        &gettext(app.locale, "Queue"),
+        &gettext(app.engine.locale, "Queue"),
     );
     if queue_button.clicked() {
         app.engine.actions.push(Action::ToggleQueuePanel);
@@ -936,7 +936,7 @@ fn extras(app: &mut App, ui: &mut egui::Ui, now: Option<&NowPlaying>) {
             palette.secondary
         },
         palette.text,
-        &gettext(app.locale, "Lyrics"),
+        &gettext(app.engine.locale, "Lyrics"),
     )
     .clicked()
     {

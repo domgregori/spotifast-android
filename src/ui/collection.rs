@@ -220,7 +220,7 @@ pub fn actions_row(
     filter: Option<&mut String>,
 ) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 18.0;
         if let Some(uri) = &actions.play_uri {
@@ -609,7 +609,7 @@ fn view_context(base: &RowContext, view_uris: Option<&Arc<[String]>>) -> RowCont
 
 pub fn table(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     if table.items.is_empty() && !app.engine.network_reachable {
         widgets::empty_state(
             ui,
@@ -635,7 +635,7 @@ pub fn table(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
 
 fn table_contents(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let needle = table.filter.trim().to_lowercase();
     let sort = app.engine.table_sorts.get(&table.page).copied();
     let entry = prepare_table_view(
@@ -663,7 +663,7 @@ fn table_contents(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
         && let Some(column) = widgets::table_header(
             ui,
             &palette,
-            app.locale,
+            app.engine.locale,
             table.show_album,
             table.show_added,
             table.show_added_by,
@@ -944,7 +944,7 @@ fn table_contents(app: &mut App, ui: &mut egui::Ui, table: Table<'_>) {
     }
     if finite.is_none() && table.loading {
         ui.add_space(8.0);
-        widgets::loading_row(ui, &palette, app.locale);
+        widgets::loading_row(ui, &palette, app.engine.locale);
     }
     if finite.is_none()
         && let Some(error) = table.error
@@ -1410,7 +1410,7 @@ pub fn top_songs(app: &mut App, ui: &mut egui::Ui) {
     ui.add_space(12.0);
     theme::text(
         ui,
-        gettext(app.locale, "Your top songs"),
+        gettext(app.engine.locale, "Your top songs"),
         theme::bold(30.0),
         palette.text,
     );
@@ -1418,7 +1418,7 @@ pub fn top_songs(app: &mut App, ui: &mut egui::Ui) {
     theme::text(
         ui,
         gettext(
-            app.locale,
+            app.engine.locale,
             "Your most-played tracks from the last four weeks.",
         ),
         theme::regular(13.5),
@@ -1429,7 +1429,7 @@ pub fn top_songs(app: &mut App, ui: &mut egui::Ui) {
     let tracks = match &app.engine.home.top_songs {
         Loadable::Loaded(tracks) => tracks,
         Loadable::Loading | Loadable::NotLoaded => {
-            widgets::loading_row(ui, &palette, app.locale);
+            widgets::loading_row(ui, &palette, app.engine.locale);
             return;
         }
         Loadable::Failed(error) => {
@@ -1504,9 +1504,9 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     ui,
                     &app.palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
@@ -1524,19 +1524,19 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
             let made_together = playlist.collaborative || !others.is_empty();
             let mut byline = vec![(owner_name(app, playlist).to_string(), None)];
             if let Some(saves) = playlist.followers.as_ref().map(|followers| followers.total) {
-                byline.push((saves_text(app.locale, saves), None));
+                byline.push((saves_text(app.engine.locale, saves), None));
             }
             if !others.is_empty() {
                 let named: Vec<String> = others
                     .iter()
                     .filter_map(|id| app.engine.user_names.get(*id)?.clone())
                     .collect();
-                byline.push((contributors_text(app.locale, &named, others.len()), None));
+                byline.push((contributors_text(app.engine.locale, &named, others.len()), None));
             }
             let count_text = if page.items.is_complete() {
-                songs_and_duration(app.locale, count, duration_ms)
+                songs_and_duration(app.engine.locale, count, duration_ms)
             } else {
-                song_count(app.locale, count)
+                song_count(app.engine.locale, count)
             };
             byline.push((count_text, None));
             let images = hero_images(
@@ -1574,7 +1574,7 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
                 None
             };
             let actions =
-                playlist_actions(app.locale, playlist, owned, saved, view_play, reload_action);
+                playlist_actions(app.engine.locale, playlist, owned, saved, view_play, reload_action);
             if !app.engine.network_reachable {
                 disabled_actions_row(app, ui, actions, Some(&mut page.filter));
             } else {
@@ -1633,14 +1633,14 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     ui,
                     &app.palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
             } else {
-                widgets::loading_row(ui, &app.palette, app.locale);
+                widgets::loading_row(ui, &app.palette, app.engine.locale);
             }
         }
         Loadable::Failed(error) => {
@@ -1659,9 +1659,9 @@ pub fn playlist(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     ui,
                     &app.palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
@@ -1723,9 +1723,9 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     ui,
                     &palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
@@ -1744,7 +1744,7 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
                 page.tracks.revision,
             );
             let album_view = table_view.view_uris.as_ref().map(Arc::clone);
-            let actions = album_actions(app.locale, album, saved, album_view);
+            let actions = album_actions(app.engine.locale, album, saved, album_view);
             if !app.engine.network_reachable {
                 disabled_actions_row(app, ui, actions, None);
             } else {
@@ -1785,7 +1785,7 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
             if let Some(date) = &album.release_date {
                 theme::text(
                     ui,
-                    util::format_date(app.locale, date),
+                    util::format_date(app.engine.locale, date),
                     theme::regular(12.5),
                     palette.secondary,
                 );
@@ -1832,14 +1832,14 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     ui,
                     &app.palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
             } else {
-                widgets::loading_row(ui, &app.palette, app.locale);
+                widgets::loading_row(ui, &app.palette, app.engine.locale);
             }
         }
         Loadable::Failed(error) => {
@@ -1858,9 +1858,9 @@ pub fn album(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     ui,
                     &app.palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
@@ -1877,7 +1877,7 @@ fn playlist_loading_hero(app: &mut App, ui: &mut egui::Ui, playlist: &Playlist) 
     let mut byline = vec![(owner_name(app, playlist).to_string(), None)];
     let count = playlist.track_total();
     if count > 0 {
-        byline.push((song_count(app.locale, count), None));
+        byline.push((song_count(app.engine.locale, count), None));
     }
     playlist_hero(app, ui, playlist, images, byline, playlist.collaborative);
 }
@@ -1911,11 +1911,11 @@ fn playlist_hero<'a>(
             images,
             liked: false,
             kind: if collaborative {
-                gettext(app.locale, "Collaborative Playlist")
+                gettext(app.engine.locale, "Collaborative Playlist")
             } else if playlist.public == Some(true) {
-                gettext(app.locale, "Public Playlist")
+                gettext(app.engine.locale, "Public Playlist")
             } else {
-                gettext(app.locale, "Playlist")
+                gettext(app.engine.locale, "Playlist")
             },
             title: &playlist.name,
             description: playlist.description.as_deref().map(util::strip_html),
@@ -1939,14 +1939,14 @@ fn playlist_loading_actions(
     disabled_actions_row(
         app,
         ui,
-        playlist_actions(app.locale, playlist, owned, saved, None, None),
+        playlist_actions(app.engine.locale, playlist, owned, saved, None, None),
         Some(filter),
     );
 }
 
 fn album_loading_actions(app: &mut App, ui: &mut egui::Ui, album: &Album) {
     let saved = app.is_saved(&album.uri).unwrap_or(false);
-    disabled_actions_row(app, ui, album_actions(app.locale, album, saved, None), None);
+    disabled_actions_row(app, ui, album_actions(app.engine.locale, album, saved, None), None);
 }
 
 fn playlist_actions<'a>(
@@ -2026,9 +2026,9 @@ fn album_hero(
         .map(|track| track.duration_ms as u64)
         .sum();
     let count_text = if tracks.is_complete() {
-        songs_and_duration(app.locale, count, duration)
+        songs_and_duration(app.engine.locale, count, duration)
     } else {
-        song_count(app.locale, count)
+        song_count(app.engine.locale, count)
     };
     byline.push((count_text, None));
     let images = hero_images(
@@ -2102,9 +2102,9 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
             ui,
             &palette,
             Icon::WifiOff,
-            &gettext(app.locale, "You're offline"),
+            &gettext(app.engine.locale, "You're offline"),
             &gettext(
-                app.locale,
+                app.engine.locale,
                 "Spotifast will reconnect automatically when your connection returns.",
             ),
         );
@@ -2115,7 +2115,7 @@ pub fn liked(app: &mut App, ui: &mut egui::Ui) {
         .as_ref()
         .map(|user| user.name().to_string())
         .unwrap_or_default();
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let count_text = if app.engine.library.liked.is_complete() {
         songs_and_duration(locale, total, total_duration(&items))
     } else {
@@ -3184,7 +3184,7 @@ mod tests {
                     widgets::search_field(
                         ui,
                         &self.app.palette,
-                        self.app.locale,
+                        self.app.engine.locale,
                         egui::Id::new("keyboard-filter"),
                         &mut self.filter,
                         "Filter",

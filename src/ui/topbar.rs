@@ -194,7 +194,7 @@ fn nav_button(
 
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let width = ui.available_width();
     let mut window_controls = super::window_controls_reservation(
         ui.ctx(),
@@ -260,7 +260,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 Icon::ChevronLeft,
-                app.can_go_back(),
+                app.engine.can_go_back(),
                 &gettext(locale, "Back"),
             )
             .clicked()
@@ -271,7 +271,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 Icon::ChevronRight,
-                app.can_go_forward(),
+                app.engine.can_go_forward(),
                 &gettext(locale, "Forward"),
             )
             .clicked()
@@ -351,7 +351,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             let response = super::widgets::search_field(
                 ui,
                 &palette,
-                app.locale,
+                app.engine.locale,
                 id,
                 &mut app.engine.search.query,
                 &gettext(locale, "What do you want to play?"),
@@ -364,7 +364,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             // Clear empties the field and hands it focus in the same frame.
             // Neither should leave the page: only typing a query does.
             let cleared = app.engine.search.query.is_empty() && !before.is_empty();
-            if response.gained_focus() && !cleared && !matches!(app.page(), Page::Search) {
+            if response.gained_focus() && !cleared && !matches!(app.engine.page(), Page::Search) {
                 app.engine.actions.push(Action::Open(Page::Search));
             }
             if app.engine.search.query != before {
@@ -374,7 +374,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     app.engine.actions.push(Action::EndSearchRun);
                 }
                 app.engine.search.typed_at = Some(std::time::Instant::now());
-                if !cleared && !matches!(app.page(), Page::Search) {
+                if !cleared && !matches!(app.engine.page(), Page::Search) {
                     app.engine.actions.push(Action::Open(Page::Search));
                 }
             }

@@ -404,8 +404,8 @@ fn full_window(
     if view
         .interact(layout::ABOUT, "about", Sense::click())
         .on_hover_text(super::keys::platform_shortcut(
-            &gettext(app.locale, "Back to the big window (Ctrl+M)"),
-            &gettext(app.locale, "Back to the big window (Cmd+Shift+M)"),
+            &gettext(app.engine.locale, "Back to the big window (Ctrl+M)"),
+            &gettext(app.engine.locale, "Back to the big window (Cmd+Shift+M)"),
         ))
         .clicked()
     {
@@ -449,9 +449,9 @@ fn shade_bar(
         options_menu(app, ui, unit);
     });
     let big_window = if cfg!(target_os = "macos") {
-        gettext(app.locale, "Back to the big window (Cmd+Shift+M)")
+        gettext(app.engine.locale, "Back to the big window (Cmd+Shift+M)")
     } else {
-        gettext(app.locale, "Back to the big window (Ctrl+M)")
+        gettext(app.engine.locale, "Back to the big window (Ctrl+M)")
     };
     if view
         .button(
@@ -483,7 +483,7 @@ fn shade_bar(
             sprites::UNSHADE_BUTTON_PRESSED,
             "unshade",
         )
-        .on_hover_text(gettext(app.locale, "Roll the window down").as_ref())
+        .on_hover_text(gettext(app.engine.locale, "Roll the window down").as_ref())
         .clicked()
     {
         app.engine.actions.push(Action::ToggleWinampShade);
@@ -615,9 +615,9 @@ fn title_bar(app: &mut App, view: &mut View, ctx: &egui::Context, focused: bool)
     // player is a way of looking at the same app, not a second one to
     // close. Quitting is in the menu and through the platform shortcut.
     let big_window = if cfg!(target_os = "macos") {
-        gettext(app.locale, "Back to the big window (Cmd+Shift+M)")
+        gettext(app.engine.locale, "Back to the big window (Cmd+Shift+M)")
     } else {
-        gettext(app.locale, "Back to the big window (Ctrl+M)")
+        gettext(app.engine.locale, "Back to the big window (Ctrl+M)")
     };
     if view
         .button(
@@ -649,7 +649,7 @@ fn title_bar(app: &mut App, view: &mut View, ctx: &egui::Context, focused: bool)
             sprites::SHADE_BUTTON_PRESSED,
             "shade",
         )
-        .on_hover_text(gettext(app.locale, "Roll the window up").as_ref())
+        .on_hover_text(gettext(app.engine.locale, "Roll the window up").as_ref())
         .clicked()
     {
         app.engine.actions.push(Action::ToggleWinampShade);
@@ -671,7 +671,7 @@ fn title_bar(app: &mut App, view: &mut View, ctx: &egui::Context, focused: bool)
 /// The menu behind a right-click on the title bar and the O of the
 /// clutter bar, sized to the skin so it fits inside the window.
 fn options_menu(app: &mut App, ui: &mut Ui, unit: f32) {
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let font = menu_font(unit);
     ui.set_min_width(font * 11.0);
     let scale = WinampState::scale(&app.engine.settings, ui.ctx().pixels_per_point());
@@ -835,9 +835,9 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
         )
         .on_hover_text(
             if app.window_level_supported {
-                gettext(app.locale, "Always on top")
+                gettext(app.engine.locale, "Always on top")
             } else {
-                crate::window::on_top_unavailable(app.locale)
+                crate::window::on_top_unavailable(app.engine.locale)
             }
             .as_ref(),
         )
@@ -853,7 +853,7 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
             false,
             "clutter-i",
         )
-        .on_hover_text(gettext(app.locale, "Song info").as_ref())
+        .on_hover_text(gettext(app.engine.locale, "Song info").as_ref())
         .clicked()
         && let Some(now) = now
     {
@@ -874,7 +874,7 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
             scale >= 2,
             "clutter-d",
         )
-        .on_hover_text(gettext(app.locale, "Size: 2x, 3x, 4x").as_ref())
+        .on_hover_text(gettext(app.engine.locale, "Size: 2x, 3x, 4x").as_ref())
         .clicked()
     {
         let next = if scale >= MAX_SCALE {
@@ -893,8 +893,8 @@ fn clutter_bar(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
             app.engine.settings.milkdrop_open,
             "clutter-v",
         )
-        .on_hover_text(gettext(app.locale, "Visualisation").as_ref());
-    let locale = app.locale;
+        .on_hover_text(gettext(app.engine.locale, "Visualisation").as_ref());
+    let locale = app.engine.locale;
     menu(egui::Popup::menu(&vis), view.skin, unit, |ui| {
         for (mode, label) in [
             (VisMode::Bars, gettext(locale, "Spectrum analyser")),
@@ -1031,7 +1031,7 @@ fn status(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
     view.sprite(mono_lamp, layout::MONO);
     if view
         .interact(layout::MONO, "mono", Sense::click())
-        .on_hover_text(gettext(app.locale, "Play in mono").as_ref())
+        .on_hover_text(gettext(app.engine.locale, "Play in mono").as_ref())
         .clicked()
         && !mono
     {
@@ -1039,7 +1039,7 @@ fn status(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
     }
     if view
         .interact(layout::STEREO, "stereo", Sense::click())
-        .on_hover_text(gettext(app.locale, "Play in stereo").as_ref())
+        .on_hover_text(gettext(app.engine.locale, "Play in stereo").as_ref())
         .clicked()
         && mono
     {
@@ -1181,7 +1181,7 @@ pub fn marquee_text(
 fn marquee(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
     let notice = app.engine.toasts.last().map(|toast| toast.message.clone());
     let text = marquee_text(
-        app.locale,
+        app.engine.locale,
         now,
         app.engine.seek_preview,
         app.engine.volume_preview,
@@ -1490,7 +1490,7 @@ fn transport(app: &mut App, view: &mut View, now: Option<&NowPlaying>) {
             sprites::EJECT_PRESSED,
             "eject",
         )
-        .on_hover_text(gettext(app.locale, "Open the big window").as_ref())
+        .on_hover_text(gettext(app.engine.locale, "Open the big window").as_ref())
         .clicked()
     {
         app.engine.actions.push(Action::ToggleWinampWindow);

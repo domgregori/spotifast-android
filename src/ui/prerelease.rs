@@ -15,7 +15,7 @@ use crate::theme::{self, Icon};
 
 pub(super) fn show(app: &mut App, ui: &mut egui::Ui, data: &Prerelease) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let hero_text = if data.color.is_some() {
         Color32::WHITE
     } else {

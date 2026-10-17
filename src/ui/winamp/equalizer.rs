@@ -56,7 +56,7 @@ pub(super) fn show(app: &mut App, view: &mut View, now: Option<&NowPlaying>, foc
             false,
             "eq-shade",
         )
-        .on_hover_text(gettext(app.locale, "Roll the equalizer up").as_ref())
+        .on_hover_text(gettext(app.engine.locale, "Roll the equalizer up").as_ref())
         .clicked()
     {
         app.engine.actions.push(Action::ToggleWinampEqShade);
@@ -222,7 +222,7 @@ fn shade(app: &mut App, view: &mut View, now: Option<&NowPlaying>, focused: bool
             false,
             "eq-unshade",
         )
-        .on_hover_text(gettext(app.locale, "Roll the equalizer down").as_ref())
+        .on_hover_text(gettext(app.engine.locale, "Roll the equalizer down").as_ref())
         .clicked()
     {
         app.engine.actions.push(Action::ToggleWinampEqShade);

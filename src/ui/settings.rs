@@ -263,7 +263,7 @@ fn section(
 
 pub fn show(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     ui.add_space(8.0);
     theme::text(
         ui,
@@ -278,7 +278,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
     widgets::search_field(
         ui,
         &palette,
-        app.locale,
+        app.engine.locale,
         egui::Id::new("settings-search-field"),
         &mut filter,
         &gettext(locale, "Search settings"),
@@ -409,7 +409,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                     .show(ui, |ui| {
                         widgets::text_edit(
                             ui,
-                            app.locale,
+                            app.engine.locale,
                             egui::TextEdit::singleline(&mut client_id)
                                 .id(egui::Id::new("personal-web-client-id"))
                                 .hint_text(
@@ -1250,7 +1250,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                         if (zoom - app.engine.settings.zoom).abs() > 0.001 {
                             app.engine.settings.zoom = zoom;
                             ui.ctx().set_zoom_factor(zoom);
-                            app.mark_settings_dirty();
+                            app.engine.mark_settings_dirty();
                         }
                     });
                 },
@@ -1348,7 +1348,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             if widgets::proxy_manual_form(
                 ui,
                 &palette,
-                app.locale,
+                app.engine.locale,
                 &mut app.engine.settings.proxy_host,
                 &mut app.engine.settings.proxy_port,
                 &mut app.engine.settings.proxy_username,
@@ -1359,7 +1359,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 proxy_dirty = true;
             }
             ui.add_space(6.0);
-            widgets::proxy_scope_note(ui, &palette, app.locale, app.engine.settings.proxy_mode);
+            widgets::proxy_scope_note(ui, &palette, app.engine.locale, app.engine.settings.proxy_mode);
             ui.add_space(10.0);
         }
         if app.engine.settings.proxy_mode.is_manual() {
@@ -2013,7 +2013,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
 /// The interface language: System first, then each language by its own name,
 /// so a reader can find theirs whatever language the app is showing.
 fn language_picker(app: &mut App, ui: &mut egui::Ui) {
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let system = pgettext(locale, "language", "System");
     let current = app.engine.settings.language;
     let selected = match current {

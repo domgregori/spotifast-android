@@ -171,10 +171,10 @@ fn grid_play_button(
     let playing = playing_here && app.believed_playing();
     let label = if playing {
         // Translators: The play button on a Library card. {name} is the playlist, album, artist, or podcast.
-        gettext(app.locale, "Pause {name}")
+        gettext(app.engine.locale, "Pause {name}")
     } else {
         // Translators: The play button on a Library card. {name} is the playlist, album, artist, or podcast.
-        gettext(app.locale, "Play {name}")
+        gettext(app.engine.locale, "Play {name}")
     }
     .replace("{name}", &entry.name);
     button.widget_info(|| {
@@ -298,17 +298,17 @@ fn finish_entry_interaction(
 
 fn liked_entry(app: &App) -> Entry {
     let subtitle = match app.engine.library.liked.total {
-        Some(total) => app.locale.liked_song_count(total),
-        None => gettext(app.locale, "Playlist").into_owned(),
+        Some(total) => app.engine.locale.liked_song_count(total),
+        None => gettext(app.engine.locale, "Playlist").into_owned(),
     };
     let grid_subtitle = app.engine.library
         .liked
         .total
-        .map_or_else(String::new, |total| app.locale.song_count(total));
+        .map_or_else(String::new, |total| app.engine.locale.song_count(total));
     Entry {
         image: None,
         grid_image: None,
-        name: gettext(app.locale, "Liked Songs").into_owned(),
+        name: gettext(app.engine.locale, "Liked Songs").into_owned(),
         subtitle,
         grid_subtitle,
         page: Page::LikedSongs,
@@ -346,7 +346,7 @@ pub(crate) fn selected_sort(app: &App, shelf: Filter) -> LibrarySort {
 
 /// Offer only the sort modes supported by this shelf and queue the selected change.
 fn sort_menu(app: &mut App, ui: &mut egui::Ui, shelf: Filter, selected: LibrarySort) {
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let labels = [
         (LibrarySort::Library, gettext(locale, "Library order")),
         (
@@ -690,7 +690,7 @@ fn playlist_rows(app: &App, sort: LibrarySort, needle: &str, entries: &mut Vec<E
                 continue;
             }
             entries.push(playlist_entry(
-                app.locale,
+                app.engine.locale,
                 playlist,
                 index,
                 user_id.unwrap_or(""),
@@ -728,12 +728,12 @@ fn folder_rows(app: &App, user_id: &str, entries: &mut Vec<Entry>) {
                         image: None,
                         grid_image: None,
                         name: if name.is_empty() {
-                            gettext(app.locale, "Folder").into_owned()
+                            gettext(app.engine.locale, "Folder").into_owned()
                         } else {
                             name.clone()
                         },
-                        subtitle: app.locale.folder_playlist_count(count as u32),
-                        grid_subtitle: app.locale.playlist_count(count as u32),
+                        subtitle: app.engine.locale.folder_playlist_count(count as u32),
+                        grid_subtitle: app.engine.locale.playlist_count(count as u32),
                         page: Page::Home,
                         uri: String::new(),
                         round: false,
@@ -768,7 +768,7 @@ fn folder_rows(app: &App, user_id: &str, entries: &mut Vec<Entry>) {
                     continue;
                 }
                 entries.push(playlist_entry(
-                    app.locale,
+                    app.engine.locale,
                     playlist,
                     *index,
                     user_id,
@@ -784,7 +784,7 @@ fn folder_rows(app: &App, user_id: &str, entries: &mut Vec<Entry>) {
     for (index, playlist) in playlists.iter().enumerate() {
         if !seen.contains(playlist.uri.as_str()) {
             entries.push(playlist_entry(
-                app.locale,
+                app.engine.locale,
                 playlist,
                 index,
                 user_id,
@@ -906,8 +906,8 @@ fn nav_row(
 /// Playlist ownership and text filters are applied before ordering and pin placement.
 fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
     let palette = app.palette;
-    let page = app.page().clone();
-    let locale = app.locale;
+    let page = app.engine.page().clone();
+    let locale = app.engine.locale;
     ui.add_space(4.0);
     if nav_row(
         ui,
@@ -1081,7 +1081,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
         let response = super::widgets::search_field(
             ui,
             &palette,
-            app.locale,
+            app.engine.locale,
             egui::Id::new("sidebar-search"),
             &mut app.engine.library.filter,
             &gettext(locale, "Search in Your Library"),
@@ -1255,7 +1255,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
         .count();
     let playing_context = app.playing_context_uri();
     let context_playing = app.believed_playing();
-    let current_page = app.page().clone();
+    let current_page = app.engine.page().clone();
 
     crate::autoscroll::show(
         ui,
@@ -1270,7 +1270,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                 super::widgets::scroll_during_drag(ui);
             }
             if loading {
-                super::widgets::loading_row(ui, &palette, app.locale);
+                super::widgets::loading_row(ui, &palette, app.engine.locale);
             }
             if let Some(error) = &error {
                 super::widgets::error_row(ui, app, error, None);
@@ -1281,9 +1281,9 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                     ui,
                     &palette,
                     &if needle.is_empty() {
-                        gettext(app.locale, "Nothing here yet.")
+                        gettext(app.engine.locale, "Nothing here yet.")
                     } else {
-                        gettext(app.locale, "No matches.")
+                        gettext(app.engine.locale, "No matches.")
                     },
                 );
             }
@@ -1362,7 +1362,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                         ui.is_enabled(),
                         active,
                         if let Some((_, collapsed, _)) = &entry.folder {
-                            app.locale.folder_state_label(&entry.name, *collapsed)
+                            app.engine.locale.folder_state_label(&entry.name, *collapsed)
                         } else {
                             entry.name.clone()
                         },
@@ -1682,7 +1682,7 @@ fn library_grid(
     let pins = app.engine.settings.library_pins();
     let playing_context = app.playing_context_uri();
     let context_playing = app.believed_playing();
-    let current_page = app.page().clone();
+    let current_page = app.engine.page().clone();
     let layout = grid_layout(ui.available_width());
     let origin = ui.cursor().min;
     let pointer = ui.ctx().pointer_latest_pos().filter(|pos| {
@@ -1727,7 +1727,7 @@ fn library_grid(
                             ui.is_enabled(),
                             active,
                             if let Some((_, collapsed, _)) = &entry.folder {
-                                app.locale.folder_state_label(&entry.name, *collapsed)
+                                app.engine.locale.folder_state_label(&entry.name, *collapsed)
                             } else {
                                 entry.name.clone()
                             },
@@ -1912,7 +1912,7 @@ fn entry_menu(app: &mut App, response: &egui::Response, entry: &Entry, custom_or
                         ui,
                         &app.palette,
                         Some(Icon::Clock),
-                        &gettext(app.locale, "Sort by recently played"),
+                        &gettext(app.engine.locale, "Sort by recently played"),
                     )
                 {
                     app.engine.actions.push(Action::SetLibrarySort {
@@ -1933,7 +1933,7 @@ fn entry_menu(app: &mut App, response: &egui::Response, entry: &Entry, custom_or
                     ui,
                     &app.palette,
                     Some(Icon::Play),
-                    &gettext(app.locale, "Play"),
+                    &gettext(app.engine.locale, "Play"),
                 ) && let Some(user) = &app.engine.user
                 {
                     app.engine.actions.push(Action::PlayContext {
@@ -1951,9 +1951,9 @@ fn pin_menu(app: &mut App, ui: &mut egui::Ui, key: &str) {
     let mut pins = app.engine.settings.library_pins();
     let pinned = pins.iter().any(|held| held == key);
     let label = if pinned {
-        gettext(app.locale, "Unpin")
+        gettext(app.engine.locale, "Unpin")
     } else {
-        gettext(app.locale, "Pin to top")
+        gettext(app.engine.locale, "Pin to top")
     };
     if super::widgets::menu_item(
         ui,
@@ -2033,7 +2033,7 @@ fn full_playlist_order(app: &App) -> Vec<String> {
         .enumerate()
         .map(|(index, playlist)| {
             playlist_entry(
-                app.locale,
+                app.engine.locale,
                 playlist,
                 index,
                 app.user_id().unwrap_or(""),
@@ -2686,7 +2686,7 @@ mod ordering_tests {
         use crate::i18n::Locale;
         use crate::player::RootlistEntry::{FolderEnd, FolderStart, Playlist};
         let mut app = app("folder-locale");
-        app.locale = Locale::German;
+        app.engine.locale = Locale::German;
         app.engine.rootlist = vec![
             FolderStart {
                 id: "folder".into(),

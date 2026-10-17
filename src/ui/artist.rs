@@ -23,7 +23,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
     let preview =
         super::loading_preview(ui.ctx(), id, &page.artist, || app.known_artist(id).cloned());
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     match &page.artist {
         Loadable::Loaded(artist) => {
             artist_hero(app, ui, artist, preview.as_deref());
@@ -98,7 +98,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     theme::subtle(ui, &palette, &gettext(locale, "No popular songs to show."));
                 }
                 Loadable::Loading | Loadable::NotLoaded => {
-                    widgets::loading_row(ui, &palette, app.locale)
+                    widgets::loading_row(ui, &palette, app.engine.locale)
                 }
                 Loadable::Failed(error) => {
                     let error = error.clone();
@@ -182,7 +182,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                         }
                     });
                     if list.loading {
-                        widgets::loading_row(ui, &palette, app.locale);
+                        widgets::loading_row(ui, &palette, app.engine.locale);
                     } else if let Some(error) = &list.error {
                         let error = error.clone();
                         widgets::error_row(ui, app, &error, None);
@@ -204,7 +204,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                         }
                     }
                 }
-                None => widgets::loading_row(ui, &palette, app.locale),
+                None => widgets::loading_row(ui, &palette, app.engine.locale),
             }
             ui.add_space(20.0);
 
@@ -270,9 +270,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     ui,
                     &palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
@@ -280,7 +280,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                 if let Some(artist) = &preview {
                     ui.add_enabled_ui(false, |ui| artist_actions(app, ui, artist));
                 }
-                widgets::loading_row(ui, &palette, app.locale);
+                widgets::loading_row(ui, &palette, app.engine.locale);
             }
         }
         Loadable::Failed(error) => {
@@ -298,9 +298,9 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
                     ui,
                     &palette,
                     Icon::WifiOff,
-                    &gettext(app.locale, "You're offline"),
+                    &gettext(app.engine.locale, "You're offline"),
                     &gettext(
-                        app.locale,
+                        app.engine.locale,
                         "Spotifast will reconnect automatically when your connection returns.",
                     ),
                 );
@@ -316,7 +316,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui, id: &str) {
 }
 
 fn artist_hero(app: &mut App, ui: &mut egui::Ui, artist: &Artist, preview: Option<&Artist>) {
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let mut byline = Vec::new();
     if let Some(followers) = &artist.followers {
         byline.push((
@@ -367,7 +367,7 @@ fn artist_hero(app: &mut App, ui: &mut egui::Ui, artist: &Artist, preview: Optio
 
 fn artist_actions(app: &mut App, ui: &mut egui::Ui, artist: &Artist) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let following = app.is_saved(&artist.uri).unwrap_or(false);
     ui.horizontal(|ui| {
         ui.spacing_mut().item_spacing.x = 18.0;

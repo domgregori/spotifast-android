@@ -641,7 +641,7 @@ fn menus(app: &mut App, view: &mut View, rows: &[Row], queue_uris: &[String], he
 
 /// Where a song comes from here: the big window's search or Liked Songs.
 fn add_menu(app: &mut App, ui: &mut egui::Ui) {
-    let locale = app.locale;
+    let locale = app.engine.locale;
     if ui
         .button(gettext(locale, "Search Spotify").as_ref())
         .clicked()
@@ -656,7 +656,7 @@ fn add_menu(app: &mut App, ui: &mut egui::Ui) {
 }
 
 fn rem_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row]) {
-    let locale = app.locale;
+    let locale = app.engine.locale;
     // Selection is by list row; only the songs the user queued can go.
     let removable: Vec<(usize, String)> = rows
         .iter()
@@ -696,7 +696,7 @@ fn rem_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row]) {
 }
 
 fn sel_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row]) {
-    let locale = app.locale;
+    let locale = app.engine.locale;
     // Translators: Selects every song in the list.
     let all = pgettext(locale, "selection", "All");
     // Translators: Clears the selection of songs in the list.
@@ -721,7 +721,7 @@ fn sel_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row]) {
 
 /// The pages of the selected song, or of the one playing.
 fn misc_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row]) {
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let chosen = rows
         .iter()
         .enumerate()
@@ -761,7 +761,7 @@ fn list_menu(app: &mut App, ui: &mut egui::Ui, rows: &[Row], queue_uris: &[Strin
                 .collect()
         })
         .unwrap_or_default();
-    let locale = app.locale;
+    let locale = app.engine.locale;
     ui.menu_button(gettext(locale, "Load list").as_ref(), |ui| {
         crate::autoscroll::show(
             ui,

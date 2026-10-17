@@ -32,7 +32,7 @@ impl App {
         Some(
             // Translators: Keep {track} unchanged. It is the name of the song,
             // playlist, album, or artist the radio is based on, not translated.
-            gettext(self.locale, "{track} Radio").replace("{track}", &name),
+            self.engine.localize.t(self.engine.locale, "{track} Radio").replace("{track}", &name),
         )
     }
 
@@ -161,7 +161,7 @@ impl App {
                 self.request_contains(uris);
             }
             // A failed refresh keeps the mix on screen and says why.
-            Err(error) if refreshing => self.toast(error),
+            Err(error) if refreshing => self.engine.toast(error),
             Err(error) => page.songs = Loadable::Failed(error),
         }
     }
@@ -178,7 +178,7 @@ impl App {
         let name = self
             .radio_name(seed)
             .or_else(|| self.engine.radio_pages.get(seed)?.name.clone())
-            .unwrap_or_else(|| gettext(self.locale, "Radio").into_owned());
+            .unwrap_or_else(|| self.engine.localize.t(self.engine.locale, "Radio").into_owned());
         self.engine.actions.push(Action::CreatePlaylist {
             name,
             public: false,

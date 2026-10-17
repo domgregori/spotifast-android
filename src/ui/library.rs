@@ -11,7 +11,7 @@ use super::widgets;
 pub fn show(app: &mut App, ui: &mut egui::Ui, page: Page) {
     let palette = app.palette;
     ui.add_space(8.0);
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let (title, empty_title, empty_body) = match page {
         Page::Albums => (
             gettext(locale, "Albums"),
@@ -255,9 +255,9 @@ fn footer(
             ui,
             &palette,
             Icon::WifiOff,
-            &gettext(app.locale, "You're offline"),
+            &gettext(app.engine.locale, "You're offline"),
             &gettext(
-                app.locale,
+                app.engine.locale,
                 "Spotifast will reconnect automatically when your connection returns.",
             ),
         );
@@ -265,7 +265,7 @@ fn footer(
     }
     if loading {
         ui.add_space(8.0);
-        widgets::loading_row(ui, &palette, app.locale);
+        widgets::loading_row(ui, &palette, app.engine.locale);
     }
     if let Some(error) = error {
         widgets::error_row(ui, app, &error, Some(page.clone()));

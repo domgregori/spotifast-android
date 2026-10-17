@@ -22,7 +22,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             ui.add_space(16.0);
             theme::text(
                 ui,
-                gettext(app.locale, "You're offline"),
+                gettext(app.engine.locale, "You're offline"),
                 theme::bold(28.0),
                 palette.text,
             );
@@ -30,7 +30,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
             theme::text(
                 ui,
                 gettext(
-                    app.locale,
+                    app.engine.locale,
                     "Spotifast will reconnect automatically when your connection returns.",
                 ),
                 theme::regular(14.0),
@@ -40,7 +40,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         return;
     }
     ui.add_space(6.0);
-    let greeting = crate::util::greeting(app.locale);
+    let greeting = crate::util::greeting(app.engine.locale);
     theme::text(ui, greeting.as_ref(), theme::bold(30.0), palette.text);
     ui.add_space(12.0);
     quick_access(app, ui);
@@ -75,7 +75,7 @@ fn quick_access_tiles(app: &App) -> Vec<Tile> {
     let tile_art = app.art_px(TILE_HEIGHT);
     let mut tiles: Vec<Tile> = vec![Tile {
         image: None,
-        name: gettext(app.locale, "Liked Songs").into_owned(),
+        name: gettext(app.engine.locale, "Liked Songs").into_owned(),
         page: Page::LikedSongs,
         uri: app.engine.user
             .as_ref()
@@ -185,7 +185,7 @@ fn quick_access(app: &mut App, ui: &mut egui::Ui) {
                             palette.accent,
                             palette.accent_hover,
                             palette.on_accent,
-                            &gettext(app.locale, if playing_here { "Pause" } else { "Play" }),
+                            &gettext(app.engine.locale, if playing_here { "Pause" } else { "Play" }),
                         )
                         .clicked()
                         {
@@ -238,10 +238,10 @@ fn made_for_you(app: &mut App, ui: &mut egui::Ui) {
         ui,
         &palette,
         "made-for-you",
-        &gettext(app.locale, "Made for you"),
+        &gettext(app.engine.locale, "Made for you"),
         |ui| {
             if playlists.is_empty() && loading {
-                widgets::loading_row(ui, &palette, app.locale);
+                widgets::loading_row(ui, &palette, app.engine.locale);
             } else if playlists.is_empty()
                 && let Some(message) = &failure
             {
@@ -255,7 +255,7 @@ fn made_for_you(app: &mut App, ui: &mut egui::Ui) {
                     .filter(|d| !d.is_empty())
                     .unwrap_or_else(|| {
                         // Translators: {owner} is the name of the playlist's owner.
-                        gettext(app.locale, "By {owner}").replace("{owner}", playlist.owner_name())
+                        gettext(app.engine.locale, "By {owner}").replace("{owner}", playlist.owner_name())
                     });
                 let context_here =
                     app.playing_context_uri().as_deref() == Some(playlist.uri.as_str());
@@ -311,8 +311,8 @@ fn recently_played(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 "recent",
-                &gettext(app.locale, "Recently played"),
-                |ui| widgets::loading_row(ui, &palette, app.locale),
+                &gettext(app.engine.locale, "Recently played"),
+                |ui| widgets::loading_row(ui, &palette, app.engine.locale),
             );
             return;
         }
@@ -321,7 +321,7 @@ fn recently_played(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 "recent",
-                &gettext(app.locale, "Recently played"),
+                &gettext(app.engine.locale, "Recently played"),
                 |ui| {
                     widgets::error_row(ui, app, &message, Some(Page::Home));
                 },
@@ -348,7 +348,7 @@ fn recently_played(app: &mut App, ui: &mut egui::Ui) {
         ui,
         &palette,
         "recent",
-        &gettext(app.locale, "Recently played"),
+        &gettext(app.engine.locale, "Recently played"),
         |ui| {
             for entry in &tracks {
                 let track = &entry.track;
@@ -485,22 +485,22 @@ fn podcasts(app: &mut App, ui: &mut egui::Ui) {
         ui,
         &palette,
         "podcasts",
-        &gettext(app.locale, "Your podcasts"),
+        &gettext(app.engine.locale, "Your podcasts"),
         |ui| {
             for (show, episode, reason) in &episodes {
                 let subtitle = match reason {
                     EpisodeReason::Continue { left_ms } => {
                         // Translators: {time} is the time left in an episode, such as 12 min; {show} is the podcast's name.
-                        gettext(app.locale, "{time} left • {show}")
+                        gettext(app.engine.locale, "{time} left • {show}")
                             .replace(
                                 "{time}",
-                                &crate::util::format_episode_ms(app.locale, *left_ms),
+                                &crate::util::format_episode_ms(app.engine.locale, *left_ms),
                             )
                             .replace("{show}", &show.name)
                     }
                     EpisodeReason::New => {
                         // Translators: {show} is the podcast's name.
-                        gettext(app.locale, "New • {show}").replace("{show}", &show.name)
+                        gettext(app.engine.locale, "New • {show}").replace("{show}", &show.name)
                     }
                 };
                 let card_art = app.art_px(widgets::CARD_ART);
@@ -548,8 +548,8 @@ fn top_artists(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 "top-artists",
-                &gettext(app.locale, "Your top artists"),
-                |ui| widgets::loading_row(ui, &palette, app.locale),
+                &gettext(app.engine.locale, "Your top artists"),
+                |ui| widgets::loading_row(ui, &palette, app.engine.locale),
             );
             return;
         }
@@ -558,7 +558,7 @@ fn top_artists(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 "top-artists",
-                &gettext(app.locale, "Your top artists"),
+                &gettext(app.engine.locale, "Your top artists"),
                 |ui| {
                     widgets::error_row(ui, app, &message, Some(Page::Home));
                 },
@@ -573,7 +573,7 @@ fn top_artists(app: &mut App, ui: &mut egui::Ui) {
         ui,
         &palette,
         "top-artists",
-        &gettext(app.locale, "Your top artists"),
+        &gettext(app.engine.locale, "Your top artists"),
         |ui| {
             for artist in &artists {
                 let context_here =
@@ -585,7 +585,7 @@ fn top_artists(app: &mut App, ui: &mut egui::Ui) {
                     app,
                     pick_image(&artist.images, card_art),
                     &artist.name,
-                    &gettext(app.locale, "Artist"),
+                    &gettext(app.engine.locale, "Artist"),
                     widgets::CardCover::portrait(playing_here),
                 );
                 if card.play {
@@ -634,7 +634,7 @@ fn track_list(
             } else {
                 theme::section_title(ui, &palette, title);
             }
-            widgets::loading_row(ui, &palette, app.locale);
+            widgets::loading_row(ui, &palette, app.engine.locale);
             ui.add_space(12.0);
             return;
         }
@@ -696,8 +696,8 @@ fn track_list(
 
 fn top_tracks(app: &mut App, ui: &mut egui::Ui) {
     let tracks = app.engine.home.top_tracks.clone();
-    let title = gettext(app.locale, "Your top songs");
-    let more = gettext(app.locale, "Show more top songs");
+    let title = gettext(app.engine.locale, "Your top songs");
+    let more = gettext(app.engine.locale, "Show more top songs");
     track_list(
         app,
         ui,
@@ -711,7 +711,7 @@ fn top_tracks(app: &mut App, ui: &mut egui::Ui) {
 
 fn recommendations(app: &mut App, ui: &mut egui::Ui) {
     let tracks = app.engine.home.recommendations.clone();
-    let title = gettext(app.locale, "Recommended for you");
+    let title = gettext(app.engine.locale, "Recommended for you");
     track_list(app, ui, &title, tracks, 20, None, None);
 }
 

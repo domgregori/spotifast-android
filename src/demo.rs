@@ -928,7 +928,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
                 app.engine.recents.error =
                     (surface == "recents-error").then(|| "Connection interrupted".into());
             }
-            "collection-loading" => match app.page().clone() {
+            "collection-loading" => match app.engine.page().clone() {
                 Page::Playlist(id) => {
                     app.engine.playlist_pages.get_mut(&id).unwrap().playlist = Loadable::Loading
                 }
@@ -1010,7 +1010,7 @@ pub fn apply_flags(app: &mut App, page: Option<&str>, show: Option<&str>) {
             "german" => {
                 app.engine.settings.language =
                     crate::settings::LanguageChoice::Locale(crate::i18n::Locale::German);
-                app.locale = crate::i18n::Locale::German;
+                app.engine.locale = crate::i18n::Locale::German;
             }
             "update" => {
                 app.update = Some(crate::updates::Release {
@@ -1386,7 +1386,7 @@ mod tests {
         for locale in [crate::i18n::Locale::English, crate::i18n::Locale::German] {
             for width in [210.0, 250.0, 420.0] {
                 let (ctx, mut app) = accessible_app("library-heading");
-                app.locale = locale;
+                app.engine.locale = locale;
                 app.engine.settings.sidebar_width = width;
                 let heading = crate::i18n::gettext(locale, "Library").into_owned();
                 let search = crate::i18n::gettext(locale, "Search Your Library").into_owned();
@@ -1581,7 +1581,7 @@ mod tests {
             &mut app,
             vec![accessible_action(liked, Action::Click, None)],
         );
-        assert_eq!(app.page(), &Page::LikedSongs);
+        assert_eq!(app.engine.page(), &Page::LikedSongs);
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         let pause = accessible_node(&tree, "Pause", Role::Button);
         assert!(app.believed_playing());
@@ -1669,7 +1669,7 @@ mod tests {
         use egui::accesskit::{Action as AccessibleAction, Role};
         for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-sidebar-{locale:?}"));
-            app.locale = locale;
+            app.engine.locale = locale;
             accessible_frame(&ctx, &mut app, vec![]);
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let home = accessible_node(&tree, &gettext(locale, "Home"), Role::Button);
@@ -1699,7 +1699,7 @@ mod tests {
                 &mut app,
                 vec![keyboard(egui::Key::Enter, egui::Modifiers::NONE)],
             );
-            assert_eq!(app.page(), &Page::LikedSongs);
+            assert_eq!(app.engine.page(), &Page::LikedSongs);
 
             let tree = accessible_frame(&ctx, &mut app, vec![]);
             let library_search =
@@ -1765,7 +1765,7 @@ mod tests {
                 &mut app,
                 vec![accessible_action(pause, AccessibleAction::Focus, None)],
             );
-            app.locale = locale;
+            app.engine.locale = locale;
             let translated = accessible_frame(&ctx, &mut app, vec![]);
             assert_eq!(translated.focus, pause, "translation must retain focus");
             for ((source, role), id) in controls.iter().zip(ids) {
@@ -1823,7 +1823,7 @@ mod tests {
 
         for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-player-state-{locale:?}"));
-            app.locale = locale;
+            app.engine.locale = locale;
             accessible_frame(&ctx, &mut app, vec![]);
             for (source, next) in [
                 ("Repeat", "Repeat one"),
@@ -1870,7 +1870,7 @@ mod tests {
 
         for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-queue-{locale:?}"));
-            app.locale = locale;
+            app.engine.locale = locale;
             app.engine.show_queue_panel = true;
             app.engine.local_ready = true;
             app.engine.local.track = Some(crate::player::LocalTrack {
@@ -1941,7 +1941,7 @@ mod tests {
 
         for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-lyrics-{locale:?}"));
-            app.locale = locale;
+            app.engine.locale = locale;
             app.engine.show_lyrics_panel = true;
             app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
             app.engine.lyrics = Loadable::Loaded(Some(sample_lyrics()));
@@ -2019,7 +2019,7 @@ mod tests {
         use crate::i18n::LOCALES;
         for &locale in LOCALES {
             let (ctx, mut app) = accessible_app(&format!("translated-panel-states-{locale:?}"));
-            app.locale = locale;
+            app.engine.locale = locale;
             app.engine.show_lyrics_panel = true;
             app.engine.lyrics_uri = app.now_playing().map(|now| now.uri);
             for fullscreen in [false, true] {
@@ -2405,7 +2405,7 @@ mod tests {
         use crate::player::RootlistEntry::{FolderEnd, FolderStart};
         use egui::accesskit::Role;
         let (ctx, mut app) = accessible_app("library-folder-labels");
-        app.locale = Locale::German;
+        app.engine.locale = Locale::German;
         app.engine.settings.sidebar_grid = true;
         app.engine.rootlist = vec![
             FolderStart {
@@ -2432,7 +2432,7 @@ mod tests {
         use crate::i18n::{Locale, gettext};
         use egui::accesskit::{Action as AccessibleAction, Role};
         let (ctx, mut app) = accessible_app("library-menu-locale");
-        app.locale = Locale::German;
+        app.engine.locale = Locale::German;
         app.engine.settings.liked_songs_pinned = false;
         let row = |tree: &egui::accesskit::TreeUpdate, label: &str| {
             let bounds = tree
@@ -2739,7 +2739,7 @@ mod tests {
             &mut app,
             vec![accessible_action(card, AccessibleAction::Click, None)],
         );
-        assert_eq!(app.page(), &Page::Playlist("pl2".into()));
+        assert_eq!(app.engine.page(), &Page::Playlist("pl2".into()));
         assert_eq!(app.playing_context_uri(), previous_context);
 
         let tree = accessible_frame(&ctx, &mut app, vec![]);
@@ -2753,7 +2753,7 @@ mod tests {
             app.playing_context_uri().as_deref(),
             Some("spotify:playlist:pl2")
         );
-        assert_eq!(app.page(), &Page::Playlist("pl2".into()));
+        assert_eq!(app.engine.page(), &Page::Playlist("pl2".into()));
         app.engine.backend.shutdown();
     }
 
@@ -2860,7 +2860,7 @@ mod tests {
             assert!(app.engine.dialog.is_none());
             assert!(app.engine.settings.personal_app_intro_seen);
             if setup {
-                assert_eq!(app.page(), &Page::Settings);
+                assert_eq!(app.engine.page(), &Page::Settings);
                 accessible_frame(&ctx, &mut app, vec![]);
                 assert!(
                     ctx.memory(|memory| memory.has_focus(egui::Id::new("personal-web-client-id")))
@@ -3003,7 +3003,7 @@ mod tests {
         }
         assert!(app.engine.search.query.is_empty());
         assert!(
-            matches!(app.page(), Page::Home),
+            matches!(app.engine.page(), Page::Home),
             "clearing must not open the search page"
         );
         assert!(
@@ -3014,7 +3014,7 @@ mod tests {
         accessible_frame(&ctx, &mut app, vec![egui::Event::Text("Rework".into())]);
         accessible_frame(&ctx, &mut app, vec![]);
         assert_eq!(app.engine.search.query, "Rework");
-        assert!(matches!(app.page(), Page::Search));
+        assert!(matches!(app.engine.page(), Page::Search));
         app.engine.backend.shutdown();
     }
 
@@ -3145,7 +3145,7 @@ mod tests {
             &mut app,
             vec![accessible_action(setup, AccessibleAction::Click, None)],
         );
-        assert_eq!(app.page(), &Page::Settings);
+        assert_eq!(app.engine.page(), &Page::Settings);
         assert!(
             settings_filter(&ctx).is_empty(),
             "setup must drop the saved search so its row is visible"
@@ -5073,7 +5073,7 @@ mod tests {
             app.engine.settings.language,
             LanguageChoice::Locale(Locale::Spanish)
         );
-        assert_eq!(app.locale, Locale::Spanish);
+        assert_eq!(app.engine.locale, Locale::Spanish);
         // The English search text no longer matches the Spanish row.
         crate::ui::settings::clear_search(&ctx);
         accessible_frame(&ctx, &mut app, vec![]);
@@ -5090,7 +5090,7 @@ mod tests {
 
         app.apply(Action::SetLanguage(LanguageChoice::System), &ctx);
         assert_eq!(app.engine.settings.language, LanguageChoice::System);
-        assert_eq!(app.locale, Locale::English, "tests read an English system");
+        assert_eq!(app.engine.locale, Locale::English, "tests read an English system");
         let tree = accessible_frame(&ctx, &mut app, vec![]);
         accessible_node(&tree, "Home", Role::Button);
         app.engine.backend.shutdown();
@@ -5533,10 +5533,10 @@ mod tests {
             let (ctx, mut app) = accessible_app(&format!("library-card-{section}"));
             app.open(page);
             fn view(app: &mut App, ui: &mut egui::Ui) {
-                if let Page::Artist(id) = app.page().clone() {
+                if let Page::Artist(id) = app.engine.page().clone() {
                     crate::ui::artist::show(app, ui, &id);
                 } else {
-                    crate::ui::library::show(app, ui, app.page().clone());
+                    crate::ui::library::show(app, ui, app.engine.page().clone());
                 }
             }
             check_card_menu(&mut app, &ctx, view, section, &title, &uri, &labels);
@@ -5764,12 +5764,12 @@ mod tests {
         };
         // A short toast first: the toasts area remembers its size, and a
         // long toast used to inherit the narrow width and wrap inside it.
-        app.toast("Saved");
+        app.engine.toast("Saved");
         for _ in 0..2 {
             frame(&ctx, &mut app);
         }
         app.engine.toasts.clear();
-        app.toast("Wish You Were Here added to queue");
+        app.engine.toast("Wish You Were Here added to queue");
         // Two frames: an area sizes itself on its first one.
         let mut first = ctx.run_ui(input.clone(), |ui| app.frame_ui(ui));
         first.textures_delta.clear();
@@ -6631,7 +6631,7 @@ mod tests {
             for _ in 0..3 {
                 frame(&ctx, &mut app);
             }
-            assert_eq!(app.page(), &page);
+            assert_eq!(app.engine.page(), &page);
         }
         app.engine.settings.sidebar_visible = false;
         frame(&ctx, &mut app);
@@ -6930,7 +6930,7 @@ mod tests {
                         .map(|rows| rows.iter().copied().collect::<Vec<_>>()),
                     Some(vec![2]),
                     "first click at {last:?}, page {:?}",
-                    app.page()
+                    app.engine.page()
                 );
                 let modifier = egui::Modifiers {
                     command: true,
@@ -9780,7 +9780,7 @@ mod tests {
         for action in actions {
             app.apply(action, &ctx);
         }
-        assert_eq!(app.page(), &Page::Radio(seed.clone()));
+        assert_eq!(app.engine.page(), &Page::Radio(seed.clone()));
         assert_eq!(
             app.radio_name(&seed),
             Some(format!("{} Radio", song.name)),
@@ -9825,7 +9825,7 @@ mod tests {
             },
             &ctx,
         );
-        assert_eq!(app.page(), &Page::Radio(seed.clone()));
+        assert_eq!(app.engine.page(), &Page::Radio(seed.clone()));
         assert_eq!(
             app.radio_images(&seed),
             song.album.as_ref().unwrap().images,

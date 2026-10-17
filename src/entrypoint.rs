@@ -561,7 +561,7 @@ pub(crate) fn run() -> eframe::Result<()> {
         if let Some(tag) = &cli.demo_language {
             if let Some(locale) = spotifast::i18n::Locale::from_tag(tag) {
                 app.engine.settings.language = spotifast::settings::LanguageChoice::Locale(locale);
-                app.locale = locale;
+                app.engine.locale = locale;
             }
         }
     }
@@ -595,7 +595,7 @@ pub(crate) fn run() -> eframe::Result<()> {
         let mini = lease.peek(MiniWindow::wanted);
         let geometry = lease.peek(main_geometry);
         #[cfg(windows)]
-        let locale = lease.peek(|app| app.locale);
+        let locale = lease.peek(|app| app.engine.locale);
         #[cfg(feature = "demo")]
         let options = {
             let options = native_options(

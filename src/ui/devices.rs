@@ -71,7 +71,7 @@ fn enable_playback_row(app: &mut App, ui: &mut egui::Ui) {
         pos2(rect.left() + 48.0, rect.center().y - 9.0),
         egui::Align2::LEFT_CENTER,
         // Translators: {name} is the name this computer uses in Spotify Connect.
-        gettext(app.locale, "{name} (this computer)").replace("{name}", &app.engine.settings.device_name),
+        gettext(app.engine.locale, "{name} (this computer)").replace("{name}", &app.engine.settings.device_name),
         theme::medium(14.0),
         palette.text,
     );
@@ -79,9 +79,9 @@ fn enable_playback_row(app: &mut App, ui: &mut egui::Ui) {
         pos2(rect.left() + 48.0, rect.center().y + 10.0),
         egui::Align2::LEFT_CENTER,
         if authorizing {
-            gettext(app.locale, "Setting up…")
+            gettext(app.engine.locale, "Setting up…")
         } else {
-            gettext(app.locale, "Set up playback here")
+            gettext(app.engine.locale, "Set up playback here")
         },
         theme::regular(12.0),
         palette.accent,
@@ -144,9 +144,9 @@ fn receiver_row(app: &mut App, ui: &mut egui::Ui, receiver: &crate::zeroconf::Re
         pos2(rect.left() + 48.0, rect.center().y + 10.0),
         egui::Align2::LEFT_CENTER,
         if activating {
-            gettext(app.locale, "Connecting…")
+            gettext(app.engine.locale, "Connecting…")
         } else {
-            gettext(app.locale, "On your network, click to connect")
+            gettext(app.engine.locale, "On your network, click to connect")
         },
         theme::regular(12.0),
         palette.secondary,
@@ -175,7 +175,7 @@ pub fn popup(app: &mut App, ctx: &egui::Context) {
         return;
     }
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let button = ctx
         .data(|data| data.get_temp::<Rect>(egui::Id::new(BUTTON_RECT_ID)))
         .unwrap_or_else(|| Rect::from_min_size(pos2(400.0, 400.0), vec2(0.0, 0.0)));

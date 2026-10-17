@@ -15,7 +15,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         return;
     };
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let title = gettext(locale, "Update Spotifast");
     let mut close = ctx.input(|input| input.key_pressed(egui::Key::Escape));
     let frame = Frame::new()

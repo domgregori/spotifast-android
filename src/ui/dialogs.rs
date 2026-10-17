@@ -12,7 +12,7 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
         return;
     };
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let frame = Frame::new()
         .fill(palette.overlay)
         .stroke(Stroke::new(1.0, palette.outline))
@@ -344,7 +344,7 @@ fn text_field(
 
 fn create_playlist(app: &mut App, ui: &mut egui::Ui) {
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let busy = app.engine.playlist_busy;
     let Some(Dialog::CreatePlaylist {
         name,
@@ -441,7 +441,7 @@ fn edit_playlist(app: &mut App, ui: &mut egui::Ui) {
         None
     };
     let palette = app.palette;
-    let locale = app.locale;
+    let locale = app.engine.locale;
     let busy = app.engine.playlist_busy;
     let Some(Dialog::EditPlaylist {
         cover,

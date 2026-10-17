@@ -20,12 +20,12 @@ pub fn page(app: &mut App, ui: &mut egui::Ui) {
     ui.horizontal(|ui| {
         theme::text(
             ui,
-            gettext(app.locale, "Queue"),
+            gettext(app.engine.locale, "Queue"),
             theme::bold(28.0),
             palette.text,
         );
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-            if save_button(ui, &palette, offer_save, app.locale) {
+            if save_button(ui, &palette, offer_save, app.engine.locale) {
                 app.engine.actions.push(Action::SaveQueueAsPlaylist);
             }
         });
@@ -76,8 +76,8 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
                     ui,
                     &palette,
                     &[
-                        (QueueTab::Queue, &gettext(app.locale, "Queue")),
-                        (QueueTab::Recents, &gettext(app.locale, "Recent")),
+                        (QueueTab::Queue, &gettext(app.engine.locale, "Queue")),
+                        (QueueTab::Recents, &gettext(app.engine.locale, "Recent")),
                     ],
                     tab,
                 );
@@ -89,10 +89,10 @@ pub fn side_panel(app: &mut App, ui: &mut egui::Ui) {
                     18.0,
                     palette.secondary,
                     palette.text,
-                    &gettext(app.locale, "Close"),
+                    &gettext(app.engine.locale, "Close"),
                 )
                 .clicked();
-                save = save_button(ui, &palette, offer_save, app.locale);
+                save = save_button(ui, &palette, offer_save, app.engine.locale);
             },
         );
         if let Some(tab) = picked {
@@ -166,7 +166,7 @@ fn clear_button(app: &mut App, ui: &mut egui::Ui) {
         18.0,
         palette.secondary,
         palette.text,
-        &gettext(app.locale, "Clear queue"),
+        &gettext(app.engine.locale, "Clear queue"),
     )
     .clicked()
     {
@@ -208,7 +208,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
     match &app.engine.queue {
         Loadable::Loaded(_) => {}
         Loadable::Loading | Loadable::NotLoaded => {
-            widgets::loading_row(ui, &palette, app.locale);
+            widgets::loading_row(ui, &palette, app.engine.locale);
             return;
         }
         Loadable::Failed(error) => {
@@ -236,7 +236,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
         ui.horizontal(|ui| {
             theme::text(
                 ui,
-                gettext(app.locale, "Playing from"),
+                gettext(app.engine.locale, "Playing from"),
                 theme::regular(13.0),
                 palette.secondary,
             );
@@ -256,7 +256,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
     if let Some(current) = current.as_ref() {
         theme::text(
             ui,
-            gettext(app.locale, "Now playing"),
+            gettext(app.engine.locale, "Now playing"),
             theme::semibold(14.0),
             palette.text,
         );
@@ -297,8 +297,8 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
             ui,
             &palette,
             Icon::ListVideo,
-            &gettext(app.locale, "Nothing queued"),
-            &gettext(app.locale, "Queued songs appear here."),
+            &gettext(app.engine.locale, "Nothing queued"),
+            &gettext(app.engine.locale, "Queued songs appear here."),
         );
         return;
     }
@@ -319,7 +319,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
             theme::text(
                 ui,
                 gettext(
-                    app.locale,
+                    app.engine.locale,
                     // Translators: Songs added manually, before the current playlist or album continues.
                     "Playing next",
                 ),
@@ -426,7 +426,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, compact: bool) {
         theme::text(
             ui,
             gettext(
-                app.locale,
+                app.engine.locale,
                 // Translators: Upcoming songs from the current playlist or album, after manually queued songs.
                 "Next up",
             ),
@@ -457,7 +457,7 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
 
     if items.is_empty() {
         if loading {
-            widgets::loading_row(ui, &palette, app.locale);
+            widgets::loading_row(ui, &palette, app.engine.locale);
             return;
         }
         if let Some(err) = error {
@@ -469,7 +469,7 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
                     ui,
                     &palette,
                     Some(Icon::Refresh),
-                    &gettext(app.locale, "Retry"),
+                    &gettext(app.engine.locale, "Retry"),
                     false,
                 )
                 .clicked()
@@ -484,11 +484,11 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 Icon::Clock,
-                &gettext(app.locale, "No recent plays"),
-                &gettext(app.locale, "Played songs appear here."),
+                &gettext(app.engine.locale, "No recent plays"),
+                &gettext(app.engine.locale, "Played songs appear here."),
             );
         } else {
-            widgets::loading_row(ui, &palette, app.locale);
+            widgets::loading_row(ui, &palette, app.engine.locale);
         }
         return;
     }
@@ -502,7 +502,7 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
                 ui,
                 &palette,
                 Some(Icon::Refresh),
-                &gettext(app.locale, "Retry"),
+                &gettext(app.engine.locale, "Retry"),
                 false,
             )
             .clicked()
@@ -545,7 +545,7 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
     // Footer: loading more or load more trigger
     if loading {
         ui.add_space(8.0);
-        widgets::loading_row(ui, &palette, app.locale);
+        widgets::loading_row(ui, &palette, app.engine.locale);
     } else if !complete {
         ui.add_space(8.0);
         // Auto-load when near end, plus manual button as fallback.
@@ -560,7 +560,7 @@ fn recents_contents(app: &mut App, ui: &mut egui::Ui) {
             ui,
             &palette,
             Some(Icon::Refresh),
-            &gettext(app.locale, "Load more"),
+            &gettext(app.engine.locale, "Load more"),
             false,
         )
         .clicked()
