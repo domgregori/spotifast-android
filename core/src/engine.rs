@@ -16,7 +16,7 @@ use crate::api::PlayRequest;
 use crate::backend::{AuthStatus, Backend, LocalPlayback};
 use crate::model::{
     Action, AlbumPage, ArtistPage, Dialog, HomeData, Library, Loadable, Page, PlaylistPage,
-    QueueTab, RadioPage, RowSelection, SearchState, ShowPage, TableRowsCache, TableSort, Toast,
+    QueueTab, RadioPage, RowSelection, SearchState, ShowPage, TableRowsCache, TableSort, Toast, ToastKind,
 };
 use crate::now_playing::NowPlaying;
 use crate::paths::AppDirs;
@@ -424,3 +424,41 @@ pub struct Engine {
     /// Sidebar folders rolled up, by their rootlist ids.
     pub collapsed_folders: Vec<String>,
 }
+
+impl Engine {
+    pub fn page(&self) -> &Page {
+        &self.history[self.history_index]
+    }
+
+    pub fn mark_settings_dirty(&mut self) {
+        self.settings_dirty = true;
+    }
+
+    pub fn can_go_back(&self) -> bool {
+        self.history_index > 0
+    }
+
+    pub fn can_go_forward(&self) -> bool {
+        self.history_index + 1 < self.history.len()
+    }
+
+    pub fn toast(&mut self, message: impl Into<String>) {
+        self.toasts.push(Toast {
+            message: message.into(),
+            kind: ToastKind::Info,
+            created: Instant::now(),
+        });
+        self.toasts.truncate(4);
+    }
+
+    pub fn toast_error(&mut self, message: impl Into<String>) {
+        let message = message.into();
+        log::warn!("{message}");
+        self.toasts.push(Toast {
+            message,
+            kind: ToastKind::Error,
+            created: Instant::now(),
+        });
+    }
+}
+

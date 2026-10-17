@@ -12,6 +12,8 @@ use crate::api::models::{
     Album, Artist, PlayableItem, Playlist, PlaylistItem, Queue,
     Show, Track, TrackCount, UserRef, pick_image,
 };
+#[cfg(test)]
+use crate::api::models::{Device, PlaybackState, User};
 use crate::backend::{
     ApiRequest, ApiResponse, AuthStatus, Backend, Command, Event, LocalPlayback, LyricsRequest,
     PLAYLIST_PAGE_SIZE, PlaylistCacheRows, RecentsFor, RemoteAction,
@@ -811,10 +813,6 @@ impl App {
     }
 
     // ---- derived state -----------------------------------------------------
-
-    pub fn page(&self) -> &Page {
-        &self.engine.history[self.engine.history_index]
-    }
 
     pub fn is_connected(&self) -> bool {
         matches!(self.engine.auth, AuthStatus::Connected { .. })
@@ -1671,7 +1669,7 @@ impl App {
                     self.engine.activating_receiver = None;
                     match result {
                         Ok(()) => {
-                            self.toast(
+                            self.engine.toast(
                                 // Translators: {name} is the name of a speaker or other playback device.
                                 gettext(self.locale, "{name} is ready").replace("{name}", &name),
                             );
@@ -1680,7 +1678,7 @@ impl App {
                             self.engine.devices_fetched_at = None;
                             self.refresh_devices();
                         }
-                        Err(error) => self.toast_error(format!("{name}: {error}")),
+                        Err(error) => self.engine.toast_error(format!("{name}: {error}")),
                     }
                 }
                 Event::Local(state) => self.handle_local(*state),
@@ -1705,14 +1703,14 @@ impl App {
                     } else {
                         error.proxy_message().to_string()
                     };
-                    self.toast_error(message);
+                    self.engine.toast_error(message);
                 }
                 Event::ProxyApplied {
                     request,
                     config,
                     result,
                 } => self.handle_proxy_applied(request, config, result),
-                Event::Error(message) => self.toast_error(message),
+                Event::Error(message) => self.engine.toast_error(message),
                 Event::Rootlist { result } => match result {
                     Ok(rootlist) => {
                         let account_id = self.user_id().map(str::to_owned).or_else(|| {
@@ -1845,7 +1843,7 @@ impl App {
                     match result {
                         Ok(Some(notice)) => {
                             if manual || self.update.as_ref() != Some(&notice) {
-                                self.toast(
+                                self.engine.toast(
                                     // Translators: {version} is a version number such as 1.4.0.
                                     gettext(self.locale, "Spotifast {version} is available")
                                         .replace("{version}", &notice.version.to_string()),
@@ -1864,13 +1862,13 @@ impl App {
                         Ok(None) => {
                             self.update = None;
                             if manual {
-                                self.toast(gettext(self.locale, "Spotifast is up to date"));
+                                self.engine.toast(gettext(self.locale, "Spotifast is up to date"));
                             } else {
                                 log::debug!("this is the newest release");
                             }
                         }
                         Err(error) if manual => {
-                            self.toast_error(
+                            self.engine.toast_error(
                                 // Translators: {error} is an error message.
                                 gettext(self.locale, "Couldn't check for updates: {error}")
                                     .replace("{error}", &error.to_string()),
@@ -1894,7 +1892,7 @@ impl App {
                 // account signing in again.
                 self.engine.account_caches_due = true;
                 self.load_playlists();
-                self.ensure_loaded(self.page().clone());
+                self.ensure_loaded(self.engine.page().clone());
                 self.poll_remote(true);
             }
             AuthStatus::WaitingForBrowser { url } => self.engine.sign_in_url = Some(url.clone()),
@@ -1921,7 +1919,7 @@ impl App {
             }
             AuthStatus::Failed(message) => {
                 self.engine.sign_in_url = None;
-                self.toast_error(message.clone());
+                self.engine.toast_error(message.clone());
             }
             _ => {}
         }
@@ -1954,14 +1952,14 @@ impl App {
                     self.clear_play_pending();
                     self.engine.intent_track = None;
                 }
-                self.toast_error(
+                self.engine.toast_error(
                     // Translators: {error} is an error message from the playback engine.
                     gettext(self.locale, "Local playback: {error}").replace("{error}", message),
                 );
             }
             LocalPlayback::Authorizing => {
                 if !matches!(self.engine.local_playback, LocalPlayback::Authorizing) {
-                    self.toast(gettext(
+                    self.engine.toast(gettext(
                         self.locale,
                         "Opening your browser to set up local playback",
                     ));
@@ -1982,7 +1980,7 @@ impl App {
         {
             self.load_playlists();
         }
-        let page = self.page().clone();
+        let page = self.engine.page().clone();
         match page {
             Page::Home => {
                 // A failed answer may have left cached shelves showing.
@@ -2280,7 +2278,7 @@ impl App {
         if let Some(error) = &state.error
             && self.engine.local.error.as_deref() != Some(error.as_str())
         {
-            self.toast_error(engine_error_text(self.locale, error));
+            self.engine.toast_error(engine_error_text(self.locale, error));
             // One unavailable track is Spotify's catalogue; several in a
             // row is the session's audio-key service gone bad, which
             // leaves librespot feeding the decoder encrypted bytes and
@@ -2297,7 +2295,7 @@ impl App {
                     self.engine.unavailable_at.clear();
                     self.engine.last_unavailable_reconnect = Some(now);
                     self.engine.backend.send(Command::Reconnect);
-                    self.toast(gettext(
+                    self.engine.toast(gettext(
                         self.locale,
                         "Spotify audio disconnected. Reconnecting local playback",
                     ));
@@ -2692,7 +2690,7 @@ impl App {
         if let Some(url) = now.art_small.or(now.art_url) {
             self.tint_for(Some(&url));
         }
-        if matches!(self.page(), Page::Queue)
+        if matches!(self.engine.page(), Page::Queue)
             || self.engine.show_queue_panel
             || (self.engine.settings.winamp_window && self.engine.settings.playlist_open)
         {
@@ -2853,7 +2851,7 @@ impl App {
                 self.refresh_devices();
             }
             let playlist_open = self.engine.settings.winamp_window && self.engine.settings.playlist_open;
-            if (self.engine.show_queue_panel || matches!(self.page(), Page::Queue) || playlist_open)
+            if (self.engine.show_queue_panel || matches!(self.engine.page(), Page::Queue) || playlist_open)
                 && !self.engine.queue.is_loading()
                 && self.engine.queue_fetched_at
                     .is_none_or(|at| at.elapsed() > Duration::from_secs(20))
@@ -2934,7 +2932,7 @@ impl App {
         if let Some(fetched) = fetched {
             match fetched {
                 Ok(count) => {
-                    self.toast(
+                    self.engine.toast(
                         ngettext(
                             self.locale,
                             // Translators: {count} is the number of visualizer presets added.
@@ -2952,7 +2950,7 @@ impl App {
                         host.close();
                     }
                 }
-                Err(error) => self.toast_error(
+                Err(error) => self.engine.toast_error(
                     // Translators: {error} is an error message.
                     gettext(self.locale, "Couldn't fetch presets: {error}")
                         .replace("{error}", &error.to_string()),
@@ -3000,13 +2998,13 @@ impl App {
         };
         if poll.closed {
             self.engine.settings.milkdrop_open = false;
-            self.mark_settings_dirty();
+            self.engine.mark_settings_dirty();
         }
         if let Some(size) = poll.size
             && self.engine.settings.milkdrop_size != size
         {
             self.engine.settings.milkdrop_size = size;
-            self.mark_settings_dirty();
+            self.engine.mark_settings_dirty();
         }
         if let Some(pos) = poll.pos {
             self.milkdrop_pos = Some(pos);
@@ -3058,7 +3056,7 @@ impl App {
         if first {
             self.engine.settings.milkdrop_fps = hz;
         }
-        self.mark_settings_dirty();
+        self.engine.mark_settings_dirty();
     }
 
     /// Applies playback commands received from the MilkDrop window.
@@ -3085,7 +3083,7 @@ impl App {
     fn open_folder(&mut self, folder: std::path::PathBuf) {
         let opened = std::fs::create_dir_all(&folder).and_then(|()| crate::opener::open(&folder));
         if let Err(error) = opened {
-            self.toast_error(
+            self.engine.toast_error(
                 // Translators: {folder} is a folder path and {error} is an error message.
                 gettext(self.locale, "Couldn't open {folder}: {error}")
                     .replace("{folder}", &folder.display().to_string())
@@ -3101,7 +3099,7 @@ impl App {
                 self.winamp
                     .wear(Some(loaded.name.clone()), std::sync::Arc::new(skin));
                 if loaded.installed {
-                    self.toast(
+                    self.engine.toast(
                         // Translators: {skin} is the name of a Winamp skin.
                         gettext(self.locale, "Added {skin} skin")
                             .replace("{skin}", crate::winamp::label(&loaded.name)),
@@ -3112,7 +3110,7 @@ impl App {
                 }
             }
             Err(error) => {
-                self.toast_error(format!("{}: {error}", crate::winamp::label(&loaded.name)));
+                self.engine.toast_error(format!("{}: {error}", crate::winamp::label(&loaded.name)));
                 if !loaded.installed {
                     self.engine.settings.skin = self.winamp.worn.clone();
                     self.engine.settings_dirty = true;
@@ -3130,10 +3128,6 @@ impl App {
     }
 
     /// Note that a setting changed, so the file is saved shortly.
-    pub fn mark_settings_dirty(&mut self) {
-        self.engine.settings_dirty = true;
-    }
-
     /// Note that the restorable session changed, so it is saved shortly.
     pub fn note_session_change(&mut self) {
         self.engine.session_dirty = true;
@@ -3166,7 +3160,7 @@ impl App {
         let config = match self.engine.settings.proxy_config() {
             Ok(config) => config,
             Err(error) => {
-                self.toast_error(error);
+                self.engine.toast_error(error);
                 return;
             }
         };
@@ -3200,12 +3194,12 @@ impl App {
                 self.applied_proxy_preferences = preferences;
                 self.save_settings();
                 if restarted && self.engine.local_ready {
-                    self.toast(gettext(self.locale, "Proxy applied. Restarting local playback."));
+                    self.engine.toast(gettext(self.locale, "Proxy applied. Restarting local playback."));
                 } else {
-                    self.toast(gettext(self.locale, "Proxy settings applied"));
+                    self.engine.toast(gettext(self.locale, "Proxy settings applied"));
                 }
             }
-            Err(error) => self.toast_error(
+            Err(error) => self.engine.toast_error(
                 gettext(
                     self.locale,
                     // Translators: {error} is an error message.
@@ -3289,7 +3283,7 @@ impl App {
             changed = true;
         }
         if changed {
-            self.mark_settings_dirty();
+            self.engine.mark_settings_dirty();
             ctx.set_theme(self.theme_preference());
         }
     }
@@ -4885,7 +4879,7 @@ impl App {
         self.engine.backend.player(PlayerCommand::ClearQueue);
         // Refresh to remove queued tracks added by another client.
         self.engine.queue_recheck_at = Some(Instant::now() + QUEUE_RECHECK);
-        self.toast(gettext(self.locale, "Queue cleared"));
+        self.engine.toast(gettext(self.locale, "Queue cleared"));
     }
 
     /// Current and upcoming track URIs, deduplicated in playback order.
@@ -5411,7 +5405,7 @@ impl App {
                         self.request_account_caches();
                     }
                     self.engine.user = Some(user);
-                    let page = self.page().clone();
+                    let page = self.engine.page().clone();
                     self.ensure_loaded(page);
                     if let Some(now) = self.now_playing() {
                         self.request_contains(vec![now.uri]);
@@ -5427,7 +5421,7 @@ impl App {
                             .into_owned(),
                         );
                     } else {
-                        self.toast_error(
+                        self.engine.toast_error(
                             // Translators: {error} is an error message.
                             gettext(self.locale, "Couldn't load your profile: {error}")
                                 .replace("{error}", &error.to_string()),
@@ -5485,7 +5479,7 @@ impl App {
                             self.engine.selected_device = None;
                         }
                     }
-                    Err(error) => self.toast_error(
+                    Err(error) => self.engine.toast_error(
                         // Translators: {error} is an error message.
                         gettext(self.locale, "Couldn't list devices: {error}")
                             .replace("{error}", &error.to_string()),
@@ -5832,7 +5826,7 @@ impl App {
                     } else if offset == 0 {
                         library.playlists = Loadable::Failed(error.to_string());
                     } else {
-                        self.toast_error(
+                        self.engine.toast_error(
                             // Translators: {error} is an error message.
                             gettext(self.locale, "Couldn't load more playlists: {error}")
                                 .replace("{error}", &error.to_string()),
@@ -6080,7 +6074,7 @@ impl App {
                 self.engine.playlist_busy = false;
                 match result {
                     Ok(playlist) => {
-                        self.toast(
+                        self.engine.toast(
                             // Translators: {name} is a playlist name.
                             gettext(self.locale, "Created {name}")
                                 .replace("{name}", &playlist.name),
@@ -6106,7 +6100,7 @@ impl App {
                         self.open(Page::Playlist(playlist.id));
                     }
                     Err(error) => {
-                        self.toast_error(
+                        self.engine.toast_error(
                             // Translators: {error} is an error message.
                             gettext(self.locale, "Couldn't create the playlist: {error}")
                                 .replace("{error}", &error.to_string()),
@@ -6162,24 +6156,24 @@ impl App {
                                 generation: page.generation,
                             });
                         }
-                        self.toast(gettext(self.locale, "Playlist cover updated"));
+                        self.engine.toast(gettext(self.locale, "Playlist cover updated"));
                     }
-                    Err(error) => self.toast_error(cover_error(self.locale, &error)),
+                    Err(error) => self.engine.toast_error(cover_error(self.locale, &error)),
                 }
             }
             ApiResponse::PlaylistUpdated { id, result } => {
                 self.engine.playlist_busy = false;
                 match result {
                     Ok(()) => {
-                        self.toast(gettext(self.locale, "Playlist updated"));
+                        self.engine.toast(gettext(self.locale, "Playlist updated"));
                         self.engine.playlist_pages.remove(&id);
                         self.load_playlists();
-                        if matches!(self.page(), Page::Playlist(current) if *current == id) {
+                        if matches!(self.engine.page(), Page::Playlist(current) if *current == id) {
                             self.ensure_loaded(Page::Playlist(id));
                         }
                     }
                     Err(error) => {
-                        self.toast_error(
+                        self.engine.toast_error(
                             // Translators: {error} is an error message.
                             gettext(self.locale, "Couldn't update the playlist: {error}")
                                 .replace("{error}", &error.to_string()),
@@ -6226,7 +6220,7 @@ impl App {
                 match result {
                     Ok(snapshot) => {
                         if !message.is_empty() {
-                            self.toast(message);
+                            self.engine.toast(message);
                         }
                         let mut generation = None;
                         if let Some(page) = self.engine.playlist_pages.get_mut(&id) {
@@ -6253,7 +6247,7 @@ impl App {
                         }
                     }
                     Err(error) => {
-                        self.toast_error(
+                        self.engine.toast_error(
                             // Translators: {error} is an error message.
                             gettext(self.locale, "Playlist change failed: {error}")
                                 .replace("{error}", &error.to_string()),
@@ -6281,13 +6275,13 @@ impl App {
                     self.settle_playlist_edit(&format!("spotify:playlist:{id}"), true);
                     self.engine.saved
                         .insert(format!("spotify:playlist:{id}"), followed);
-                    self.toast(if followed {
+                    self.engine.toast(if followed {
                         gettext(self.locale, "Added to Your Library")
                     } else {
                         gettext(self.locale, "Removed from Your Library")
                     });
                     self.load_playlists();
-                    if !followed && matches!(self.page(), Page::Playlist(current) if *current == id)
+                    if !followed && matches!(self.engine.page(), Page::Playlist(current) if *current == id)
                     {
                         self.open(Page::Home);
                     }
@@ -6296,7 +6290,7 @@ impl App {
                     self.settle_playlist_edit(&format!("spotify:playlist:{id}"), false);
                     self.engine.saved
                         .insert(format!("spotify:playlist:{id}"), !followed);
-                    self.toast_error(
+                    self.engine.toast_error(
                         // Translators: {error} is an error message.
                         gettext(self.locale, "Couldn't update the playlist: {error}")
                             .replace("{error}", &error.to_string()),
@@ -6491,7 +6485,7 @@ impl App {
                             (_, false) => gettext(self.locale, "Removed from Your Library"),
                         };
                         if !current_uris.is_empty() {
-                            self.toast(message);
+                            self.engine.toast(message);
                         }
                     }
                     Err(error) => {
@@ -6500,7 +6494,7 @@ impl App {
                             self.engine.liked_songs.confirm(uri, saved, false);
                         }
                         if !current_uris.is_empty() {
-                            self.toast_error(
+                            self.engine.toast_error(
                                 // Translators: {error} is an error message.
                                 gettext(self.locale, "Couldn't update your library: {error}")
                                     .replace("{error}", &error.to_string()),
@@ -6550,7 +6544,7 @@ impl App {
                 }
                 match result {
                     Ok(Some(uri)) => self.engine.actions.push(Action::PlaySearchMatch { uri, serial }),
-                    Ok(None) => self.toast(
+                    Ok(None) => self.engine.toast(
                         gettext(
                             self.locale,
                             // Translators: {query} is the words someone searched for.
@@ -6558,7 +6552,7 @@ impl App {
                         )
                         .replace("{query}", &query),
                     ),
-                    Err(error) => self.toast_error(
+                    Err(error) => self.engine.toast_error(
                         gettext(
                             self.locale,
                             // Translators: {query} is the words someone searched for; {error} is an error message.
@@ -6802,7 +6796,7 @@ impl App {
                             == Some(format!("spotify:track:{id}").as_str())
                         {
                             self.engine.pending_link = None;
-                            self.toast_error(
+                            self.engine.toast_error(
                                 // Translators: {error} is an error message.
                                 gettext(self.locale, "Cannot open this song: {error}")
                                     .replace("{error}", &error.to_string()),
@@ -6816,12 +6810,12 @@ impl App {
             ApiResponse::Episode { result, .. } => match result {
                 Ok(episode) => match episode.show.filter(|show| !show.id.is_empty()) {
                     Some(show) => self.open(Page::Show(show.id)),
-                    None => self.toast_error(gettext(
+                    None => self.engine.toast_error(gettext(
                         self.locale,
                         "This episode's podcast is not on Spotify",
                     )),
                 },
-                Err(error) => self.toast_error(
+                Err(error) => self.engine.toast_error(
                     // Translators: {error} is an error message.
                     gettext(self.locale, "Cannot open this episode: {error}")
                         .replace("{error}", &error.to_string()),
@@ -6867,7 +6861,7 @@ impl App {
                         } else {
                             String::new()
                         };
-                        self.toast_error(format!(
+                        self.engine.toast_error(format!(
                             "{}: {error}.{hint}",
                             remote_action_label(self.locale, action)
                         ));
@@ -6883,7 +6877,7 @@ impl App {
                     self.poll_remote_soon();
                     self.refresh_devices();
                 }
-                Err(error) => self.toast_error(
+                Err(error) => self.engine.toast_error(
                     // Translators: {error} is an error message.
                     gettext(self.locale, "Couldn't switch device: {error}")
                         .replace("{error}", &error.to_string()),
@@ -6894,7 +6888,7 @@ impl App {
                     // Refresh the queue after the optimistic update.
                     self.refresh_queue(true);
                 }
-                Err(error) => self.toast_error(
+                Err(error) => self.engine.toast_error(
                     // Translators: {error} is an error message.
                     gettext(self.locale, "Couldn't add to queue: {error}")
                         .replace("{error}", &error.to_string()),
@@ -6918,7 +6912,7 @@ impl App {
                     }
                 }
                 if let Err(error) = result {
-                    self.toast_error(
+                    self.engine.toast_error(
                         // Translators: {error} is an error message.
                         gettext(self.locale, "Couldn't add to queue: {error}")
                             .replace("{error}", &error.to_string()),
@@ -6942,7 +6936,7 @@ impl App {
         self.engine.pending_link = None;
         self.engine.prerelease_request = None;
         self.touch_page(&page);
-        if *self.page() == page {
+        if *self.engine.page() == page {
             self.ensure_loaded(page.clone());
             self.retain_table_rows(&page);
             return;
@@ -7009,7 +7003,7 @@ impl App {
                         .filter(|id| !id.is_empty());
                     match album {
                         Some(album) => self.open(Page::Album(album)),
-                        None => self.toast_error(gettext(
+                        None => self.engine.toast_error(gettext(
                             self.locale,
                             "This song's album is not on Spotify",
                         )),
@@ -7026,7 +7020,7 @@ impl App {
             }
             _ => {
                 self.engine.pending_link = None;
-                self.toast_error(gettext(
+                self.engine.toast_error(gettext(
                     self.locale,
                     "Spotifast cannot open this kind of Spotify link",
                 ));
@@ -7083,7 +7077,7 @@ impl App {
                 );
                 self.open(Page::Album(id));
             }
-            Err(error) => self.toast_error(error),
+            Err(error) => self.engine.toast_error(error),
         }
     }
 
@@ -7116,14 +7110,6 @@ impl App {
                 break;
             }
         }
-    }
-
-    pub fn can_go_back(&self) -> bool {
-        self.engine.history_index > 0
-    }
-
-    pub fn can_go_forward(&self) -> bool {
-        self.engine.history_index + 1 < self.engine.history.len()
     }
 
     fn touch_page(&mut self, page: &Page) {
@@ -7164,7 +7150,7 @@ impl App {
         {
             protected_radios.insert(seed);
         }
-        match self.page() {
+        match self.engine.page() {
             Page::Playlist(id) => {
                 protected_playlists.insert(id.clone());
             }
@@ -7262,7 +7248,7 @@ impl App {
                 self.engine.track_used.remove(&id);
             }
         }
-        let current = self.page().clone();
+        let current = self.engine.page().clone();
         self.retain_table_rows(&current);
     }
 
@@ -7272,7 +7258,7 @@ impl App {
         if device_id.is_none() && self.remote_fresh().is_none() {
             // Spotify would only answer "no active device found".
             self.clear_play_pending();
-            self.toast(gettext(
+            self.engine.toast(gettext(
                 self.locale,
                 "Nothing is playing. Pick something first",
             ));
@@ -7652,7 +7638,7 @@ impl App {
                     self.engine.queue_start_pending = None;
                     self.clear_play_pending();
                     self.engine.queued_play = None;
-                    self.toast(gettext(
+                    self.engine.toast(gettext(
                         self.locale,
                         "Choose a device, or enable playback on this computer",
                     ));
@@ -8014,12 +8000,12 @@ impl App {
                         return;
                     }
                     if !self.resume_last() {
-                        self.toast(gettext(self.locale, "Pick something to play"));
+                        self.engine.toast(gettext(self.locale, "Pick something to play"));
                     }
                     return;
                 } else {
                     if !self.resume_last() {
-                        self.toast(gettext(self.locale, "Pick something to play"));
+                        self.engine.toast(gettext(self.locale, "Pick something to play"));
                     }
                     return;
                 }
@@ -8031,7 +8017,7 @@ impl App {
                     // pick up where the last run left off, the way the
                     // local branch does. The engine plays it once it is up.
                     if !self.resume_last() {
-                        self.toast(gettext(self.locale, "Pick a song, album, or playlist"));
+                        self.engine.toast(gettext(self.locale, "Pick a song, album, or playlist"));
                     }
                     return;
                 }
@@ -8297,7 +8283,7 @@ impl App {
             request,
         });
         // Translators: {name} is an album name.
-        self.toast(gettext(self.locale, "Loading {name} to queue…").replace("{name}", &label));
+        self.engine.toast(gettext(self.locale, "Loading {name} to queue…").replace("{name}", &label));
     }
 
     fn receive_album_queue(
@@ -8314,7 +8300,7 @@ impl App {
         }
         let mut pending = self.engine.pending_album_queues.remove(&request).unwrap();
         if pending.target != self.target() {
-            self.toast_error(gettext(
+            self.engine.toast_error(gettext(
                 self.locale,
                 "Playback device changed. Add the album to queue again",
             ));
@@ -8323,14 +8309,14 @@ impl App {
         let page = match result {
             Ok(page) if page.offset == offset => page,
             Ok(_) => {
-                self.toast_error(gettext(
+                self.engine.toast_error(gettext(
                     self.locale,
                     "Couldn't load the album's songs in order. Try again",
                 ));
                 return;
             }
             Err(error) => {
-                self.toast_error(
+                self.engine.toast_error(
                     // Translators: {name} is an album name and {error} is an error message.
                     gettext(self.locale, "Couldn't add {name} to queue: {error}")
                         .replace("{name}", &pending.label)
@@ -8341,7 +8327,7 @@ impl App {
         };
         let next = page.next_offset();
         if page.next.is_some() && next.is_none() {
-            self.toast_error(gettext(
+            self.engine.toast_error(gettext(
                 self.locale,
                 "Couldn't load the album's songs in order. Try again",
             ));
@@ -8350,7 +8336,7 @@ impl App {
         pending.tracks.extend(page.items);
         if let Some(next) = next {
             if next <= offset {
-                self.toast_error(gettext(
+                self.engine.toast_error(gettext(
                     self.locale,
                     "Couldn't load the album's songs in order. Try again",
                 ));
@@ -8388,14 +8374,14 @@ impl App {
             uris.push(uri);
         }
         if uris.is_empty() {
-            self.toast_error(gettext(
+            self.engine.toast_error(gettext(
                 self.locale,
                 "This album has no playable songs to queue",
             ));
             return;
         }
         let count = uris.len();
-        self.toast(
+        self.engine.toast(
             ngettext(
                 self.locale,
                 // Translators: {count} is a number of songs and {name} is an album name.
@@ -8439,7 +8425,7 @@ impl App {
     }
 
     fn queued_toast(&mut self, count: usize) {
-        self.toast(
+        self.engine.toast(
             ngettext(
                 self.locale,
                 // Translators: {count} is a number of songs.
@@ -8480,7 +8466,7 @@ impl App {
         self.show_queued_song(&uri, &label);
         if announce {
             // Translators: {name} is a song, episode, album, or playlist name.
-            self.toast(gettext(self.locale, "{name} added to queue").replace("{name}", &label));
+            self.engine.toast(gettext(self.locale, "{name} added to queue").replace("{name}", &label));
         }
         // Queue tracks and episodes directly on the active local engine.
         // Other targets and item types use the Web API.
@@ -8883,7 +8869,7 @@ impl App {
             .filter(|uri| matches!(util::uri_kind(uri), Some("track" | "episode")))
             .collect();
         if uris.is_empty() {
-            self.toast(gettext(
+            self.engine.toast(gettext(
                 self.locale,
                 "The clipboard has no Spotify song links",
             ));
@@ -8962,7 +8948,7 @@ impl App {
                 .collect();
             let skipped = paste.uris.len() - items.len();
             if skipped > 0 {
-                self.toast_error(
+                self.engine.toast_error(
                     ngettext(
                         self.locale,
                         // Translators: {count} is the number of pasted links that failed.
@@ -9075,11 +9061,11 @@ impl App {
                 self.engine.actions.push(Action::ShowWindow);
             }
             Action::Back => {
-                if self.can_go_back() {
+                if self.engine.can_go_back() {
                     self.engine.pending_link = None;
                     self.engine.prerelease_request = None;
                     self.engine.history_index -= 1;
-                    let page = self.page().clone();
+                    let page = self.engine.page().clone();
                     self.touch_page(&page);
                     self.ensure_loaded(page.clone());
                     self.retain_table_rows(&page);
@@ -9087,11 +9073,11 @@ impl App {
                 }
             }
             Action::Forward => {
-                if self.can_go_forward() {
+                if self.engine.can_go_forward() {
                     self.engine.pending_link = None;
                     self.engine.prerelease_request = None;
                     self.engine.history_index += 1;
-                    let page = self.page().clone();
+                    let page = self.engine.page().clone();
                     self.touch_page(&page);
                     self.ensure_loaded(page.clone());
                     self.retain_table_rows(&page);
@@ -9582,7 +9568,7 @@ impl App {
                 self.engine.dialog = None;
                 let changes = self.changed_playlist_details(&id, name, description, public);
                 if changes.kept_description {
-                    self.toast_error(gettext(
+                    self.engine.toast_error(gettext(
                         self.locale,
                         "Spotify doesn't let apps remove a playlist description, so it was kept",
                     ));
@@ -9632,7 +9618,7 @@ impl App {
             Action::CopyLink(uri) => {
                 if let Some(url) = util::open_spotify_url(&uri) {
                     ctx.copy_text(url);
-                    self.toast(gettext(self.locale, "Link copied"));
+                    self.engine.toast(gettext(self.locale, "Link copied"));
                 }
             }
             Action::CopySongs(items) => {
@@ -9644,7 +9630,7 @@ impl App {
                     // One link a line, in the platform's own line breaks.
                     let newline = if cfg!(windows) { "\r\n" } else { "\n" };
                     ctx.copy_text(links.join(newline));
-                    self.toast(match links.len() {
+                    self.engine.toast(match links.len() {
                         1 => gettext(self.locale, "Link copied").into_owned(),
                         count => ngettext(
                             self.locale,
@@ -9686,7 +9672,7 @@ impl App {
             Action::SetSearchFilter(filter) => self.engine.search.filter = filter,
             Action::FocusSearch => {
                 self.engine.search.focus_requested = true;
-                if !matches!(self.page(), Page::Search) {
+                if !matches!(self.engine.page(), Page::Search) {
                     self.open(Page::Search);
                 }
             }
@@ -9873,7 +9859,7 @@ impl App {
             }
             Action::SetLibraryByYou(by_you) => {
                 self.engine.settings.library_by_you = by_you;
-                self.mark_settings_dirty();
+                self.engine.mark_settings_dirty();
             }
             Action::SetLibrarySort { shelf, sort } => {
                 if sort.supports(shelf) {
@@ -9884,12 +9870,12 @@ impl App {
                         crate::settings::LibraryShelf::Podcasts => self.engine.library.shows.error = None,
                         crate::settings::LibraryShelf::Playlists => {}
                     }
-                    self.mark_settings_dirty();
+                    self.engine.mark_settings_dirty();
                 }
             }
             Action::SetLibraryGrid(grid) => {
                 self.engine.settings.sidebar_grid = grid;
-                self.mark_settings_dirty();
+                self.engine.mark_settings_dirty();
             }
             Action::ToggleLibraryFolder(id) => {
                 if self.engine.collapsed_folders.contains(&id) {
@@ -9915,7 +9901,7 @@ impl App {
                         crate::settings::LibraryShelf::Playlists,
                     ) == crate::settings::LibrarySort::Spotify
                     {
-                        self.toast(gettext(
+                        self.engine.toast(gettext(
                             self.locale,
                             "Spotify doesn't let apps reorder your playlists, so this order is saved on this computer",
                         ));
@@ -9929,27 +9915,27 @@ impl App {
                 self.engine.settings
                     .sidebar_order
                     .retain(|key| !self.engine.settings.pinned_contexts.contains(key));
-                self.mark_settings_dirty();
+                self.engine.mark_settings_dirty();
             }
             Action::SetTheme(choice) => {
                 self.engine.settings.theme = choice;
                 self.engine.settings.custom_theme = None;
                 self.engine.settings.custom_theme_cache = None;
-                self.mark_settings_dirty();
+                self.engine.mark_settings_dirty();
                 ctx.set_theme(self.theme_preference());
                 self.apply_theme(ctx);
             }
             Action::SetLanguage(choice) => {
                 self.engine.settings.language = choice;
                 self.locale = choice.resolve();
-                self.mark_settings_dirty();
+                self.engine.mark_settings_dirty();
                 ctx.request_repaint();
             }
             Action::SetCustomTheme(filename) => {
                 if let Some(theme) = self.custom_themes.find(&filename) {
                     self.engine.settings.custom_theme_cache = serde_json::to_value(theme).ok();
                     self.engine.settings.custom_theme = Some(filename);
-                    self.mark_settings_dirty();
+                    self.engine.mark_settings_dirty();
                     ctx.set_theme(self.theme_preference());
                     self.apply_theme(ctx);
                 }
@@ -9977,7 +9963,7 @@ impl App {
                 );
                 self.engine.backend.send(Command::RestartEngine(config));
                 if self.engine.local_ready {
-                    self.toast(gettext(self.locale, "Restarting local playback"));
+                    self.engine.toast(gettext(self.locale, "Restarting local playback"));
                 }
             }
             Action::ShowWindow => {
@@ -10012,7 +9998,7 @@ impl App {
                     .and_then(|user| user.product.as_deref())
                     .is_some_and(|product| product != "premium");
                 if free {
-                    self.toast_error(gettext(self.locale, "Local playback needs Spotify Premium"));
+                    self.engine.toast_error(gettext(self.locale, "Local playback needs Spotify Premium"));
                 } else if !self.engine.local_ready
                     && !matches!(
                         self.engine.local_playback,
@@ -10062,7 +10048,7 @@ impl App {
                 self.engine.plays.clear();
                 self.engine.plays.save(&self.files, &self.engine.dirs.history_file());
                 self.rebuild_recents();
-                self.toast(gettext(self.locale, "Play history cleared"));
+                self.engine.toast(gettext(self.locale, "Play history cleared"));
             }
             Action::ClearArtCache => match self.art.clear_disk_cache() {
                 Ok(bytes) => {
@@ -10071,13 +10057,13 @@ impl App {
                     // deleted; forget it, or the next sync hands the system
                     // a file that is no longer there.
                     self.media_art = None;
-                    self.toast(
+                    self.engine.toast(
                         // Translators: {size} is a size in megabytes, such as 12.5.
                         gettext(self.locale, "Cleared {size} MB of artwork")
                             .replace("{size}", &format!("{:.1}", bytes as f64 / 1_048_576.0)),
                     );
                 }
-                Err(error) => self.toast_error(
+                Err(error) => self.engine.toast_error(
                     // Translators: {error} is an error message.
                     gettext(self.locale, "Couldn't clear artwork: {error}")
                         .replace("{error}", &error.to_string()),
@@ -10134,7 +10120,7 @@ impl App {
                 if self.engine.settings.custom_titlebar != custom {
                     self.engine.settings.custom_titlebar = custom;
                     fastframe_titlebar::set_enabled(custom);
-                    self.mark_settings_dirty();
+                    self.engine.mark_settings_dirty();
                     if !self.engine.settings.winamp_window {
                         // Decorations are fixed at creation. Replace only the
                         // native window, keeping the page and playback.
@@ -10146,7 +10132,7 @@ impl App {
             Action::SetWinampTaskbar(visible) => {
                 if self.engine.settings.winamp_show_taskbar != visible {
                     self.engine.settings.winamp_show_taskbar = visible;
-                    self.mark_settings_dirty();
+                    self.engine.mark_settings_dirty();
                     if self.engine.settings.winamp_window {
                         // This window attribute is fixed at creation. Keep
                         // the visible mini player, its position, and playback
@@ -10253,7 +10239,7 @@ impl App {
                             ctx.clone(),
                             self.engine.applied_proxy.clone(),
                         );
-                        self.toast(gettext(self.locale, "Downloading MilkDrop preset packs"));
+                        self.engine.toast(gettext(self.locale, "Downloading MilkDrop preset packs"));
                     }
                 }
             }
@@ -10285,7 +10271,7 @@ impl App {
                         ctx.clone(),
                         self.engine.applied_proxy.clone(),
                     );
-                    self.toast(
+                    self.engine.toast(
                         // Translators: {name} is the name of a visualizer preset pack.
                         gettext(self.locale, "Downloading {name} presets")
                             .replace("{name}", pack.name),
@@ -10337,27 +10323,8 @@ impl App {
         }
     }
 
-    pub fn toast(&mut self, message: impl Into<String>) {
-        self.engine.toasts.push(Toast {
-            message: message.into(),
-            kind: ToastKind::Info,
-            created: Instant::now(),
-        });
-        self.engine.toasts.truncate(4);
-    }
-
-    pub fn toast_error(&mut self, message: impl Into<String>) {
-        let message = message.into();
-        log::warn!("{message}");
-        self.engine.toasts.push(Toast {
-            message,
-            kind: ToastKind::Error,
-            created: Instant::now(),
-        });
-    }
-
     pub fn report_update_failure(&mut self, error: String) {
-        self.toast_error(error);
+        self.engine.toast_error(error);
     }
 
     fn check_for_updates(&mut self, manual: bool) {
@@ -10391,7 +10358,7 @@ impl App {
             || self.engine.dialog.is_some()
             || self.engine.show_devices
             || self.engine.settings.winamp_window
-            || self.page() == &Page::Settings
+            || self.engine.page() == &Page::Settings
         {
             return;
         }
@@ -11011,7 +10978,7 @@ impl App {
         }
         if !self.engine.offline {
             let session = SessionState {
-                last_page: Some(self.page().encode()),
+                last_page: Some(self.engine.page().encode()),
                 recent_contexts: self.engine.recent_contexts.clone(),
                 last_context: self.engine.resume_context.clone(),
                 last_track: self.engine.resume_track.clone(),
@@ -17403,7 +17370,7 @@ mod tests {
         app.engine.pending_link = Some(uri.into());
         app.engine.prerelease_request = Some(3);
         app.receive_prerelease(uri, 3, Ok(data()));
-        assert_eq!(app.page(), &Page::Album("5BYKG4MHfySZthe2W6r7n4".into()));
+        assert_eq!(app.engine.page(), &Page::Album("5BYKG4MHfySZthe2W6r7n4".into()));
         assert!(app.engine.pending_link.is_none());
         assert!(
             app.engine.album_pages["5BYKG4MHfySZthe2W6r7n4"]
@@ -17468,14 +17435,14 @@ mod tests {
             app.engine.pending_link = Some(uri.into());
             app.engine.prerelease_request = Some(generation);
             app.apply(action, &ctx);
-            let page = app.page().clone();
+            let page = app.engine.page().clone();
             let data = crate::prerelease::Prerelease::decode(
                 include_bytes!("testdata/prerelease.pb"),
                 uri,
             )
             .unwrap();
             app.receive_prerelease(uri, generation, Ok(data));
-            assert_eq!(app.page(), &page);
+            assert_eq!(app.engine.page(), &page);
             assert!(app.engine.album_pages.is_empty());
         }
         app.engine.pending_link = Some(uri.into());
@@ -19058,7 +19025,7 @@ mod tests {
             username: "test".into(),
         };
         app.apply(Action::Open(Page::Radio("spotify:track:xyz".into())), &ctx);
-        assert_eq!(app.page(), &Page::Radio("spotify:track:xyz".into()));
+        assert_eq!(app.engine.page(), &Page::Radio("spotify:track:xyz".into()));
         assert!(matches!(
             app.engine.radio_pages["spotify:track:xyz"].songs,
             Loadable::Loading
@@ -20546,7 +20513,7 @@ mod tests {
         for _ in 0..11 {
             app.apply(Action::Back, &ctx);
         }
-        assert_eq!(app.page(), &Page::Playlist("pl0".into()));
+        assert_eq!(app.engine.page(), &Page::Playlist("pl0".into()));
         seed_playlist(&mut app, "pl12");
         assert!(
             app.engine.playlist_pages.contains_key("pl0"),
@@ -25787,7 +25754,7 @@ mod tests {
         app.apply_actions(&ctx);
 
         // #then the window is asked for but the page waits
-        assert_eq!(*app.page(), Page::Home);
+        assert_eq!(*app.engine.page(), Page::Home);
         assert_eq!(app.engine.pending_link.as_deref(), Some("spotify:playlist:pl1"));
 
         // #when the account arrives
@@ -25798,7 +25765,7 @@ mod tests {
         app.open_pending_link();
 
         // #then the playlist opens, once
-        assert_eq!(*app.page(), Page::Playlist("pl1".into()));
+        assert_eq!(*app.engine.page(), Page::Playlist("pl1".into()));
         assert_eq!(app.engine.pending_link, None);
 
         // #when a song whose album is known is linked
@@ -25819,7 +25786,7 @@ mod tests {
         app.apply_actions(&ctx);
 
         // #then its album's page opens
-        assert_eq!(*app.page(), Page::Album("al1".into()));
+        assert_eq!(*app.engine.page(), Page::Album("al1".into()));
         assert_eq!(app.engine.pending_link, None);
 
         // #when a song still unknown is linked
@@ -25828,7 +25795,7 @@ mod tests {
         app.apply_actions(&ctx);
 
         // #then the link waits for Spotify's answer rather than guessing
-        assert_eq!(*app.page(), Page::Album("al1".into()));
+        assert_eq!(*app.engine.page(), Page::Album("al1".into()));
         assert_eq!(app.engine.pending_link.as_deref(), Some("spotify:track:t2"));
         assert!(app.engine.track_requests.contains("t2"));
 
@@ -25869,7 +25836,7 @@ mod tests {
 
         // #then
         assert_eq!(app.engine.pending_link, None);
-        assert_eq!(*app.page(), Page::Home);
+        assert_eq!(*app.engine.page(), Page::Home);
         assert!(
             app.engine.toasts
                 .iter()
@@ -25888,7 +25855,7 @@ mod tests {
             app.open_link(crate::link::parse(link).unwrap());
             app.apply_actions(&ctx);
         }
-        assert_eq!(*app.page(), Page::Home);
+        assert_eq!(*app.engine.page(), Page::Home);
         assert!(app.engine.search.query.is_empty());
         assert!(app.engine.pending_link.is_some());
 
@@ -25898,7 +25865,7 @@ mod tests {
         });
         app.open_pending_link();
         app.apply_actions(&ctx);
-        assert_eq!(*app.page(), Page::Search);
+        assert_eq!(*app.engine.page(), Page::Search);
         assert_eq!(app.engine.search.query, "artist:Björk");
         assert_eq!(app.engine.search.committed, "artist:Björk");
         assert!(app.engine.search.focus_requested);
@@ -25911,7 +25878,7 @@ mod tests {
 
         app.open_link(crate::link::parse("https://open.spotify.com/search").unwrap());
         app.apply_actions(&ctx);
-        assert_eq!(*app.page(), Page::Search);
+        assert_eq!(*app.engine.page(), Page::Search);
         assert!(app.engine.search.query.is_empty());
         assert!(app.engine.search.committed.is_empty());
         assert!(matches!(app.engine.search.results, Loadable::NotLoaded));
@@ -26001,7 +25968,7 @@ mod tests {
         .unwrap();
         assert!(schemes.iter().any(|scheme| scheme == "https"));
         app.apply_actions(&egui::Context::default());
-        assert_eq!(*app.page(), Page::Search);
+        assert_eq!(*app.engine.page(), Page::Search);
         assert_eq!(app.engine.search.query, "here comes the sun");
         assert_eq!(app.engine.search.committed, "here comes the sun");
         assert!(app.now_playing().is_none());
