@@ -12,10 +12,10 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
-use crate::api::models::{Album, Artist, Device, PlayableItem, PlaybackState, Playlist, PlaylistItem, Queue, Show, Track, TrackCount, User, UserRef};
+use crate::api::models::{Album, Artist, Device, PlayableItem, PlaybackState, Playlist, PlaylistItem, Queue, Show, Track, TrackCount, User, UserRef, pick_image};
 use crate::locale::Locale;
 use crate::api::PlayRequest;
-use crate::backend::{AuthStatus, Backend, LocalPlayback};
+use crate::backend::{AuthStatus, Backend, LocalPlayback, LyricsRequest};
 use crate::model::{
     Action, AlbumPage, ArtistPage, Dialog, DiscographyFilter, HomeData,
     HomeSnapshot, Library, Loadable, Page, PagedList, PlayingFrom, PlaylistCache, PlaylistEdit,
@@ -27,7 +27,7 @@ use crate::paths::AppDirs;
 use crate::settings::Settings;
 use std::time::Duration;
 
-use crate::backend::{ApiRequest, Command, PLAYLIST_PAGE_SIZE, PlaylistCacheRows, RecentsFor, RemoteAction};
+use crate::backend::{ApiRequest, ApiResponse, Command, PLAYLIST_PAGE_SIZE, PlaylistCacheRows, RecentsFor, RemoteAction};
 use crate::player::{LoadSpec, LocalState, Playback, PlayerCommand, RepeatMode};
 use crate::util;
 use crate::util::{percent_to_volume, volume_to_percent};
@@ -6700,5 +6700,1810 @@ impl Engine {
             self.backend.send(Command::Accent { url: url.to_string() });
         }
         None
+    }
+}
+
+impl Engine {
+    pub fn handle_local(&mut self, state: LocalState) {
+        if self.local_transfer_sequence
+            .is_some_and(|sequence| sequence != state.track_sequence)
+        {
+            self.local_transfer_sequence = None;
+        }
+        if state.track_sequence != self.local.track_sequence
+            && matches!(self.target(), Target::Local)
+        {
+            self.listening = None;
+        }
+        let track_changed =
+            state.track != self.local.track || state.track_sequence != self.local.track_sequence;
+        let reconnected = state.connected && !self.local.connected;
+        if state.shuffle != self.local.shuffle
+            && self.shuffle_set_at
+                .is_none_or(|at| at.elapsed() > Duration::from_secs(5))
+        {
+            // Accept shuffle changes made by another client.
+            self.shuffle_wanted = state.shuffle;
+        }
+        if state.playback != self.local.playback {
+            self.optimistic_playing = None;
+            if matches!(state.playback, Playback::Playing | Playback::Loading) {
+                self.clear_play_pending();
+            }
+        }
+        if state.track != self.local.track {
+            self.clear_play_pending();
+        }
+        self.reconcile_local_track_intent(
+            track_changed,
+            state.track.as_ref().map(|track| track.uri.as_str()),
+        );
+        let held_volume = self.held_local_volume(state.volume);
+        if held_volume.is_none() && state.volume != self.settings.volume {
+            self.settings.volume = state.volume;
+            self.settings_dirty = true;
+        }
+        if state.seek_sequence != self.local.seek_sequence || track_changed {
+            self.pending_local_position = None;
+        }
+        if let Some(error) = &state.error
+            && self.local.error.as_deref() != Some(error.as_str())
+        {
+            self.toast_error(engine_error_text(self.localize.as_ref(), self.locale, error));
+            // One unavailable track is Spotify's catalogue; several in a
+            // row is the session's audio-key service gone bad, which
+            // leaves librespot feeding the decoder encrypted bytes and
+            // skipping through the whole album. A fresh session cures it.
+            if error.starts_with("This item isn't available") {
+                let now = Instant::now();
+                self.unavailable_at
+                    .retain(|at| now.duration_since(*at) < Duration::from_secs(20));
+                self.unavailable_at.push(now);
+                if self.unavailable_at.len() >= 3
+                    && self.last_unavailable_reconnect
+                        .is_none_or(|at| at.elapsed() > Duration::from_secs(60))
+                {
+                    self.unavailable_at.clear();
+                    self.last_unavailable_reconnect = Some(now);
+                    self.backend.send(Command::Reconnect);
+                    self.toast(self.localize.t(
+                        self.locale,
+                        "Spotify audio disconnected. Reconnecting local playback",
+                    ));
+                }
+            }
+        }
+        if let Some(seed) = autoplay_seed(
+            self.local_list.as_deref(),
+            self.settings.autoplay,
+            &self.local,
+            &state,
+        ) {
+            log::info!("the list ended; playing what Spotify follows {seed} with");
+            self.local_list = None;
+            self.backend.player(PlayerCommand::Load(LoadSpec {
+                context_uri: Some(seed),
+                play: true,
+                autoplay: true,
+                ..LoadSpec::default()
+            }));
+        }
+        // Another device may have taken over while the last poll still
+        // names this one.
+        if self.local.is_active() && !state.is_active() {
+            self.poll_remote_soon();
+        }
+        self.local = state;
+        if let Some(volume) = held_volume {
+            self.local.volume = volume;
+        }
+        if track_changed {
+            self.on_now_playing_changed();
+        }
+        if reconnected {
+            self.replay_queued_play();
+            // Retry names requested before the session connected.
+            let unresolved: Vec<String> = self.user_names
+                .iter()
+                .filter(|(_, name)| name.is_none())
+                .map(|(id, _)| id.clone())
+                .collect();
+            for id in &unresolved {
+                self.user_names.remove(id);
+            }
+            self.request_user_names(unresolved);
+        }
+    }
+
+    pub fn handle_api(&mut self, mut response: ApiResponse) {
+        match &mut response {
+            ApiResponse::Playlist {
+                id,
+                result: Ok(playlist),
+                generation,
+            } => {
+                if self.playlist_pages
+                    .get(id)
+                    .is_some_and(|page| page.generation == *generation)
+                {
+                    self.reconcile_playlist_cover(id, &mut playlist.images);
+                }
+            }
+            ApiResponse::MyPlaylists {
+                result: Ok(page), ..
+            } => {
+                for playlist in &mut page.items {
+                    self.reconcile_playlist_cover(&playlist.id, &mut playlist.images);
+                }
+            }
+            _ => {}
+        }
+        match response {
+            ApiResponse::Me(result) => match result {
+                Ok(user) => {
+                    // Spotify only takes playback commands from Premium
+                    // accounts, here or on any device, so a Free account
+                    // is told once rather than left pressing play.
+                    let free = user
+                        .product
+                        .as_deref()
+                        .is_some_and(|product| product != "premium");
+                    if free && !self.premium_notice_shown {
+                        self.premium_notice_shown = true;
+                        self.dialog = Some(Dialog::PremiumNeeded);
+                    }
+                    let due = std::mem::take(&mut self.account_caches_due);
+                    let changed = self.user_id() != Some(user.id.as_str());
+                    if changed {
+                        self.rootlist = self.rootlist_cache
+                            .as_ref()
+                            .filter(|cached| cached.account_id == user.id)
+                            .map(|cached| cached.entries.clone())
+                            .unwrap_or_default();
+                        self.editable_by_grant.clear();
+                    }
+                    if changed || due {
+                        self.request_account_caches();
+                    }
+                    self.user = Some(user);
+                    let page = self.page().clone();
+                    self.ensure_loaded(page);
+                    if let Some(now) = self.now_playing() {
+                        self.request_contains(vec![now.uri]);
+                    }
+                }
+                Err(error) => {
+                    if matches!(error, crate::api::ApiError::SignInExpired { .. }) {
+                        self.auth = AuthStatus::Failed(
+                            self.localize.t(
+                                self.locale,
+                                "Your Spotify sign-in expired. Please sign in again.",
+                            )
+                            .into_owned(),
+                        );
+                    } else {
+                        self.toast_error(
+                            // Translators: {error} is an error message.
+                            self.localize.t(self.locale, "Couldn't load your profile: {error}")
+                                .replace("{error}", &error.to_string()),
+                        );
+                    }
+                }
+            },
+            ApiResponse::Devices(result) => {
+                self.devices_loading = false;
+                self.devices_fetched_at = Some(Instant::now());
+                match result {
+                    Ok(devices) => {
+                        self.devices = devices;
+                        self.control_devices_stale = true;
+                        if let Some((name, since)) = self.pending_transfer_to.clone() {
+                            // The receiver's own id keeps another device of the
+                            // same name from taking over. A rescan can drop the
+                            // receiver; then the name has to do.
+                            let ids: Vec<_> = self.receivers
+                                .iter()
+                                .filter(|receiver| receiver.name == name)
+                                .filter_map(|receiver| receiver.device_id.clone())
+                                .collect();
+                            let matching = self.devices
+                                .iter()
+                                .find(|device| {
+                                    device.name == name
+                                        && (ids.is_empty()
+                                            || device
+                                                .id
+                                                .as_ref()
+                                                .is_some_and(|id| ids.contains(id)))
+                                })
+                                .and_then(|device| device.id.clone());
+                            if let Some(id) = matching {
+                                self.pending_transfer_to = None;
+                                let play = self.activating_play
+                                    || self.now_playing().is_some_and(|now| now.playing);
+                                self.transfer_remote(id, play);
+                            } else if since.elapsed() > Duration::from_secs(20) {
+                                self.pending_transfer_to = None;
+                            } else {
+                                self.devices_fetched_at = None;
+                            }
+                        }
+                        if let Some(selected) = &self.selected_device
+                            && !self.receivers.iter().any(|receiver| {
+                                crate::sonos::is_sonos(receiver)
+                                    && receiver.device_id.as_deref() == Some(selected.as_str())
+                            })
+                            && !self.devices
+                                .iter()
+                                .any(|device| device.id.as_deref() == Some(selected.as_str()))
+                        {
+                            self.selected_device = None;
+                        }
+                    }
+                    Err(error) => self.toast_error(
+                        // Translators: {error} is an error message.
+                        self.localize.t(self.locale, "Couldn't list devices: {error}")
+                            .replace("{error}", &error.to_string()),
+                    ),
+                }
+            }
+            ApiResponse::PlaybackState { seq, result } => {
+                if seq != self.remote_poll_seq {
+                    // An older poll finishing late describes the past.
+                    return;
+                }
+                self.remote_poll_pending = false;
+                match result {
+                    Ok(state) => {
+                        let previous_uri = self.remote.as_ref().and_then(|remote| {
+                            remote
+                                .state
+                                .item
+                                .as_ref()
+                                .map(|item| item.uri().to_string())
+                        });
+                        let previous_shuffle = self.remote
+                            .as_ref()
+                            .map(|remote| remote.state.shuffle_state);
+                        self.remote = state.map(|state| RemoteSnapshot {
+                            state,
+                            received_at: Instant::now(),
+                        });
+                        if let (Some(previous), Some(current)) = (
+                            previous_shuffle,
+                            self.remote
+                                .as_ref()
+                                .map(|remote| remote.state.shuffle_state),
+                        ) && previous != current
+                            && self.shuffle_set_at
+                                .is_none_or(|at| at.elapsed() > Duration::from_secs(5))
+                        {
+                            // Accept shuffle changes from another device.
+                            self.shuffle_wanted = current;
+                        }
+                        if let Some(context) = self.remote
+                            .as_ref()
+                            .and_then(|remote| remote.state.context.as_ref())
+                            .map(|context| context.uri.clone())
+                        {
+                            // Ignore the old context while a takeover settles.
+                            let stale = self.assumed_context.as_ref().is_some_and(|assumed| {
+                                assumed.at.elapsed() < ASSUMED_CONTEXT_HOLD
+                                    && assumed.uri != context
+                            });
+                            if !stale {
+                                self.note_recent_context(&context);
+                            }
+                        }
+                        let uri = self.remote.as_ref().and_then(|remote| {
+                            remote
+                                .state
+                                .item
+                                .as_ref()
+                                .map(|item| item.uri().to_string())
+                        });
+                        self.reconcile_remote_track_intent(seq, uri.as_deref());
+                        if let Some(remote) = &self.remote
+                            && let Some(device) = &remote.state.device
+                            && device.id.is_some()
+                            && let Some(known) =
+                                self.devices.iter_mut().find(|known| known.id == device.id)
+                        {
+                            known.is_active = true;
+                            known.volume_percent = device.volume_percent;
+                        }
+                        if let Some((wanted, _)) = self.optimistic_playing
+                            && self.remote
+                                .as_ref()
+                                .is_some_and(|remote| remote.state.is_playing == wanted)
+                        {
+                            self.optimistic_playing = None;
+                        }
+                        if uri != previous_uri {
+                            self.on_now_playing_changed();
+                        }
+                    }
+                    Err(error) => log::debug!("playback state unavailable: {error}"),
+                }
+            }
+            ApiResponse::Queue { seq, result } => {
+                if seq != self.queue_seq {
+                    // A newer request supersedes this response.
+                    return;
+                }
+                // Partial reads and read failures must preserve optimistic
+                // additions while Spotify is still accepting their writes.
+                let writing_queue = self.pending_queue_batches
+                    .values()
+                    .any(|target| *target == self.target());
+                if writing_queue
+                    || result
+                        .as_ref()
+                        .is_ok_and(|fetched| self.queue_fetch_is_stale(fetched))
+                {
+                    // Keep the optimistic queue and retry after a stale
+                    // response. Accept Spotify's state after the retry limit.
+                    self.queue_stale_retries = self.queue_stale_retries.saturating_add(1);
+                    self.queue_recheck_at = Some(Instant::now() + QUEUE_RECHECK);
+                    return;
+                }
+                self.queue_stale_retries = 0;
+                if result.is_ok() {
+                    self.queue_cleared = None;
+                    self.queue_shuffle_pending = None;
+                    self.queue_reorder_pending = None;
+                    self.queue_removed = None;
+                }
+                self.queue = Loadable::from_result(result);
+                self.reconcile_pending_queue();
+                if let Some(queue) = self.queue.get() {
+                    let uris: Vec<String> = queue
+                        .queue
+                        .iter()
+                        .map(|item| item.uri().to_string())
+                        .collect();
+                    self.request_contains(uris);
+                }
+            }
+            ApiResponse::RecentlyPlayed {
+                who,
+                generation,
+                limit,
+                result,
+            } => match who {
+                RecentsFor::Home => {
+                    if generation != self.home.generation {
+                        return;
+                    }
+                    if let Ok(page) = &result {
+                        self.note_recent_contexts(&page.items);
+                    }
+                    let items = result
+                        .as_ref()
+                        .map(|page| page.items.clone())
+                        .map_err(|error| error.to_string());
+                    let changed = items.is_ok();
+                    self.home.refresh_failed |= !changed;
+                    self.home.recently_played.refresh(items);
+                    self.home_answered(changed);
+                }
+                RecentsFor::Panel => {
+                    if generation != self.recents_generation {
+                        return;
+                    }
+                    self.recents.loading = false;
+                    self.recents.loaded_once = true;
+                    match result {
+                        Ok(page) => self.absorb_recents(page, limit),
+                        Err(error) => self.recents.error = Some(error.to_string()),
+                    }
+                }
+            },
+            ApiResponse::TopTracks {
+                offset,
+                full,
+                generation,
+                result,
+            } => {
+                if full {
+                    if generation != self.home.top_songs_generation {
+                        return;
+                    }
+                    match result {
+                        Ok(page) => {
+                            let received = page.items.len() as u32;
+                            let tracks = page.items;
+                            let uris: Vec<String> =
+                                tracks.iter().map(|track| track.uri.clone()).collect();
+                            self.request_contains(uris);
+                            if offset == 0 {
+                                self.home.top_songs = Loadable::Loaded(tracks);
+                            } else if let Some(current) = self.home.top_songs.get_mut() {
+                                current.extend(tracks);
+                            }
+                            if page.next.is_some() && received > 0 && offset + received < 100 {
+                                self.backend.api(ApiRequest::TopTracks {
+                                    offset: offset + received,
+                                    full: true,
+                                    generation,
+                                });
+                            } else {
+                                self.home.top_songs_loading = false;
+                                self.home.top_songs_complete = true;
+                            }
+                        }
+                        Err(error) => {
+                            self.home.top_songs.refresh(Err::<Vec<Track>, _>(error));
+                            self.home.top_songs_loading = false;
+                        }
+                    }
+                } else if generation != self.home.generation {
+                } else if let Ok(page) = result {
+                    let tracks = page.items;
+                    let seeds: Vec<String> = tracks
+                        .iter()
+                        .filter_map(|track| track.id.clone())
+                        .take(5)
+                        .collect();
+                    if !seeds.is_empty() {
+                        if self.home.recommendations.get().is_none() {
+                            self.home.recommendations = Loadable::Loading;
+                        }
+                        self.backend.api(ApiRequest::Recommendations {
+                            seed_tracks: seeds,
+                            seed_artists: Vec::new(),
+                            generation,
+                        });
+                    }
+                    let uris: Vec<String> = tracks.iter().map(|track| track.uri.clone()).collect();
+                    self.request_contains(uris);
+                    self.home.top_tracks = Loadable::Loaded(tracks);
+                    self.home_answered(true);
+                } else if let Err(error) = result {
+                    if offset == 0 && self.home.top_tracks.get().is_none() {
+                        self.home.top_tracks = Loadable::Failed(error.to_string());
+                    }
+                    self.home.refresh_failed = true;
+                    self.home_answered(false);
+                }
+            }
+            ApiResponse::TopArtists { generation, result } => {
+                if generation != self.home.generation {
+                    return;
+                }
+                let changed = result.is_ok();
+                self.home.refresh_failed |= !changed;
+                self.home.top_artists.refresh(result);
+                self.home_answered(changed);
+            }
+            ApiResponse::Recommendations { generation, result } => {
+                if generation != self.home.generation {
+                    return;
+                }
+                if let Ok(tracks) = &result {
+                    let uris: Vec<String> = tracks.iter().map(|track| track.uri.clone()).collect();
+                    self.request_contains(uris);
+                }
+                self.home.recommendations.refresh(result);
+            }
+            ApiResponse::MadeForYou {
+                generation,
+                personalized,
+                result,
+            } => {
+                if generation != self.home.made_for_you_generation {
+                    return;
+                }
+                let changed = result.is_ok();
+                self.home.refresh_failed |= !changed;
+                if changed {
+                    self.home.made_for_you_personalized = personalized;
+                }
+                self.home.made_for_you.refresh(result);
+                if self.home.made_for_you_loading {
+                    self.home.made_for_you_loading = false;
+                    self.home_answered(changed);
+                }
+            }
+            // A reload reads the playlists from the top again under a new
+            // generation, so a page any earlier load asked for no longer
+            // continues the list, whatever its offset. Within one load, only
+            // the later page on its way is taken, and only once.
+            ApiResponse::MyPlaylists {
+                offset, generation, ..
+            } if generation != self.library.playlists_generation
+                || (offset > 0 && self.library.playlists_asked != Some(offset)) => {}
+            ApiResponse::MyPlaylists { offset, result, .. } => match result {
+                Ok(page) => {
+                    self.library.playlists_asked = None;
+                    let next_offset = page.next_offset();
+                    let shown = match &mut self.library.playlists_incoming {
+                        Some(incoming) => {
+                            incoming.extend(page.items);
+                            false
+                        }
+                        None => {
+                            match &mut self.library.playlists {
+                                Loadable::Loaded(existing) if offset > 0 => {
+                                    existing.extend(page.items)
+                                }
+                                slot => *slot = Loadable::Loaded(page.items),
+                            }
+                            true
+                        }
+                    };
+                    self.library.playlists_next = next_offset;
+                    if next_offset.is_some() {
+                        self.load_more(Page::Home);
+                        if self.library.playlists_asked.is_none() {
+                            // Offline, the next page was not asked for. The
+                            // load ends with what is shown, and the network
+                            // coming back reads the list again.
+                            let library = &mut self.library;
+                            library.playlists_incoming = None;
+                            library.playlists_loading_since = None;
+                            library.playlists_retry_at = Some(Instant::now());
+                        }
+                    } else {
+                        let generation = self.library.playlists_generation;
+                        let library = &mut self.library;
+                        if let Some(incoming) = library.playlists_incoming.take() {
+                            library.playlists = Loadable::Loaded(incoming);
+                        }
+                        library.playlists_whole = true;
+                        library.playlists_loading_since = None;
+                        // This load was asked for after these changes were
+                        // confirmed, so its list tells of them itself.
+                        library
+                            .playlists_edits
+                            .retain(|edit| edit.settled_by.is_none_or(|by| by > generation));
+                        // Load folder order after all playlists arrive.
+                        self.read_rootlist();
+                    }
+                    if shown || next_offset.is_none() {
+                        self.apply_playlist_edits();
+                        self.fill_blank_playlists();
+                        self.note_listed_playlists();
+                    }
+                    if next_offset.is_none() {
+                        self.store_library_cache();
+                    }
+                }
+                Err(error) => {
+                    let library = &mut self.library;
+                    library.playlists_asked = None;
+                    library.playlists_loading_since = None;
+                    let refreshing = library.playlists_incoming.take().is_some();
+                    if matches!(
+                        error,
+                        crate::api::ApiError::RateLimited | crate::api::ApiError::Network(_)
+                    ) || error.status().is_some_and(|status| status >= 500)
+                    {
+                        library.playlists_retry_at = Some(Instant::now() + PLAYLISTS_RETRY);
+                    }
+                    if refreshing {
+                        // The list shown stays; it is read again later.
+                        log::warn!("could not refresh the playlist list: {error}");
+                    } else if offset == 0 {
+                        library.playlists = Loadable::Failed(error.to_string());
+                    } else {
+                        self.toast_error(
+                            // Translators: {error} is an error message.
+                            self.localize.t(self.locale, "Couldn't load more playlists: {error}")
+                                .replace("{error}", &error.to_string()),
+                        );
+                    }
+                }
+            },
+            ApiResponse::Playlist {
+                id,
+                generation,
+                mut result,
+            } => {
+                if self.playlist_pages
+                    .get(&id)
+                    .is_none_or(|page| page.generation != generation || page.pending_writes > 0)
+                {
+                    return;
+                }
+                let stale_write_snapshot = self.playlist_pages.get_mut(&id).is_some_and(|page| {
+                    let Some(expected) = page.optimistic_snapshot.as_deref() else {
+                        return false;
+                    };
+                    let reported = result
+                        .as_ref()
+                        .ok()
+                        .and_then(|playlist| playlist.snapshot_id.as_deref());
+                    if reported == Some(expected) {
+                        page.optimistic_snapshot = None;
+                        page.snapshot_rechecks = 0;
+                        false
+                    } else if result.is_ok() {
+                        page.snapshot_rechecks = page.snapshot_rechecks.saturating_add(1);
+                        true
+                    } else {
+                        false
+                    }
+                });
+                if stale_write_snapshot {
+                    let page = self.playlist_pages.get_mut(&id).unwrap();
+                    if page.snapshot_rechecks <= 3 {
+                        self.backend.api(ApiRequest::Playlist { id, generation });
+                    } else {
+                        page.refresh_after_write = false;
+                        page.items.fail(
+                            self.localize.t(
+                                self.locale,
+                                "Spotify hasn't confirmed your playlist changes yet. Try refreshing again.",
+                            )
+                            .into_owned(),
+                        );
+                    }
+                    return;
+                }
+                if let Ok(playlist) = &mut result {
+                    // A header read over the streaming session lacks what
+                    // the Web API gave: the account's own name, and the
+                    // library list's public flag, owner name, and cover.
+                    if playlist.owner.display_name.is_none() {
+                        playlist.owner.display_name = self.own_name(playlist.owner.id.as_deref());
+                    }
+                    // The owner's avatar comes from the profile view only
+                    // the session can ask, so whoever owns the page shown
+                    // is asked about once, next to the names already being
+                    // resolved for the songs' adders.
+                    if let Some(owner) = playlist.owner.id.clone().filter(|owner| !owner.is_empty())
+                    {
+                        self.request_user_names(vec![owner]);
+                    }
+                    if let Some(listed) = self.library_entry(&id) {
+                        playlist.fill_from(listed);
+                    }
+                    if let Some(image) = pick_image(&playlist.images, 64) {
+                        self.tint_for(Some(image));
+                    }
+                }
+                let mut refresh_rows = false;
+                if let Some(page) = self.playlist_pages.get_mut(&id) {
+                    if page.refresh_after_write || page.optimistic_snapshot.is_some() {
+                        match &result {
+                            Ok(_) => refresh_rows = page.refresh_after_write,
+                            Err(error) => {
+                                page.refresh_after_write = false;
+                                page.items.fail(friendly_page_error(self.localize.as_ref(), self.locale, error));
+                            }
+                        }
+                    }
+                    let old_snapshot = page
+                        .playlist
+                        .get()
+                        .and_then(|playlist| playlist.snapshot_id.as_deref());
+                    let new_snapshot = result
+                        .as_ref()
+                        .ok()
+                        .and_then(|playlist| playlist.snapshot_id.as_deref());
+                    if old_snapshot.is_some() && old_snapshot != new_snapshot {
+                        page.items.clear_windows();
+                        page.cache_saved_through = None;
+                        page.cache_saved_rows = 0;
+                        page.cache_saved_total = None;
+                        page.cache_append_valid = false;
+                        page.cache_restored_through = None;
+                    }
+                    if let Ok(playlist) = &result
+                        && page.items.loaded_once
+                    {
+                        page.items.total = Some(playlist.track_total());
+                    }
+                    page.playlist.refresh(result);
+                }
+                self.try_adopt_playlist_cache(&id);
+                self.checkpoint_playlist_cache(&id);
+                if refresh_rows {
+                    self.reload(Page::Playlist(id));
+                }
+            }
+            ApiResponse::PlaylistItems {
+                id,
+                offset,
+                generation,
+                result,
+            } => {
+                if self.playlist_pages.get(&id).is_none_or(|page| {
+                    page.generation != generation
+                        || page.pending_writes > 0
+                        || page.optimistic_snapshot.is_some()
+                }) {
+                    return;
+                }
+                let mut uris = Vec::new();
+                let mut adders: Vec<String> = Vec::new();
+                let mut tracks = Vec::new();
+                let cache_key = Page::Playlist(id.clone());
+                if let Some(page) = self.playlist_pages.get_mut(&id) {
+                    match result {
+                        _ if page
+                            .cache_restored_through
+                            .is_some_and(|cached| offset < cached)
+                            && page.items.window_request != Some(offset) =>
+                        {
+                            // The initial request was already in flight when
+                            // a longer cached prefix was restored.
+                        }
+                        Ok(mut items) => {
+                            note_availability(&mut self.playlist_availability, &items.items);
+                            fill_availability(&self.playlist_availability, &mut items.items);
+                            tracks = items
+                                .items
+                                .iter()
+                                .filter_map(|item| match item.playable() {
+                                    Some(PlayableItem::Track(track)) => Some(track.clone()),
+                                    _ => None,
+                                })
+                                .collect();
+                            uris = items
+                                .items
+                                .iter()
+                                .filter_map(|item| item.playable())
+                                .map(|item| item.uri().to_string())
+                                .collect();
+                            adders = items
+                                .items
+                                .iter()
+                                .filter_map(|item| item.added_by.as_ref()?.id.clone())
+                                .filter(|id| !id.is_empty())
+                                .collect();
+                            page.contributors.extend(adders.iter().cloned());
+                            let extends_checkpoint = offset > 0
+                                && page.items.base_offset == 0
+                                && page.items.loaded_once
+                                && page.items.window_request.is_none()
+                                && page.items.windows.is_empty()
+                                && page.items.next_offset == Some(offset)
+                                && page.items.total == Some(items.total)
+                                && page.items.items.len() <= offset as usize
+                                && page.items_generation == generation;
+                            let extends_cached_rows = offset > 0
+                                && page.items.loaded_once
+                                && page.items.window_request.is_none()
+                                && page.items.windows.is_empty()
+                                && page.items.next_offset == Some(offset)
+                                && page.items.total == Some(items.total)
+                                && u32::try_from(page.items.items.len())
+                                    .ok()
+                                    .and_then(|len| page.items.base_offset.checked_add(len))
+                                    == Some(offset)
+                                && self.table_rows.get(&cache_key).is_some_and(|cache| {
+                                    cache.generation == generation
+                                        && cache.items_revision == page.items.revision
+                                        && cache.user_names_revision == self.user_names_revision
+                                        && cache.playlist_positions.is_some()
+                                        && cache.playlist_raw_count == page.items.items.len()
+                                });
+                            if !extends_checkpoint {
+                                page.cache_append_valid = false;
+                            }
+                            page.items.absorb(offset, items);
+                            page.items_generation = generation;
+                            if extends_cached_rows
+                                && let Some(cache) = self.table_rows.get_mut(&cache_key)
+                            {
+                                cache.playlist_append_revision = Some(page.items.revision);
+                            }
+                        }
+                        Err(error) => page.items.fail(friendly_page_error(self.localize.as_ref(), self.locale, &error)),
+                    }
+                }
+                for track in &tracks {
+                    self.remember_track_recording(track);
+                }
+                self.request_contains(uris);
+                self.request_user_names(adders);
+                self.sample_playlist_tail(&id);
+                self.checkpoint_playlist_cache(&id);
+                // A sorted table means the whole list, not the loaded part.
+                if self.table_sorts.contains_key(&Page::Playlist(id.clone())) {
+                    self.load_more(Page::Playlist(id));
+                }
+            }
+            ApiResponse::PlaylistSample {
+                id,
+                generation,
+                result,
+            } => {
+                if self.playlist_pages
+                    .get(&id)
+                    .is_none_or(|page| page.generation != generation)
+                {
+                    return;
+                }
+                let mut adders: Vec<String> = Vec::new();
+                if let Ok(items) = result
+                    && let Some(page) = self.playlist_pages.get_mut(&id)
+                {
+                    adders = items
+                        .items
+                        .iter()
+                        .filter_map(|item| item.added_by.as_ref()?.id.clone())
+                        .filter(|id| !id.is_empty())
+                        .collect();
+                    page.contributors.extend(adders.iter().cloned());
+                }
+                self.request_user_names(adders);
+            }
+            ApiResponse::PlaylistCreated(result) => {
+                self.playlist_busy = false;
+                match result {
+                    Ok(playlist) => {
+                        self.toast(
+                            // Translators: {name} is a playlist name.
+                            self.localize.t(self.locale, "Created {name}")
+                                .replace("{name}", &playlist.name),
+                        );
+                        let settled_by = self.library.playlists_generation + 1;
+                        self.edit_playlists(PlaylistEdit {
+                            uri: playlist.uri.clone(),
+                            added: Some(playlist.clone()),
+                            settled_by: Some(settled_by),
+                        });
+                        self.saved.insert(playlist.uri.clone(), true);
+                        self.store_library_cache();
+                        if let Some(Dialog::CreatePlaylist { add_uris, .. }) = self.dialog.take()
+                            && !add_uris.is_empty()
+                        {
+                            self.backend.api(ApiRequest::AddToPlaylist {
+                                playlist_id: playlist.id.clone(),
+                                playlist_name: playlist.name.clone(),
+                                uris: add_uris,
+                                position: None,
+                            });
+                        }
+                        self.open(Page::Playlist(playlist.id));
+                    }
+                    Err(error) => {
+                        self.toast_error(
+                            // Translators: {error} is an error message.
+                            self.localize.t(self.locale, "Couldn't create the playlist: {error}")
+                                .replace("{error}", &error.to_string()),
+                        )
+                    }
+                }
+            }
+            ApiResponse::PlaylistCoverUploaded {
+                id,
+                request,
+                previous_urls,
+                cover,
+                result,
+            } => {
+                if self.cover_uploads.get(&id) != Some(&request) {
+                    return;
+                }
+                self.cover_uploads.remove(&id);
+                if let Some(Dialog::EditPlaylist {
+                    id: current,
+                    cover: draft,
+                    ..
+                }) = &mut self.dialog
+                    && *current == id
+                    && draft.uploading == Some(request)
+                {
+                    draft.uploading = None;
+                    draft.error = result
+                        .as_ref()
+                        .err()
+                        .map(|error| cover_error(self.localize.as_ref(), self.locale, error));
+                    if result.is_ok() {
+                        draft.selection = None;
+                    }
+                }
+                match result {
+                    Ok(()) => {
+                        self.set_playlist_cover(&id, &cover);
+                        self.uploaded_covers.insert(
+                            id.clone(),
+                            crate::playlist_cover::PendingCover {
+                                cover,
+                                previous_urls,
+                                request,
+                                checking: None,
+                                next_images: None,
+                                rechecks_left: 3,
+                            },
+                        );
+                        if let Some(page) = self.playlist_pages.get(&id) {
+                            self.backend.api(ApiRequest::Playlist {
+                                id,
+                                generation: page.generation,
+                            });
+                        }
+                        self.toast(self.localize.t(self.locale, "Playlist cover updated"));
+                    }
+                    Err(error) => self.toast_error(cover_error(self.localize.as_ref(), self.locale, &error)),
+                }
+            }
+            ApiResponse::PlaylistUpdated { id, result } => {
+                self.playlist_busy = false;
+                match result {
+                    Ok(()) => {
+                        self.toast(self.localize.t(self.locale, "Playlist updated"));
+                        self.playlist_pages.remove(&id);
+                        self.load_playlists();
+                        if matches!(self.page(), Page::Playlist(current) if *current == id) {
+                            self.ensure_loaded(Page::Playlist(id));
+                        }
+                    }
+                    Err(error) => {
+                        self.toast_error(
+                            // Translators: {error} is an error message.
+                            self.localize.t(self.locale, "Couldn't update the playlist: {error}")
+                                .replace("{error}", &error.to_string()),
+                        )
+                    }
+                }
+            }
+            ApiResponse::PlaylistDuplicatesChecked {
+                playlist_id,
+                playlist_name,
+                items,
+                position,
+                result,
+            } => match result {
+                Ok(duplicate_uris) if duplicate_uris.is_empty() => {
+                    self.add_to_playlist_now(playlist_id, playlist_name, items, position)
+                }
+                Ok(duplicate_uris) => {
+                    self.playlist_busy = false;
+                    self.dialog = Some(Dialog::ConfirmPlaylistDuplicates {
+                        playlist_id,
+                        playlist_name,
+                        items,
+                        position,
+                        duplicate_uris,
+                    });
+                }
+                Err(error) => {
+                    // A failed read must not take away an edit the account is
+                    // still allowed to make. The write reports its own error.
+                    log::debug!("could not check playlist for duplicates: {error}");
+                    self.add_to_playlist_now(playlist_id, playlist_name, items, position);
+                }
+            },
+            ApiResponse::PlaylistItemsChanged {
+                id,
+                message,
+                result,
+            } => {
+                self.playlist_busy = false;
+                if let Some(page) = self.playlist_pages.get_mut(&id) {
+                    page.pending_writes = page.pending_writes.saturating_sub(1);
+                }
+                match result {
+                    Ok(snapshot) => {
+                        if !message.is_empty() {
+                            self.toast(message);
+                        }
+                        let mut generation = None;
+                        if let Some(page) = self.playlist_pages.get_mut(&id) {
+                            if let Some(playlist) = page.playlist.get_mut() {
+                                playlist.snapshot_id = snapshot.clone();
+                            }
+                            if snapshot.is_some() {
+                                page.optimistic_snapshot = snapshot.clone();
+                                page.snapshot_rechecks = 0;
+                            }
+                            generation = Some(page.generation);
+                        }
+                        if let Some(playlists) = self.library.playlists.get_mut() {
+                            for playlist in playlists.iter_mut().filter(|p| p.id == id) {
+                                playlist.snapshot_id = snapshot.clone();
+                            }
+                        }
+                        self.checkpoint_playlist_cache(&id);
+                        // Reconcile metadata in the background. The mutation
+                        // response and local rows are enough to keep the page;
+                        // no item page is discarded or downloaded again.
+                        if let Some(generation) = generation {
+                            self.backend.api(ApiRequest::Playlist { id, generation });
+                        }
+                    }
+                    Err(error) => {
+                        self.toast_error(
+                            // Translators: {error} is an error message.
+                            self.localize.t(self.locale, "Playlist change failed: {error}")
+                                .replace("{error}", &error.to_string()),
+                        );
+                        if let Some(page) = self.playlist_pages.get_mut(&id) {
+                            page.optimistic_snapshot = None;
+                            page.snapshot_rechecks = 0;
+                        }
+                        self.load_playlist_items_at(&id, 0);
+                        if let Some(page) = self.playlist_pages.get(&id) {
+                            self.backend.api(ApiRequest::Playlist {
+                                id,
+                                generation: page.generation,
+                            });
+                        }
+                    }
+                }
+            }
+            ApiResponse::PlaylistFollowChanged {
+                id,
+                followed,
+                result,
+            } => match result {
+                Ok(()) => {
+                    self.settle_playlist_edit(&format!("spotify:playlist:{id}"), true);
+                    self.saved
+                        .insert(format!("spotify:playlist:{id}"), followed);
+                    self.toast(if followed {
+                        self.localize.t(self.locale, "Added to Your Library")
+                    } else {
+                        self.localize.t(self.locale, "Removed from Your Library")
+                    });
+                    self.load_playlists();
+                    if !followed && matches!(self.page(), Page::Playlist(current) if *current == id)
+                    {
+                        self.open(Page::Home);
+                    }
+                }
+                Err(error) => {
+                    self.settle_playlist_edit(&format!("spotify:playlist:{id}"), false);
+                    self.saved
+                        .insert(format!("spotify:playlist:{id}"), !followed);
+                    self.toast_error(
+                        // Translators: {error} is an error message.
+                        self.localize.t(self.locale, "Couldn't update the playlist: {error}")
+                            .replace("{error}", &error.to_string()),
+                    );
+                }
+            },
+            ApiResponse::SavedTracks {
+                offset,
+                generation,
+                account_id,
+                result,
+            } => {
+                if generation != self.liked_songs.generation
+                    || self.user_id() != account_id.as_deref()
+                {
+                    return;
+                }
+                let mut more = false;
+                let succeeded = result.is_ok();
+                match result {
+                    Ok(page) => {
+                        for item in &page.items {
+                            let uri = item.track.uri.clone();
+                            self.remember_track_recording(&item.track);
+                            if !self.saved_writes.contains_key(&uri)
+                                && self.liked_songs.intent(&uri).is_none()
+                            {
+                                self.set_saved_state(uri, true);
+                            }
+                        }
+                        more = self.liked_songs.absorb(
+                            offset,
+                            page,
+                            jiff::Timestamp::now().as_second(),
+                        );
+                    }
+                    Err(error) => self.liked_songs
+                        .fail(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
+                }
+                if !more {
+                    self.sync_liked_songs();
+                    self.checkpoint_liked_songs(false);
+                }
+                if succeeded && (more || self.table_sorts.contains_key(&Page::LikedSongs)) {
+                    self.load_more(Page::LikedSongs);
+                }
+            }
+            // A reset shelf is read again from the top, so a page asked for
+            // before the reset no longer continues it.
+            ApiResponse::SavedAlbums { offset, .. }
+                if self.library.albums.next_offset != Some(offset) => {}
+            ApiResponse::SavedAlbums { offset, result } => match result {
+                Ok(page) => {
+                    self.request_album_types(page.items.iter().map(|item| &item.album));
+                    for item in &page.items {
+                        self.saved.insert(item.album.uri.clone(), true);
+                    }
+                    self.library.albums.absorb(offset, page);
+                }
+                Err(error) => self.library
+                    .albums
+                    .fail(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
+            },
+            ApiResponse::FollowedArtists { after, result } => {
+                let list = &mut self.library.artists;
+                // A reset shelf is read again from the top, so a page asked
+                // for before the reset no longer continues it.
+                if after != list.after {
+                    return;
+                }
+                list.loading = false;
+                list.loaded_once = true;
+                match result {
+                    Ok(page) => {
+                        if after.is_none() {
+                            list.items.clear();
+                        }
+                        let received = page.items.len();
+                        for artist in &page.items {
+                            self.saved.insert(artist.uri.clone(), true);
+                        }
+                        list.items.extend(page.items);
+                        let next = page.cursors.and_then(|cursors| cursors.after);
+                        list.complete = next.is_none() || received == 0;
+                        list.after = next;
+                        list.error = None;
+                    }
+                    Err(error) => list.error = Some(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
+                }
+            }
+            ApiResponse::SavedShows { offset, .. }
+                if self.library.shows.next_offset != Some(offset) => {}
+            ApiResponse::SavedShows { offset, result } => match result {
+                Ok(page) => {
+                    for item in &page.items {
+                        self.saved.insert(item.show.uri.clone(), true);
+                    }
+                    let unknown: Vec<String> = page
+                        .items
+                        .iter()
+                        .map(|item| item.show.uri.clone())
+                        .filter(|uri| self.audiobooks_requested.insert(uri.clone()))
+                        .collect();
+                    if !unknown.is_empty() {
+                        self.backend.send(Command::AudiobookShows(unknown));
+                    }
+                    self.library.shows.absorb(offset, page);
+                    if offset == 0 && self.home.requested {
+                        self.request_home_episodes();
+                    }
+                }
+                Err(error) => self.library
+                    .shows
+                    .fail(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
+            },
+            ApiResponse::HomeEpisodes { generation, .. } if generation != self.home.generation => {}
+            ApiResponse::HomeEpisodes { result, .. } => match result {
+                Ok(podcasts) => {
+                    self.home.podcasts = podcasts;
+                    self.home.podcasts_answered = true;
+                    self.store_home_cache();
+                }
+                // The shelf is an extra: without an answer it keeps what it
+                // showed, or stays hidden.
+                Err(error) => log::debug!("podcast episodes for Home unavailable: {error}"),
+            },
+            ApiResponse::SavedEpisodes { offset, .. }
+                if self.library.episodes.next_offset != Some(offset) => {}
+            ApiResponse::SavedEpisodes { offset, result } => match result {
+                Ok(page) => {
+                    for item in &page.items {
+                        self.saved.insert(item.episode.uri.clone(), true);
+                    }
+                    self.library.episodes.absorb(offset, page);
+                }
+                Err(error) => self.library
+                    .episodes
+                    .fail(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
+            },
+            ApiResponse::SavedChanged {
+                uris,
+                saved,
+                result,
+            } => {
+                let current_uris: Vec<String> = uris
+                    .iter()
+                    .filter(|uri| {
+                        self.saved_writes
+                            .get(*uri)
+                            .is_none_or(|wanted| *wanted == saved)
+                    })
+                    .cloned()
+                    .collect();
+                for uri in &uris {
+                    if self.saved_writes.get(uri) == Some(&saved) {
+                        self.saved_writes.remove(uri);
+                    }
+                }
+                match result {
+                    Ok(()) => {
+                        for uri in &current_uris {
+                            self.set_saved_state(uri.clone(), saved);
+                            match util::uri_kind(uri) {
+                                Some("track") => {
+                                    if self.liked_songs.intent(uri).is_some() {
+                                        self.liked_songs.confirm(uri, saved, true);
+                                    } else if !saved {
+                                        self.library.liked.retain(|item| item.track.uri != *uri);
+                                        if let Some(total) = self.library.liked.total.as_mut() {
+                                            *total = total.saturating_sub(1);
+                                        }
+                                    }
+                                }
+                                Some("album") => self.library.albums.reset(),
+                                Some("artist") => self.library.artists.reset(),
+                                Some("show") => self.library.shows.reset(),
+                                Some("episode") => self.library.episodes.reset(),
+                                _ => {}
+                            }
+                        }
+                        let message = match (
+                            current_uris.first().and_then(|uri| util::uri_kind(uri)),
+                            saved,
+                        ) {
+                            (Some("track"), true) => self.localize.t(self.locale, "Added to Liked Songs"),
+                            (Some("track"), false) => {
+                                self.localize.t(self.locale, "Removed from Liked Songs")
+                            }
+                            (Some("artist"), true) => self.localize.t(self.locale, "Following artist"),
+                            (Some("artist"), false) => self.localize.t(self.locale, "Unfollowed artist"),
+                            (_, true) => self.localize.t(self.locale, "Saved to Your Library"),
+                            (_, false) => self.localize.t(self.locale, "Removed from Your Library"),
+                        };
+                        if !current_uris.is_empty() {
+                            self.toast(message);
+                        }
+                    }
+                    Err(error) => {
+                        for uri in &current_uris {
+                            self.set_saved_state(uri.clone(), !saved);
+                            self.liked_songs.confirm(uri, saved, false);
+                        }
+                        if !current_uris.is_empty() {
+                            self.toast_error(
+                                // Translators: {error} is an error message.
+                                self.localize.t(self.locale, "Couldn't update your library: {error}")
+                                    .replace("{error}", &error.to_string()),
+                            );
+                        }
+                    }
+                }
+                if self.liked_songs.cache_checked && self.liked_songs.has_confirmed_changes() {
+                    self.sync_liked_songs();
+                    self.checkpoint_liked_songs(true);
+                    self.liked_recheck_at = Some(Instant::now() + Duration::from_secs(5));
+                }
+            }
+            ApiResponse::Contains { uris, result } => {
+                for uri in &uris {
+                    self.saved_pending.remove(uri);
+                }
+                if let Ok(flags) = result {
+                    for (uri, flag) in uris.into_iter().zip(flags) {
+                        if !self.saved_writes.contains_key(&uri)
+                            && self.liked_songs.intent(&uri).is_none()
+                        {
+                            self.set_saved_state(uri, flag);
+                        }
+                    }
+                }
+            }
+            ApiResponse::SearchStarted {
+                query,
+                serial,
+                split,
+            } => {
+                if serial == self.search.serial && query == self.search.committed {
+                    self.search.catalogue_pending = true;
+                    self.search.playlists_pending = split;
+                }
+            }
+            ApiResponse::PlaySearch {
+                query,
+                serial,
+                result,
+            } => {
+                if serial != self.play_search_serial {
+                    // Superseded by a newer search or by something the
+                    // user played meanwhile.
+                    return;
+                }
+                match result {
+                    Ok(Some(uri)) => self.actions.push(Action::PlaySearchMatch { uri, serial }),
+                    Ok(None) => self.toast(
+                        self.localize.t(
+                            self.locale,
+                            // Translators: {query} is the words someone searched for.
+                            "Nothing on Spotify matches \u{201c}{query}\u{201d}",
+                        )
+                        .replace("{query}", &query),
+                    ),
+                    Err(error) => self.toast_error(
+                        self.localize.t(
+                            self.locale,
+                            // Translators: {query} is the words someone searched for; {error} is an error message.
+                            "Couldn't search for \u{201c}{query}\u{201d}: {error}",
+                        )
+                        .replace("{query}", &query)
+                        .replace("{error}", &error.to_string()),
+                    ),
+                }
+            }
+            ApiResponse::SearchPlaylists {
+                query,
+                serial,
+                result,
+            } => {
+                if serial != self.search.serial || query != self.search.committed {
+                    return;
+                }
+                self.search.playlists_pending = false;
+                match result {
+                    Ok(page) => {
+                        self.search.playlists = Some((serial, page));
+                        self.show_search_playlists();
+                        self.remember_search(&query);
+                    }
+                    Err(error) => self.search_failed(&self.localize.t(self.locale, "Playlists"), error),
+                }
+            }
+            ApiResponse::Search {
+                query,
+                serial,
+                result,
+            } => {
+                if serial != self.search.serial || query != self.search.committed {
+                    return;
+                }
+                self.search.catalogue_pending = false;
+                match result {
+                    Ok(results) => {
+                        let uris = results
+                            .tracks
+                            .iter()
+                            .flat_map(|page| page.items.iter())
+                            .map(|track| track.uri.clone())
+                            .collect();
+                        self.request_contains(uris);
+                        self.remember_search(&query);
+                        self.search.results = Loadable::Loaded(results);
+                        self.search.results_serial = serial;
+                        self.show_search_playlists();
+                    }
+                    Err(error) => self.search_failed(&self.localize.t(self.locale, "Search"), error),
+                }
+            }
+            ApiResponse::Artist { id, result } => {
+                if let Ok(artist) = &result {
+                    if let Some(image) = pick_image(&artist.images, 64) {
+                        self.tint_for(Some(image));
+                    }
+                    if let Some(page) = self.artist_pages.get_mut(&id)
+                        && page.top_tracks.needs_load()
+                    {
+                        page.top_tracks = Loadable::Loading;
+                        self.backend
+                            .api(ApiRequest::ArtistTopTracks { id: id.clone() });
+                    }
+                }
+                if let Some(page) = self.artist_pages.get_mut(&id) {
+                    page.artist = match result {
+                        Ok(artist) => Loadable::Loaded(artist),
+                        Err(error) => Loadable::Failed(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
+                    };
+                }
+            }
+            ApiResponse::ArtistTopTracks { id, result } => {
+                if let Ok(tracks) = &result {
+                    let uris: Vec<String> = tracks.iter().map(|track| track.uri.clone()).collect();
+                    self.request_contains(uris);
+                }
+                if let Some(page) = self.artist_pages.get_mut(&id) {
+                    page.top_tracks = match result {
+                        Ok(tracks) => Loadable::Loaded(tracks),
+                        Err(error) => Loadable::Failed(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
+                    };
+                }
+            }
+            ApiResponse::ArtistAlbums {
+                id,
+                groups,
+                offset,
+                result,
+            } => {
+                if let Ok(albums) = &result {
+                    self.request_album_types(albums.items.iter());
+                }
+                if let Some(page) = self.artist_pages.get_mut(&id) {
+                    let list = page.albums.entry(groups).or_default();
+                    match result {
+                        Ok(albums) => list.absorb(offset, albums),
+                        Err(error) => list.fail(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
+                    }
+                }
+            }
+            ApiResponse::RelatedArtists { id, result } => {
+                if let Some(page) = self.artist_pages.get_mut(&id) {
+                    page.related = match result {
+                        Ok(artists) => Loadable::Loaded(artists),
+                        Err(error) => Loadable::Failed(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
+                    };
+                }
+            }
+            ApiResponse::Album { id, result } => {
+                // An earlier Web API header has no page generation. Once the
+                // session resolves a countdown page, its preview and playable
+                // cache own this album; a late generic header cannot replace it.
+                if self.album_pages
+                    .get(&id)
+                    .is_some_and(|page| page.prerelease.is_some())
+                {
+                    return;
+                }
+                let mut uris = Vec::new();
+                if let Ok(album) = &result {
+                    self.request_album_types(std::iter::once(album));
+                }
+                if let Ok(album) = &result
+                    && let Some(image) = pick_image(&album.images, 64)
+                {
+                    self.tint_for(Some(image));
+                }
+                if let Some(page) = self.album_pages.get_mut(&id) {
+                    match result {
+                        Ok(mut album) => {
+                            if let Some(tracks) = album.tracks.take() {
+                                uris = tracks.items.iter().map(|track| track.uri.clone()).collect();
+                                page.tracks.absorb(0, tracks);
+                            }
+                            page.album = Loadable::Loaded(album);
+                            if !page.tracks.loaded_once {
+                                page.tracks.loading = true;
+                                self.backend.api(ApiRequest::AlbumTracks {
+                                    id,
+                                    offset: 0,
+                                    generation: page.generation,
+                                });
+                            }
+                        }
+                        Err(error) => {
+                            page.album = Loadable::Failed(friendly_api_error(self.localize.as_ref(), self.locale, &error))
+                        }
+                    }
+                }
+                self.request_contains(uris);
+            }
+            ApiResponse::AlbumTracks {
+                id,
+                offset,
+                generation,
+                result,
+            } => {
+                if self.album_pages
+                    .get(&id)
+                    .is_none_or(|page| page.generation != generation)
+                {
+                    return;
+                }
+                let mut uris = Vec::new();
+                if let Some(page) = self.album_pages.get_mut(&id) {
+                    match result {
+                        Ok(tracks) => {
+                            uris = tracks.items.iter().map(|track| track.uri.clone()).collect();
+                            page.tracks.absorb(offset, tracks);
+                        }
+                        Err(error) => page.tracks.fail(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
+                    }
+                }
+                self.request_contains(uris);
+                // A sorted table means the whole list, not the loaded part.
+                if self.table_sorts.contains_key(&Page::Album(id.clone())) {
+                    self.load_more(Page::Album(id));
+                }
+            }
+            ApiResponse::AlbumQueueTracks {
+                request,
+                offset,
+                result,
+            } => {
+                self.receive_album_queue(request, offset, result);
+            }
+            ApiResponse::Show { id, result } => {
+                if let Ok(show) = &result
+                    && let Some(image) = pick_image(&show.images, 64)
+                {
+                    self.tint_for(Some(image));
+                }
+                if let Some(page) = self.show_pages.get_mut(&id) {
+                    match result {
+                        Ok(mut show) => {
+                            if let Some(episodes) = show.episodes.take() {
+                                page.episodes.absorb(0, episodes);
+                            }
+                            page.show = Loadable::Loaded(show);
+                            if !page.episodes.loaded_once {
+                                page.episodes.loading = true;
+                                self.backend.api(ApiRequest::ShowEpisodes { id, offset: 0 });
+                            }
+                        }
+                        Err(error) => {
+                            page.show = Loadable::Failed(friendly_api_error(self.localize.as_ref(), self.locale, &error))
+                        }
+                    }
+                }
+            }
+            ApiResponse::ShowEpisodes { id, offset, result } => {
+                if let Some(page) = self.show_pages.get_mut(&id) {
+                    match result {
+                        Ok(episodes) => page.episodes.absorb(offset, episodes),
+                        Err(error) => page.episodes.fail(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
+                    }
+                }
+            }
+            ApiResponse::Track { id, result } => {
+                self.track_requests.remove(&id);
+                match result {
+                    Ok(track) => {
+                        self.remember_track_recording(&track);
+                        self.request_recording_candidates(&track);
+                        if self.liked_songs.update_track(&track) {
+                            self.sync_liked_songs();
+                        }
+                        self.resolve_pasted_song(
+                            &format!("spotify:track:{id}"),
+                            Some(PlayableItem::Track(track.clone())),
+                        );
+                        self.track_cache.insert(id.clone(), track);
+                        self.track_used.insert(id, Instant::now());
+                    }
+                    Err(error) => {
+                        self.resolve_pasted_song(&format!("spotify:track:{id}"), None);
+                        if self.pending_link.as_deref()
+                            == Some(format!("spotify:track:{id}").as_str())
+                        {
+                            self.pending_link = None;
+                            self.toast_error(
+                                // Translators: {error} is an error message.
+                                self.localize.t(self.locale, "Cannot open this song: {error}")
+                                    .replace("{error}", &error.to_string()),
+                            );
+                        }
+                    }
+                }
+            }
+            // Only a link asks for an episode; its podcast's page is the
+            // nearest thing to a page for it.
+            ApiResponse::Episode { result, .. } => match result {
+                Ok(episode) => match episode.show.filter(|show| !show.id.is_empty()) {
+                    Some(show) => self.open(Page::Show(show.id)),
+                    None => self.toast_error(self.localize.t(
+                        self.locale,
+                        "This episode's podcast is not on Spotify",
+                    )),
+                },
+                Err(error) => self.toast_error(
+                    // Translators: {error} is an error message.
+                    self.localize.t(self.locale, "Cannot open this episode: {error}")
+                        .replace("{error}", &error.to_string()),
+                ),
+            },
+            ApiResponse::Remote { action, result } => {
+                if matches!(action, RemoteAction::Play | RemoteAction::Pause) {
+                    self.clear_play_pending();
+                }
+                match result {
+                    Ok(()) => {
+                        self.remote_recheck_at = Some(Instant::now() + REMOTE_RECHECK);
+                        self.remote_command_at = Some(Instant::now());
+                        if action == RemoteAction::Shuffle {
+                            self.queue_recheck_at = Some(Instant::now() + QUEUE_RECHECK);
+                            if let Some(pending) = &mut self.queue_shuffle_pending {
+                                pending.at = Instant::now();
+                            } else {
+                                self.note_shuffle_pending();
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        self.optimistic_playing = None;
+                        self.pending_remote_position = None;
+                        self.pending_remote_volume = None;
+                        if matches!(
+                            action,
+                            RemoteAction::Play | RemoteAction::Next | RemoteAction::Previous
+                        ) && self.intent_track.as_ref().is_some_and(|intent| {
+                            matches!(intent.confirmation, TrackConfirmation::Remote { .. })
+                        }) {
+                            self.intent_track = None;
+                        }
+                        let hint = if error.status() == Some(404) {
+                            format!(
+                                " {}",
+                                self.localize.t(
+                                    self.locale,
+                                    "Choose a device from the devices menu first."
+                                )
+                            )
+                        } else {
+                            String::new()
+                        };
+                        self.toast_error(format!(
+                            "{}: {error}.{hint}",
+                            remote_action_label(self.localize.as_ref(), self.locale, action)
+                        ));
+                    }
+                }
+                self.poll_remote_soon();
+            }
+            ApiResponse::Transferred { device_id, result } => match result {
+                Ok(()) => {
+                    self.selected_device = Some(device_id);
+                    self.show_devices = false;
+                    self.remote_command_at = Some(Instant::now());
+                    self.poll_remote_soon();
+                    self.refresh_devices();
+                }
+                Err(error) => self.toast_error(
+                    // Translators: {error} is an error message.
+                    self.localize.t(self.locale, "Couldn't switch device: {error}")
+                        .replace("{error}", &error.to_string()),
+                ),
+            },
+            ApiResponse::QueueAdded { label: _, result } => match result {
+                Ok(()) => {
+                    // Refresh the queue after the optimistic update.
+                    self.refresh_queue(true);
+                }
+                Err(error) => self.toast_error(
+                    // Translators: {error} is an error message.
+                    self.localize.t(self.locale, "Couldn't add to queue: {error}")
+                        .replace("{error}", &error.to_string()),
+                ),
+            },
+            ApiResponse::QueueBatchAdded {
+                request,
+                added,
+                result,
+            } => {
+                if self.pending_queue_batches.remove(&request).as_ref() != Some(&self.target()) {
+                    return;
+                }
+                if result.is_err() {
+                    self.remove_failed_queue_adds(request, added);
+                }
+                for addition in &mut self.pending_queue_adds {
+                    if addition.write.is_some_and(|(write, _)| write == request) {
+                        addition.write = None;
+                        addition.at = Instant::now();
+                    }
+                }
+                if let Err(error) = result {
+                    self.toast_error(
+                        // Translators: {error} is an error message.
+                        self.localize.t(self.locale, "Couldn't add to queue: {error}")
+                            .replace("{error}", &error.to_string()),
+                    );
+                }
+                self.refresh_queue(true);
+            }
+        }
+    }
+}
+
+impl Engine {
+    pub fn on_now_playing_changed(&mut self) {
+        // Queue consumption and saved session state follow confirmed playback,
+        // not the song shown optimistically while a command is still pending.
+        let Some(now) = self.now_playing_live() else {
+            return;
+        };
+        let same_uri = self.last_now_playing_uri.as_deref() == Some(now.uri.as_str());
+        let new_occurrence =
+            now.local && self.last_now_playing_sequence != self.local.track_sequence;
+        if same_uri && !new_occurrence {
+            return;
+        }
+        // A new track is a new resume point.
+        self.session_dirty = true;
+        let queue_already_updated =
+            self.queue_start_pending.take().as_ref() == Some(&self.target());
+        let repeating = same_uri && new_occurrence && now.repeat == RepeatMode::Track;
+        // Restore the saved queue only when the remembered track resumes.
+        if !self.resume_queue.is_empty() {
+            let queued = std::mem::take(&mut self.resume_queue);
+            self.session_dirty = true;
+            if now.local && self.resume_track.as_deref() == Some(now.uri.as_str()) {
+                for uri in queued {
+                    self.manual_queue.push(uri.clone());
+                    self.backend.api(ApiRequest::AddToQueue {
+                        uri,
+                        device_id: self.local_device_id.clone(),
+                        label: String::new(),
+                    });
+                }
+            }
+        }
+        // A context load can start the same song as the manual queue's head
+        // without consuming that queued copy. Explicit skips have already
+        // consumed their rows; only an unrequested advance consumes one here.
+        if !queue_already_updated && !repeating {
+            self.consume_manual_queue_head(&now.uri);
+        }
+        if !queue_already_updated
+            && !repeating
+            && let Loadable::Loaded(queue) = &mut self.queue
+        {
+            let accounted = queue
+                .currently_playing
+                .as_ref()
+                .is_some_and(|item| item.uri() == now.uri)
+                && !(same_uri && new_occurrence);
+            if !accounted
+                && queue
+                    .queue
+                    .first()
+                    .is_some_and(|item| item.uri() == now.uri)
+            {
+                let item = queue.queue.remove(0);
+                queue.currently_playing = Some(item);
+            }
+        }
+        self.last_now_playing_uri = Some(now.uri.clone());
+        if now.local {
+            self.last_now_playing_sequence = self.local.track_sequence;
+        }
+        self.resume_context = self.playing_context_uri();
+        self.resume_track = Some(now.uri.clone());
+        self.resume_position_ms = 0;
+        if now.local
+            && !now.is_episode
+            && let Some(id) = &now.id
+            && !self.track_cache.contains_key(id)
+            && self.track_requests.insert(id.clone())
+        {
+            self.backend.api(ApiRequest::Track { id: id.clone() });
+        }
+        self.request_contains(vec![now.uri.clone()]);
+        if let Some(url) = now.art_small.or(now.art_url) {
+            self.tint_for(Some(&url));
+        }
+        if matches!(self.page(), Page::Queue)
+            || self.show_queue_panel
+            || (self.settings.winamp_window && self.settings.playlist_open)
+        {
+            self.refresh_queue(true);
+        }
+        if self.show_lyrics_panel {
+            self.request_lyrics();
+        }
+    }
+}
+
+impl Engine {
+    pub fn request_lyrics(&mut self) {
+        let Some(now) = self.now_playing() else {
+            return;
+        };
+        if self.lyrics_uri.as_deref() == Some(now.uri.as_str())
+            && !matches!(self.lyrics, Loadable::NotLoaded | Loadable::Failed(_))
+        {
+            return;
+        }
+        self.lyrics_uri = Some(now.uri.clone());
+        self.lyrics_following = true;
+        self.lyrics_line_shown = None;
+        if now.is_episode || self.offline {
+            self.lyrics = Loadable::Loaded(None);
+            return;
+        }
+        self.lyrics = Loadable::Loading;
+        self.backend.send(Command::Lyrics(Box::new(LyricsRequest {
+            uri: now.uri,
+            query: crate::lyrics::Query {
+                artist: now
+                    .artists
+                    .first()
+                    .map(|artist| artist.name.clone())
+                    .unwrap_or_default(),
+                title: now.title,
+                album: now.album_name,
+                duration_ms: now.duration_ms,
+            },
+        })));
     }
 }

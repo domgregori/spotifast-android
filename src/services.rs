@@ -39,3 +39,4 @@ impl spotifast_core::engine::FileWriter for FastframeFileWriter {
         self.0.flush(timeout)
     }
 }
+
