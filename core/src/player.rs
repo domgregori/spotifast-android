@@ -306,6 +306,10 @@ impl Engine {
         let device_id = config.device_id();
         let session_config = SessionConfig {
             device_id: device_id.clone(),
+            // librespot's Android default uses Spotify's Android client id,
+            // but the streaming grant was issued to the desktop client. Pin
+            // the client id so login5 authenticates against the right app.
+            client_id: crate::auth::PLAYBACK_CLIENT_ID.to_string(),
             autoplay: Some(config.autoplay),
             proxy,
             ..SessionConfig::default()
