@@ -8,7 +8,8 @@ pub mod appearance;
 // Moved to spotifast-core; re-exported so `crate::auth` keeps resolving.
 pub use spotifast_core::auth;
 pub mod autoscroll;
-pub mod backend;
+pub use spotifast_core::backend;
+pub mod backend_ext;
 pub mod bidi;
 pub use spotifast_core::cast;
 pub use spotifast_core::credentials;
@@ -47,6 +48,7 @@ pub mod power;
 pub use spotifast_core::prerelease;
 pub use spotifast_core::resample;
 pub use spotifast_core::session_reads;
+pub mod services;
 pub mod settings;
 pub mod single_instance;
 pub use spotifast_core::sink;

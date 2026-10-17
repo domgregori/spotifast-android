@@ -1554,7 +1554,7 @@ fn track_row_contents(
             } else {
                 Icon::Mic
             },
-            Some(app.backend.art()),
+            Some(&app.art),
         );
         // Without a number column the cover carries the play control:
         // hover shows it, a click uses it, and what plays shows there.
@@ -2529,7 +2529,7 @@ pub fn card(
             image_rect,
             radius,
             if circular { Icon::User } else { Icon::Music },
-            Some(app.backend.art()),
+            Some(&app.art),
         );
         let text_left = rect.left() + PAD;
         let title_galley = ellipsized(ui, title, title_font, palette.text, text_width, 1);

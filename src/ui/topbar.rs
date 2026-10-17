@@ -418,7 +418,7 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                             inner,
                             14.0,
                             Icon::User,
-                            Some(app.backend.art()),
+                            Some(&app.art),
                         ),
                         None => {
                             let initial = name

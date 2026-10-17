@@ -23,15 +23,16 @@ use crate::credentials::{
     Store as CredentialStore,
 };
 use crate::http::Http;
-use crate::images::{ArtLoader, accent_color};
+use crate::util::accent_color;
 use crate::model::PlaylistCache;
 use crate::paths::AppDirs;
 use crate::player::{
     Engine, EngineConfig, EngineEvent, Heard, LocalState, PlaybackResume, PlayerCommand,
 };
 use crate::session_reads;
-use crate::settings::ProxyConfig;
-use spotifast_core::wake::Wake;
+use crate::proxy::ProxyConfig;
+use crate::services::Services;
+use crate::wake::Wake;
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
@@ -90,7 +91,7 @@ pub enum AuthStatus {
     Failed(String),
 }
 
-pub use spotifast_core::remote_action::RemoteAction;
+pub use crate::remote_action::RemoteAction;
 
 /// Which of the two readers of the recently-played endpoint an answer
 /// belongs to: the shelf on Home, or the Recents tab in the queue panel.
@@ -611,7 +612,7 @@ pub enum Command {
         id: String,
         request: u64,
         selected:
-            std::pin::Pin<Box<dyn std::future::Future<Output = Option<rfd::FileHandle>> + Send>>,
+            std::pin::Pin<Box<dyn std::future::Future<Output = Option<std::path::PathBuf>> + Send>>,
     },
     /// Start (or restart) the Web API sign-in in the browser.
     SignIn {
@@ -978,37 +979,36 @@ pub enum LocalPlayback {
 pub struct Backend {
     commands: mpsc::UnboundedSender<Command>,
     events: std::sync::mpsc::Receiver<Event>,
-    art: ArtLoader,
     activity: Arc<NetActivity>,
     thread: Option<std::thread::JoinHandle<()>>,
     offline: bool,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     network_statuses: std::sync::Mutex<Vec<bool>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     playlist_item_requests: std::sync::Mutex<Vec<(String, u32, u64)>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     playlist_sample_requests: std::sync::Mutex<Vec<(String, u32, u64)>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     playlist_add_requests: std::sync::Mutex<Vec<ApiRequest>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     remote_play_requests: std::sync::Mutex<Vec<ApiRequest>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     remote_shuffle_requests: std::sync::Mutex<Vec<ApiRequest>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     transfer_requests: std::sync::Mutex<Vec<ApiRequest>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     queue_requests: std::sync::Mutex<Vec<ApiRequest>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     queued_tracks: std::sync::Mutex<Vec<String>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     player_commands: std::sync::Mutex<Vec<PlayerCommand>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     album_type_requests: std::sync::Mutex<Vec<Vec<String>>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     home_episode_requests: std::sync::Mutex<Vec<(Vec<String>, u64)>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     library_cache_stores: std::sync::Mutex<Vec<crate::account_cache::Cache<Vec<Playlist>>>>,
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     home_cache_stores:
         std::sync::Mutex<Vec<crate::account_cache::Cache<crate::model::HomeSnapshot>>>,
 }
@@ -1019,31 +1019,17 @@ impl Backend {
         engine_config: EngineConfig,
         web_client_id: Option<String>,
         waker: Arc<dyn Wake>,
+        services: Arc<dyn Services>,
+        runtime: tokio::runtime::Runtime,
+        http: Http,
         restore_sign_in: bool,
     ) -> Self {
         let (command_tx, command_rx) = mpsc::unbounded_channel();
         let (event_tx, event_rx) = std::sync::mpsc::channel();
-        let runtime = tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .thread_name("spotifast-runtime")
-            .enable_all()
-            .build()
-            .expect("unable to start the async runtime");
-        let http = if restore_sign_in {
-            Http::unavailable("Restoring proxy settings".into())
-        } else {
-            Http::from_proxy(&engine_config.proxy).unwrap_or_else(|error| {
-                let _ = event_tx.send(Event::Error(format!(
-                    "Network configuration failed: {error}"
-                )));
-                Http::unavailable(error)
-            })
-        };
-        let art = ArtLoader::new(http.clone(), runtime.handle().clone(), dirs.art_cache_dir());
         let activity = Arc::new(NetActivity::default());
 
         let worker_activity = Arc::clone(&activity);
-        let worker_art = art.clone();
+        let worker_services = Arc::clone(&services);
         let worker_commands = command_tx.clone();
         let thread = std::thread::Builder::new()
             .name("spotifast-backend".to_string())
@@ -1054,7 +1040,7 @@ impl Backend {
                         engine_config,
                         web_client_id,
                         http,
-                        worker_art,
+                        worker_services,
                         worker_activity,
                         event_tx,
                         worker_commands,
@@ -1073,37 +1059,36 @@ impl Backend {
         Self {
             commands: command_tx,
             events: event_rx,
-            art,
             activity,
             thread: Some(thread),
             offline: false,
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             network_statuses: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             playlist_item_requests: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             playlist_sample_requests: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             playlist_add_requests: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             remote_play_requests: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             remote_shuffle_requests: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             transfer_requests: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             queue_requests: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             queued_tracks: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             player_commands: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             album_type_requests: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             home_episode_requests: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             library_cache_stores: std::sync::Mutex::new(Vec::new()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             home_cache_stores: std::sync::Mutex::new(Vec::new()),
         }
     }
@@ -1120,15 +1105,21 @@ impl Backend {
         self.offline = offline;
     }
 
+    /// Whether the runtime is currently marked offline. The desktop's
+    /// `choose_playlist_cover` skips the native dialog while offline.
+    pub fn is_offline(&self) -> bool {
+        self.offline
+    }
+
     pub fn send(&self, command: Command) {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Command::StoreLibraryCache(cache) = &command {
             self.library_cache_stores
                 .lock()
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .push(cache.clone());
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let Command::StoreHomeCache(cache) = &command {
             self.home_cache_stores
                 .lock()
@@ -1153,23 +1144,8 @@ impl Backend {
 
     /// Construct the native dialog on the UI thread, then await and read it
     /// on the runtime. AppKit requires its window lookup on the main thread.
-    pub fn choose_playlist_cover(&self, id: String, request: u64) {
-        if self.offline {
-            return;
-        }
-        let selected = rfd::AsyncFileDialog::new()
-            .set_title("Choose playlist cover")
-            .add_filter("JPEG or PNG image", &["jpg", "jpeg", "png"])
-            .pick_file();
-        self.send(Command::ChoosePlaylistCover {
-            id,
-            request,
-            selected: Box::pin(selected),
-        });
-    }
-
     pub fn api(&self, request: ApiRequest) {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if matches!(
             request,
             ApiRequest::AlbumQueueTracks { .. }
@@ -1178,7 +1154,7 @@ impl Backend {
         ) {
             self.queue_requests.lock().unwrap().push(request.clone());
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if matches!(
             request,
             ApiRequest::Remote {
@@ -1191,7 +1167,7 @@ impl Backend {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .push(request.clone());
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if matches!(
             request,
             ApiRequest::Remote {
@@ -1204,11 +1180,11 @@ impl Backend {
                 .unwrap()
                 .push(request.clone());
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if matches!(request, ApiRequest::Transfer { .. }) {
             self.transfer_requests.lock().unwrap().push(request.clone());
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if matches!(
             request,
             ApiRequest::AddToPlaylist { .. }
@@ -1220,7 +1196,7 @@ impl Backend {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .push(request.clone());
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let ApiRequest::PlaylistItems {
             id,
             offset,
@@ -1232,7 +1208,7 @@ impl Backend {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .push((id.clone(), *offset, *generation));
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let ApiRequest::PlaylistSample {
             id,
             offset,
@@ -1244,7 +1220,7 @@ impl Backend {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .push((id.clone(), *offset, *generation));
         }
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let ApiRequest::HomeEpisodes { shows, generation } = &request {
             self.home_episode_requests
                 .lock()
@@ -1257,8 +1233,8 @@ impl Backend {
         self.send(Command::Api(request));
     }
 
-    #[cfg(test)]
-    pub(crate) fn take_library_cache_stores(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn take_library_cache_stores(
         &self,
     ) -> Vec<crate::account_cache::Cache<Vec<Playlist>>> {
         std::mem::take(
@@ -1269,8 +1245,8 @@ impl Backend {
         )
     }
 
-    #[cfg(test)]
-    pub(crate) fn take_home_cache_stores(
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn take_home_cache_stores(
         &self,
     ) -> Vec<crate::account_cache::Cache<crate::model::HomeSnapshot>> {
         std::mem::take(
@@ -1281,8 +1257,8 @@ impl Backend {
         )
     }
 
-    #[cfg(test)]
-    pub(crate) fn take_home_episode_requests(&self) -> Vec<(Vec<String>, u64)> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn take_home_episode_requests(&self) -> Vec<(Vec<String>, u64)> {
         std::mem::take(
             &mut *self
                 .home_episode_requests
@@ -1291,7 +1267,7 @@ impl Backend {
         )
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn take_playlist_item_requests(&self) -> Vec<(String, u32, u64)> {
         std::mem::take(
             &mut *self
@@ -1301,7 +1277,7 @@ impl Backend {
         )
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn take_playlist_sample_requests(&self) -> Vec<(String, u32, u64)> {
         std::mem::take(
             &mut *self
@@ -1311,7 +1287,7 @@ impl Backend {
         )
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn take_playlist_add_requests(&self) -> Vec<ApiRequest> {
         std::mem::take(
             &mut *self
@@ -1321,7 +1297,7 @@ impl Backend {
         )
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn take_remote_play_requests(&self) -> Vec<ApiRequest> {
         std::mem::take(
             &mut *self
@@ -1331,35 +1307,35 @@ impl Backend {
         )
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn take_transfer_requests(&self) -> Vec<ApiRequest> {
         std::mem::take(&mut *self.transfer_requests.lock().unwrap())
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn take_remote_shuffle_requests(&self) -> Vec<ApiRequest> {
         std::mem::take(&mut *self.remote_shuffle_requests.lock().unwrap())
     }
 
-    #[cfg(test)]
-    pub(crate) fn take_queue_requests(&self) -> Vec<ApiRequest> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn take_queue_requests(&self) -> Vec<ApiRequest> {
         std::mem::take(&mut *self.queue_requests.lock().unwrap())
     }
 
-    #[cfg(test)]
-    pub(crate) fn take_queued_tracks(&self) -> Vec<String> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn take_queued_tracks(&self) -> Vec<String> {
         std::mem::take(&mut *self.queued_tracks.lock().unwrap())
     }
 
-    #[cfg(test)]
-    pub(crate) fn take_player_commands(&self) -> Vec<PlayerCommand> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn take_player_commands(&self) -> Vec<PlayerCommand> {
         std::mem::take(&mut *self.player_commands.lock().unwrap())
     }
 
     pub fn player(&self, command: PlayerCommand) {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.player_commands.lock().unwrap().push(command.clone());
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         if let PlayerCommand::AddToQueue(uri) = &command {
             self.queued_tracks.lock().unwrap().push(uri.clone());
         }
@@ -1369,7 +1345,7 @@ impl Backend {
     /// Whether the system says the internet can be reached. Without it the
     /// engine waits for it to come back instead of retrying.
     pub fn network_status(&self, reachable: bool) {
-        #[cfg(test)]
+        #[cfg(any(test, feature = "test-support"))]
         self.network_statuses
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -1377,7 +1353,7 @@ impl Backend {
         self.send(Command::NetworkStatus(reachable));
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     pub fn take_network_statuses(&self) -> Vec<bool> {
         std::mem::take(
             &mut *self
@@ -1387,8 +1363,8 @@ impl Backend {
         )
     }
 
-    pub(crate) fn album_types(&self, uris: Vec<String>) {
-        #[cfg(test)]
+    pub fn album_types(&self, uris: Vec<String>) {
+        #[cfg(any(test, feature = "test-support"))]
         self.album_type_requests
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
@@ -1396,8 +1372,8 @@ impl Backend {
         self.send(Command::AlbumTypes(uris));
     }
 
-    #[cfg(test)]
-    pub(crate) fn take_album_type_requests(&self) -> Vec<Vec<String>> {
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn take_album_type_requests(&self) -> Vec<Vec<String>> {
         std::mem::take(
             &mut *self
                 .album_type_requests
@@ -1410,10 +1386,7 @@ impl Backend {
         self.events.try_iter().collect()
     }
 
-    pub fn art(&self) -> &ArtLoader {
-        &self.art
-    }
-
+    #[cfg(not(target_os = "android"))]
     pub fn shutdown(&mut self) {
         self.send(Command::Shutdown);
         if let Some(thread) = self.thread.take() {
@@ -1592,7 +1565,8 @@ struct Worker {
     made_for_you: Arc<crate::made_for_you::MadeForYou>,
     connect: Arc<crate::sonos::Controller>,
     background_session: Arc<tokio::sync::Semaphore>,
-    art: ArtLoader,
+    #[cfg(not(target_os = "android"))]
+    services: Arc<dyn Services>,
     events: std::sync::mpsc::Sender<Event>,
     commands: mpsc::UnboundedSender<Command>,
     waker: Arc<dyn Wake>,
@@ -1656,16 +1630,17 @@ impl Worker {
         engine_config: EngineConfig,
         web_client_id: Option<String>,
         http: Http,
-        art: ArtLoader,
+        #[cfg(not(target_os = "android"))]
+    services: Arc<dyn Services>,
         activity: Arc<NetActivity>,
         events: std::sync::mpsc::Sender<Event>,
         commands: mpsc::UnboundedSender<Command>,
         waker: Arc<dyn Wake>,
     ) -> Self {
         Self {
-            #[cfg(not(test))]
+            #[cfg(not(any(test, feature = "test-support")))]
             credentials: CredentialStore::new(dirs.clone()),
-            #[cfg(test)]
+            #[cfg(any(test, feature = "test-support"))]
             credentials: CredentialStore::in_memory(dirs.clone()),
             web_tokens: [None, None],
             playback_grant: None,
@@ -1686,7 +1661,7 @@ impl Worker {
             connect: Arc::default(),
             background_session: Arc::new(tokio::sync::Semaphore::new(4)),
             http,
-            art,
+            services,
             events,
             commands,
             waker,
@@ -1906,7 +1881,7 @@ impl Worker {
                     cover,
                     images,
                 } => {
-                    let art = self.art.clone();
+                    let services = self.services.clone();
                     let events = self.events.clone();
                     let waker = self.waker.clone();
                     let mut session = self.session.subscribe();
@@ -1916,7 +1891,7 @@ impl Worker {
                             result = async {
                                 let url = crate::api::models::pick_image(&images, u32::MAX)
                                     .ok_or_else(|| "No playlist artwork yet.".to_string())?;
-                                let bytes = art.fetch(url).await?;
+                                let bytes = services.fetch_art(url).await?;
                                 tokio::task::spawn_blocking(move || cover.matches_remote(&bytes))
                                     .await.map_err(|_| "Couldn't check playlist artwork.".to_string())?
                             } => result,
@@ -1941,8 +1916,8 @@ impl Worker {
                         let selected = selected.await;
                         let result = match selected {
                             None => Ok(None),
-                            Some(file) => tokio::task::spawn_blocking(move || {
-                                crate::playlist_cover::read(file.path()).map(Some)
+                            Some(path) => tokio::task::spawn_blocking(move || {
+                                crate::playlist_cover::read(&path).map(Some)
                             })
                             .await
                             .unwrap_or_else(|_| {
@@ -4166,11 +4141,11 @@ impl Worker {
     }
 
     fn accent(&self, url: String) {
-        let art = self.art.clone();
+        let services = self.services.clone();
         let events = self.events.clone();
         let waker = self.waker.clone();
         tokio::spawn(async move {
-            if let Ok(bytes) = art.fetch(&url).await {
+            if let Ok(bytes) = services.fetch_art(&url).await {
                 let color = tokio::task::spawn_blocking(move || accent_color(&bytes))
                     .await
                     .ok()
@@ -5270,12 +5245,8 @@ fn write_cached_playlist_file(
 ) -> std::io::Result<()> {
     use std::io::Write;
 
-    fastframe_file::write_with(path, fastframe_file::Access::Default, |file| {
-        // Buffer small serializer writes without retaining the whole JSON file.
-        let mut writer = std::io::BufWriter::new(file);
-        serde_json::to_writer(&mut writer, cached).map_err(std::io::Error::other)?;
-        writer.flush()
-    })
+    let bytes = serde_json::to_vec(cached).map_err(std::io::Error::other)?;
+    crate::file::write(path, &bytes)
 }
 
 /// The manifest stays constant-sized as the row file grows. A reader only
@@ -5665,18 +5636,9 @@ fn write_playlist_manifest(
     path: &std::path::Path,
     manifest: &PlaylistCacheManifest,
 ) -> std::io::Result<()> {
-    use std::io::Write;
-
     // The new manifest reaches the disk before it replaces the old one.
-    fastframe_file::write_with(
-        &playlist_manifest_path(path),
-        fastframe_file::Access::Default,
-        |file| {
-            let mut writer = std::io::BufWriter::new(file);
-            serde_json::to_writer(&mut writer, manifest).map_err(std::io::Error::other)?;
-            writer.flush()
-        },
-    )
+    let bytes = serde_json::to_vec(manifest).map_err(std::io::Error::other)?;
+    crate::file::write(&playlist_manifest_path(path), &bytes)
 }
 
 #[cfg(test)]
@@ -6590,13 +6552,13 @@ mod authorization_tests {
         assert_eq!(worker.engine_config.proxy, ProxyConfig::Off);
 
         let http = crate::settings::Settings {
-            proxy_mode: crate::settings::ProxyMode::Http,
+            proxy_mode: crate::proxy::ProxyMode::Http,
             proxy_host: "127.0.0.1".into(),
             proxy_port: "7890".into(),
             ..Default::default()
         };
         let socks = crate::settings::Settings {
-            proxy_mode: crate::settings::ProxyMode::Socks,
+            proxy_mode: crate::proxy::ProxyMode::Socks,
             ..http.clone()
         };
         let other = crate::settings::Settings {
@@ -6649,8 +6611,8 @@ mod authorization_tests {
     fn a_dropped_session_comes_back_at_the_level_being_heard() {
         let (runtime, mut worker, _) = worker("reconnect-volume");
         worker.signed_in = true;
-        worker.engine_config.initial_volume = crate::app::percent_to_volume(80);
-        worker.heard = Some(Heard::at(crate::app::percent_to_volume(5)));
+        worker.engine_config.initial_volume = crate::util::percent_to_volume(80);
+        worker.heard = Some(Heard::at(crate::util::percent_to_volume(5)));
         let (commands, receiver) = mpsc::unbounded_channel();
         commands.send(Command::Reconnect).unwrap();
         commands.send(Command::Shutdown).unwrap();
@@ -6661,7 +6623,7 @@ mod authorization_tests {
         });
         assert_eq!(
             worker.engine_config.initial_volume,
-            crate::app::percent_to_volume(5),
+            crate::util::percent_to_volume(5),
             "the next engine must start where the last one was heard"
         );
         assert!(
@@ -6678,12 +6640,12 @@ mod authorization_tests {
         let (runtime, mut worker, _) = worker("sign-out-volume");
         let _entered = runtime.enter();
         worker.signed_in = true;
-        worker.engine_config.initial_volume = crate::app::percent_to_volume(80);
-        worker.heard = Some(Heard::at(crate::app::percent_to_volume(5)));
+        worker.engine_config.initial_volume = crate::util::percent_to_volume(80);
+        worker.heard = Some(Heard::at(crate::util::percent_to_volume(5)));
         worker.sign_out();
         assert_eq!(
             worker.engine_config.initial_volume,
-            crate::app::percent_to_volume(5)
+            crate::util::percent_to_volume(5)
         );
         assert!(worker.heard.is_none());
     }
@@ -6767,7 +6729,7 @@ mod authorization_tests {
         let (runtime, mut worker, _) = worker("proxy-audio-restart");
         let old_audio = worker.engine_config.clone();
         let settings = crate::settings::Settings {
-            proxy_mode: crate::settings::ProxyMode::Http,
+            proxy_mode: crate::proxy::ProxyMode::Http,
             proxy_host: "127.0.0.1".into(),
             proxy_port: "8080".into(),
             ..Default::default()
@@ -7117,7 +7079,7 @@ mod authorization_tests {
             cache: root.join("cache"),
         };
         let settings = crate::settings::Settings::default();
-        let config = crate::app::engine_config(
+        let config = crate::config::engine_config(
             &dirs,
             &settings,
             ProxyConfig::Off,
@@ -7125,7 +7087,7 @@ mod authorization_tests {
             crate::eq::shared(),
         );
         let http = Http::new(reqwest::Client::new());
-        let art = ArtLoader::new(http.clone(), runtime.handle().clone(), dirs.art_cache_dir());
+        let services = Arc::new(crate::services::HttpServices::new(http.clone()));
         let (sender, events) = std::sync::mpsc::channel();
         let (commands, _) = mpsc::unbounded_channel();
         let worker = Worker::new(
@@ -7133,11 +7095,11 @@ mod authorization_tests {
             config,
             Some("personal".into()),
             http,
-            art,
+            services,
             Arc::new(NetActivity::default()),
             sender,
             commands,
-            std::sync::Arc::new(crate::wake::Waker::default()),
+            Arc::new(crate::wake::NoWake),
         );
         (runtime, worker, events)
     }

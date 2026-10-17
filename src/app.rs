@@ -21,8 +21,11 @@ use crate::i18n::{Locale, gettext, ngettext};
 use crate::model::QueueTab;
 use crate::model::*;
 use crate::paths::AppDirs;
+use crate::backend_ext::BackendExt;
 use crate::history_ext::HistoryExt;
-use crate::player::{EngineConfig, LoadSpec, LocalState, Playback, PlayerCommand, RepeatMode};
+use crate::http::Http;
+use crate::images::ArtLoader;
+use crate::player::{LoadSpec, LocalState, Playback, PlayerCommand, RepeatMode};
 use crate::settings::{
     CachedRootlist, LanguageChoiceExt, SessionState, Settings, SettingsExt, ThemeChoice,
 };
@@ -247,6 +250,8 @@ pub struct App {
     settings_dirty: bool,
     last_settings_save: Instant,
     pub backend: Backend,
+    /// The egui artwork loader, for the covers the interface renders.
+    pub art: ArtLoader,
     media_controls: Option<MediaControls>,
     /// The desktop's light or dark preference, for "Follow system".
     #[cfg(target_os = "linux")]
@@ -777,11 +782,32 @@ impl App {
             std::sync::Arc::clone(&tap),
             std::sync::Arc::clone(&eq),
         );
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("spotifast-runtime")
+            .enable_all()
+            .build()
+            .expect("unable to start the async runtime");
+        let http = if options.restore_sign_in {
+            Http::unavailable("Restoring proxy settings".into())
+        } else {
+            Http::from_proxy(&applied_proxy).unwrap_or_else(|error| {
+                log::warn!("Network configuration failed: {error}");
+                Http::unavailable(error)
+            })
+        };
+        let art = ArtLoader::new(http.clone(), runtime.handle().clone(), dirs.art_cache_dir());
+        let services = std::sync::Arc::new(crate::services::DesktopServices {
+            art: art.clone(),
+        });
         let backend = Backend::spawn(
             dirs.clone(),
             engine_config,
             settings.web_client_id.clone(),
             std::sync::Arc::new(waker.clone()),
+            services,
+            runtime,
+            http,
             options.restore_sign_in,
         );
         let locale = settings.language.resolve();
@@ -850,6 +876,7 @@ impl App {
             settings_dirty: false,
             last_settings_save: Instant::now(),
             backend,
+            art: art.clone(),
             media_controls,
             #[cfg(target_os = "linux")]
             system_appearance,
@@ -1098,10 +1125,10 @@ impl App {
     /// window is (re)created around this long-lived application state.
     pub fn attach(&mut self, ctx: &egui::Context) {
         theme::install(ctx);
-        ctx.add_bytes_loader(std::sync::Arc::new(self.backend.art().clone()));
-        ctx.add_image_loader(std::sync::Arc::new(self.backend.art().scaler()));
+        ctx.add_bytes_loader(std::sync::Arc::new(self.art.clone()));
+        ctx.add_image_loader(std::sync::Arc::new(self.art.scaler()));
         // The covers the last window's egui held are gone with it.
-        self.backend.art().forget_textures();
+        self.art.forget_textures();
         ctx.set_theme(self.theme_preference());
         self.applied_dark = None;
         self.winamp.forget_textures();
@@ -3271,7 +3298,7 @@ impl App {
 
         if self.last_eviction.elapsed() > Duration::from_secs(20) {
             self.last_eviction = now;
-            self.backend.art().evict(ctx);
+            self.art.evict(ctx);
             self.evict_stale_pages();
         }
         self.sync_skin(ctx);
@@ -3897,7 +3924,7 @@ impl App {
         {
             return Some(file.clone());
         }
-        match self.backend.art().cached_file(url) {
+        match self.art.cached_file(url) {
             Some(file) => {
                 self.media_art = Some((url.to_owned(), file.clone()));
                 Some(file)
@@ -3906,7 +3933,7 @@ impl App {
             // cover rather than download one for every song.
             None => {
                 if !self.metered() {
-                    self.backend.art().prefetch(ctx, url);
+                    self.art.prefetch(ctx, url);
                 }
                 None
             }
@@ -10484,7 +10511,7 @@ impl App {
                 self.rebuild_recents();
                 self.toast(gettext(self.locale, "Play history cleared"));
             }
-            Action::ClearArtCache => match self.backend.art().clear_disk_cache() {
+            Action::ClearArtCache => match self.art.clear_disk_cache() {
                 Ok(bytes) => {
                     ctx.forget_all_images();
                     // The media controls hold a path into what was just
@@ -11683,46 +11710,7 @@ fn increase_playlist_total(playlist: &mut Playlist, added: u32) {
     }
 }
 
-pub fn engine_config(
-    dirs: &AppDirs,
-    settings: &Settings,
-    proxy: crate::settings::ProxyConfig,
-    tap: std::sync::Arc<crate::vis::AudioTap>,
-    eq: crate::eq::SharedEq,
-) -> EngineConfig {
-    EngineConfig {
-        tap,
-        eq,
-        device_name: settings.device_name.trim().to_string(),
-        bitrate_kbps: settings.bitrate,
-        normalisation: settings.normalisation,
-        autoplay: settings.autoplay,
-        gapless: settings.gapless,
-        backend: settings.platform_backend(),
-        buffer_ms: settings.audio_buffer_ms,
-        audio_device: settings
-            .audio_device
-            .clone()
-            .filter(|device| !device.trim().is_empty()),
-        initial_volume: settings.volume,
-        volume_dir: dirs.volume_dir(),
-        audio_cache_dir: settings.audio_cache.then(|| dirs.audio_cache_dir()),
-        audio_cache_limit: Some(settings.audio_cache_mb.max(64) * 1024 * 1024),
-        proxy,
-    }
-}
-
-/// The equalizer as the settings describe it.
-pub fn eq_settings(settings: &Settings) -> crate::eq::EqSettings {
-    crate::eq::EqSettings {
-        on: settings.eq_on,
-        preamp_db: settings.eq_preamp_db,
-        bands_db: settings.eq_bands_db,
-        balance: settings.balance,
-        mono: settings.mono,
-    }
-    .clamped()
-}
+pub use spotifast_core::config::{engine_config, eq_settings};
 
 pub use spotifast_core::util::{percent_to_volume, volume_to_percent};
 
@@ -19898,7 +19886,7 @@ mod tests {
         // #then nothing has been downloaded for this song yet
         assert_eq!(app.media_art_file(&ctx, url), None);
         assert!(
-            !app.backend.art().prefetch(&ctx, url),
+            !app.art.prefetch(&ctx, url),
             "the miss should have started the download"
         );
 
@@ -19938,7 +19926,7 @@ mod tests {
         change_power(&app, |conditions| conditions.metered = true);
         assert_eq!(app.media_art_file(&ctx, url), None);
         assert!(
-            app.backend.art().prefetch(&ctx, url),
+            app.art.prefetch(&ctx, url),
             "nothing should have asked for it before"
         );
     }
@@ -20086,7 +20074,7 @@ mod tests {
         // #then MPRIS is left to the URL alone
         assert_eq!(app.media_art_file(&ctx, url), None);
         assert!(
-            app.backend.art().prefetch(&ctx, url),
+            app.art.prefetch(&ctx, url),
             "a download was started for artwork nothing here reads"
         );
     }
@@ -20102,7 +20090,7 @@ mod tests {
         let ctx = egui::Context::default();
         app.attach(&ctx);
         let url = "https://i.scdn.co/image/abc";
-        assert!(app.backend.art().prefetch(&ctx, url), "the first request");
+        assert!(app.art.prefetch(&ctx, url), "the first request");
 
         // #when the artwork cache is emptied
         app.actions.push(Action::ClearArtCache);
@@ -20110,7 +20098,7 @@ mod tests {
 
         // #then the next request downloads it again
         assert!(
-            app.backend.art().prefetch(&ctx, url),
+            app.art.prefetch(&ctx, url),
             "the loader still remembers artwork that has been deleted"
         );
     }

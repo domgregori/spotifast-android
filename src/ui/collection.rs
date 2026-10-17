@@ -90,7 +90,7 @@ pub(super) fn hero_images<'a>(
 
 pub(super) fn hero(app: &mut App, ui: &mut egui::Ui, hero: Hero<'_>) {
     let palette = app.palette;
-    let art = app.backend.art().clone();
+    let art = app.art.clone();
     let softened = hero
         .images
         .thumbnail
@@ -122,7 +122,7 @@ pub(super) fn hero(app: &mut App, ui: &mut egui::Ui, hero: Hero<'_>) {
                 rect,
                 radius,
                 if hero.round { Icon::User } else { Icon::Music },
-                Some(app.backend.art()),
+                Some(&app.art),
             );
         }
         ui.vertical(|ui| {

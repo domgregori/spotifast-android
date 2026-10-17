@@ -97,3 +97,5 @@ tokio = { version = "1", features = ["test-util"] }
 [features]
 # Enables the in-memory credential backend used by the desktop crate's tests.
 test-support = []
+# Sample data and screenshot flags, forwarded from the desktop crate.
+demo = []

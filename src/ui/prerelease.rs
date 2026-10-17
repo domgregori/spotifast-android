@@ -64,7 +64,7 @@ pub(super) fn show(app: &mut App, ui: &mut egui::Ui, data: &Prerelease) {
             rect,
             4.0,
             Icon::Music,
-            Some(app.backend.art()),
+            Some(&app.art),
         );
         ui.vertical(|ui| {
             ui.set_width(ui.available_width());
@@ -105,7 +105,7 @@ pub(super) fn show(app: &mut App, ui: &mut egui::Ui, data: &Prerelease) {
                         rect,
                         12.0,
                         Icon::User,
-                        Some(app.backend.art()),
+                        Some(&app.art),
                     );
                 }
                 for artist in &data.album.artists {

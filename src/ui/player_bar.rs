@@ -414,7 +414,7 @@ fn now_playing_block(app: &mut App, ui: &mut egui::Ui, region: Rect, now: Option
     super::widgets::playing_cover(
         ui,
         &palette,
-        app.backend.art(),
+        &app.art,
         "player-bar",
         app.small_art(now, cover_rect.width()),
         cover_rect,

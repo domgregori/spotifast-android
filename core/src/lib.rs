@@ -9,7 +9,9 @@
 pub mod auth;
 pub mod api;
 pub mod account_cache;
+pub mod backend;
 pub mod cast;
+pub mod config;
 pub mod credentials;
 pub mod eq;
 pub mod file;
@@ -32,6 +34,7 @@ pub mod proxy;
 pub mod remote_action;
 pub mod repeat;
 pub mod resample;
+pub mod services;
 pub mod session_reads;
 #[cfg(not(target_os = "android"))]
 pub mod shm;

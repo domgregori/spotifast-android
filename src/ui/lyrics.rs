@@ -465,7 +465,7 @@ fn big_cover(app: &App, ui: &mut egui::Ui, column: Rect, align: Align) {
     widgets::playing_cover(
         ui,
         &theme::Palette::dark(),
-        app.backend.art(),
+        &app.art,
         "fullscreen-lyrics",
         now.art_url.as_deref().or(now.art_small.as_deref()),
         cover,
@@ -513,7 +513,7 @@ fn background(app: &mut App, ui: &mut egui::Ui, rect: Rect) {
     let painter = ui.painter().with_clip_rect(rect);
     if let Some(texture) = app
         .lyrics_backdrop
-        .texture(ui.ctx(), app.backend.art(), art.as_deref())
+        .texture(ui.ctx(), &app.art, art.as_deref())
     {
         painter.image(
             texture.id(),
@@ -588,7 +588,7 @@ fn track_heading(app: &App, ui: &mut egui::Ui) {
             widgets::playing_cover(
                 ui,
                 &theme::Palette::dark(),
-                app.backend.art(),
+                &app.art,
                 "lyrics-heading",
                 app.small_art(&now, size),
                 rect,

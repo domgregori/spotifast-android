@@ -631,7 +631,7 @@ fn paint_expanded_art(app: &mut App, ui: &mut egui::Ui, rect: Rect) {
     super::widgets::playing_cover(
         ui,
         &palette,
-        app.backend.art(),
+        &app.art,
         "sidebar-art",
         Some(&url),
         rect,
@@ -1333,7 +1333,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
             let reorder_slot = reordering.then_some(pointer).flatten().map(|pos| {
                 (((pos.y - list_top) / row_height).round().max(0.0) as usize).min(entries.len())
             });
-            let art = app.backend.art().clone();
+            let art = app.art.clone();
             super::widgets::virtual_rows(ui, entries.len(), row_height, |ui, index| {
                 let entry = &entries[index];
                 if !app.settings.sidebar_compact
@@ -1504,7 +1504,7 @@ fn contents(app: &mut App, ui: &mut egui::Ui, grid_art: Option<Rect>) {
                                 cover_rect,
                                 if entry.round { 22.0 } else { 6.0 },
                                 if entry.round { Icon::User } else { Icon::Music },
-                                Some(app.backend.art()),
+                                Some(&app.art),
                             );
                         }
                         let text_left = cover_rect.right() + 12.0;
@@ -1780,7 +1780,7 @@ fn library_grid(
                                     6.0
                                 },
                                 if entry.round { Icon::User } else { Icon::Music },
-                                Some(app.backend.art()),
+                                Some(&app.art),
                             );
                         }
 

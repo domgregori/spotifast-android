@@ -333,7 +333,7 @@ fn top_result(
             image_rect,
             if round { 48.0 } else { 6.0 },
             if round { Icon::User } else { Icon::Music },
-            Some(app.backend.art()),
+            Some(&app.art),
         );
         let text_clip = Rect::from_min_max(
             pos2(rect.left() + 20.0, image_rect.bottom() + 12.0),

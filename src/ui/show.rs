@@ -289,7 +289,7 @@ pub fn episode_row(
         cover_rect,
         6.0,
         Icon::Mic,
-        Some(app.backend.art()),
+        Some(&app.art),
     );
     let text_left = cover_rect.right() + 16.0;
     let text_rect = Rect::from_min_max(
