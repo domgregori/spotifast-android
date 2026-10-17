@@ -41,6 +41,7 @@ pub const NO_DEVICE: &str =
 
 /// Opens the output: the device by name, else the default.
 #[cfg(not(target_os = "android"))]
+#[cfg(not(target_os = "android"))]
 type Opener = fn(Option<&str>, u32, &AudioControl) -> Result<Output, OpenError>;
 
 /// Maximum queued rodio chunks before `write` blocks, about 200 ms of audio.
@@ -106,11 +107,13 @@ pub struct AudioControl {
 
 #[derive(Default)]
 #[cfg(not(target_os = "android"))]
+#[cfg(not(target_os = "android"))]
 struct AudioTarget {
     sink: Weak<rodio::Sink>,
     envelope: Option<Arc<Envelope>>,
 }
 
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 impl AudioControl {
     pub fn new(buffer_ms: u32) -> Arc<Self> {
@@ -205,6 +208,7 @@ impl AudioControl {
 /// Frames handed to rodio, and frames it has finished with.
 /// The difference is what is still queued.
 #[cfg(not(target_os = "android"))]
+#[cfg(not(target_os = "android"))]
 struct Queued {
     appended: AtomicU64,
     consumed: AtomicU64,
@@ -213,6 +217,7 @@ struct Queued {
     wake_at: AtomicU64,
 }
 
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 impl Queued {
     fn new() -> Arc<Self> {
@@ -267,6 +272,7 @@ const SCALE: u32 = 1 << 24;
 
 /// A sample-clocked gain shared by every chunk in one rodio queue.
 #[cfg(not(target_os = "android"))]
+#[cfg(not(target_os = "android"))]
 struct Envelope {
     level: AtomicU32,
     target: AtomicU32,
@@ -277,6 +283,7 @@ struct Envelope {
     full_step: u32,
 }
 
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 impl Envelope {
     /// Resting fully open, for a signal that is already sounding.
@@ -355,10 +362,12 @@ impl Envelope {
 
 /// The per-frame movement that crosses the whole range in `frames`.
 #[cfg(not(target_os = "android"))]
+#[cfg(not(target_os = "android"))]
 fn step_over(frames: u32) -> u32 {
     SCALE.div_ceil(frames.max(1)).max(1)
 }
 
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 fn fade_frames(sample_rate: u32, length: Duration) -> u32 {
     (u64::from(sample_rate) * length.as_millis() as u64 / 1_000).max(1) as u32
@@ -366,6 +375,7 @@ fn fade_frames(sample_rate: u32, length: Duration) -> u32 {
 
 /// Applies the shared interruption envelope on rodio's output thread, so it
 /// can smooth audio that was already queued when the user changes track.
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 struct TransitionSource {
     inner: rodio::buffer::SamplesBuffer,
@@ -384,6 +394,7 @@ struct TransitionSource {
     writer: thread::Thread,
 }
 
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 impl TransitionSource {
     fn new(
@@ -480,6 +491,7 @@ pub struct RodioSink {
 }
 
 #[cfg(not(target_os = "android"))]
+#[cfg(not(target_os = "android"))]
 struct Output {
     device: fastframe_audio::Output<MixerRender>,
     volume: Arc<AtomicU32>,
@@ -502,6 +514,7 @@ struct Output {
     last_write: Option<Instant>,
 }
 
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 impl Output {
     fn failed(&self) -> bool {
@@ -573,6 +586,7 @@ impl Output {
 
 /// The converter from Spotify's rate to `sample_rate`, when they differ.
 #[cfg(not(target_os = "android"))]
+#[cfg(not(target_os = "android"))]
 fn converter_to(sample_rate: u32) -> Option<Resampler> {
     let resampler = Resampler::new(SAMPLE_RATE, sample_rate, NUM_CHANNELS as usize);
     if resampler.is_some() {
@@ -585,13 +599,16 @@ fn converter_to(sample_rate: u32) -> Option<Resampler> {
 
 /// A mixer and the rate it runs at.
 #[cfg(not(target_os = "android"))]
+#[cfg(not(target_os = "android"))]
 type MadeMixer = (rodio::mixer::Mixer, u32);
 
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 type MixerSlot = Arc<Mutex<Option<MadeMixer>>>;
 
 /// A linear gain ramp, shared by every channel of an output frame.
 #[derive(Default)]
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 struct VolumeRamp {
     current: f32,
@@ -600,6 +617,7 @@ struct VolumeRamp {
     sample_rate: u32,
 }
 
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 impl VolumeRamp {
     fn next_gain(&mut self, target: f32, sample_rate: u32) -> f32 {
@@ -626,6 +644,7 @@ impl VolumeRamp {
 /// stream. A stream in the format the mixer already has keeps it, so a
 /// reopen on another device carries on from the same sample; another rate or
 /// channel count gets a new mixer, which waits in `made` for the sink.
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 struct MixerRender {
     volume: Arc<AtomicU32>,
@@ -666,6 +685,7 @@ impl Render for MixerRender {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 impl RodioSink {
     pub fn new(
@@ -728,6 +748,7 @@ impl RodioSink {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 impl Sink for RodioSink {
     /// Never fails: an output that cannot open is reported by the first
@@ -882,6 +903,7 @@ impl Sink for RodioSink {
 /// Linux requires rtkit; CoreAudio owns its real-time callback on macOS.
 #[cfg(windows)]
 #[cfg(not(target_os = "android"))]
+#[cfg(not(target_os = "android"))]
 fn take_precedence() {
     use windows_sys::Win32::System::Threading::{
         GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
@@ -894,6 +916,7 @@ fn take_precedence() {
 }
 
 #[cfg(not(windows))]
+#[cfg(not(target_os = "android"))]
 #[cfg(not(target_os = "android"))]
 fn take_precedence() {}
 
@@ -1595,5 +1618,23 @@ mod tests {
         queued.wait_for_room(100);
         assert!(started.elapsed() < Duration::from_secs(2));
         assert_eq!(queued.wake_at.load(Ordering::SeqCst), 0);
+    }
+}
+
+/// Android has no audio output until the cpal/Oboe sink lands (Phase C).
+/// This sink reports the missing device so playback fails gracefully.
+#[cfg(target_os = "android")]
+pub struct NoopSink;
+
+#[cfg(target_os = "android")]
+impl Sink for NoopSink {
+    fn start(&mut self) -> SinkResult<()> {
+        Ok(())
+    }
+    fn stop(&mut self) -> SinkResult<()> {
+        Ok(())
+    }
+    fn write(&mut self, _packet: AudioPacket, _converter: &mut Converter) -> SinkResult<()> {
+        Err(SinkError::OnWrite(NO_DEVICE.to_string()))
     }
 }

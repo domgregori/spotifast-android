@@ -14,6 +14,7 @@ use librespot_playback::decoder::AudioPacket;
 use librespot_playback::mixer::VolumeGetter;
 use librespot_playback::{NUM_CHANNELS, SAMPLE_RATE};
 
+#[cfg(not(target_os = "android"))]
 use crate::sink::AudioControl;
 
 /// Half a second of audio.
@@ -117,6 +118,7 @@ impl AudioTap {
 /// Runs the equalizer and taps the signal before passing it to the real sink.
 pub struct Tapped {
     inner: Box<dyn Sink>,
+    #[cfg(not(target_os = "android"))]
     control: Arc<AudioControl>,
     tap: Arc<AudioTap>,
     eq: crate::eq::Processor,
@@ -135,6 +137,7 @@ pub struct Tapped {
 impl Tapped {
     pub fn new(
         inner: Box<dyn Sink>,
+        #[cfg(not(target_os = "android"))]
         control: Arc<AudioControl>,
         tap: Arc<AudioTap>,
         volume: Box<dyn VolumeGetter + Send>,
@@ -144,6 +147,7 @@ impl Tapped {
     ) -> Self {
         Self {
             inner,
+            #[cfg(not(target_os = "android"))]
             control,
             tap,
             eq: crate::eq::Processor::new(eq),
@@ -181,6 +185,7 @@ impl Sink for Tapped {
     }
 
     fn write(&mut self, packet: AudioPacket, converter: &mut Converter) -> SinkResult<()> {
+        #[cfg(not(target_os = "android"))]
         if self.control.take_processing_reset() {
             self.eq.reset();
             self.limiter = crate::limiter::Limiter::new(f64::from(SAMPLE_RATE));

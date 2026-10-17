@@ -138,6 +138,7 @@ impl Error {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 fn native_error(operation: &str, error: keyring_core::Error) -> Error {
     log::warn!(
         "credential store {operation} failed: {}",
@@ -153,6 +154,7 @@ fn native_error(operation: &str, error: keyring_core::Error) -> Error {
 /// error code. Some provider errors contain the secret or arbitrary platform
 /// data, so their own Debug/Display text is never used, except the Windows
 /// store's fixed "Windows ERROR_NAME" or "Windows error code N" (#815).
+#[cfg(not(target_os = "android"))]
 fn describe_native_error(error: &keyring_core::Error) -> String {
     use keyring_core::Error as E;
     let (kind, platform) = match error {
@@ -178,6 +180,7 @@ fn describe_native_error(error: &keyring_core::Error) -> String {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 fn windows_error_code(text: &str) -> bool {
     if let Some(name) = text.strip_prefix("Windows ERROR_") {
         !name.is_empty()
@@ -198,6 +201,7 @@ fn windows_error_code(text: &str) -> bool {
 /// restart. `enterprise` returns the persistence the store reports after the
 /// write, when it can tell.
 #[cfg(any(windows, test))]
+#[cfg(not(target_os = "android"))]
 fn write_preferring_enterprise(
     enterprise: impl FnOnce() -> Result<Option<String>, keyring_core::Error>,
     local: impl FnOnce() -> Result<(), keyring_core::Error>,
@@ -239,11 +243,32 @@ pub trait ProtectedStore: Send {
     fn delete(&mut self, key: &str) -> Result<(), Error>;
 }
 
+/// The Android credential store arrives as a UniFFI callback (Phase B).
+/// Until then it reports the store unavailable.
+#[cfg(target_os = "android")]
 #[derive(Default)]
+struct NoopStore;
+
+#[cfg(target_os = "android")]
+impl ProtectedStore for NoopStore {
+    fn read(&mut self, _key: &str) -> Result<Option<Vec<u8>>, Error> {
+        Err(Error::Unavailable)
+    }
+    fn write(&mut self, _key: &str, _secret: &[u8]) -> Result<(), Error> {
+        Err(Error::Unavailable)
+    }
+    fn delete(&mut self, _key: &str) -> Result<(), Error> {
+        Err(Error::Unavailable)
+    }
+}
+
+#[derive(Default)]
+#[cfg(not(target_os = "android"))]
 struct NativeStore {
     store: Option<Arc<keyring_core::api::CredentialStore>>,
 }
 
+#[cfg(not(target_os = "android"))]
 impl NativeStore {
     fn entry(&mut self, key: &str) -> Result<keyring_core::Entry, Error> {
         self.entry_with(key, None)
@@ -271,6 +296,7 @@ impl NativeStore {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 impl ProtectedStore for NativeStore {
     fn read(&mut self, key: &str) -> Result<Option<Vec<u8>>, Error> {
         match self.entry(key)?.get_secret() {
@@ -348,7 +374,11 @@ pub struct Loaded {
 
 impl Store {
     pub fn new(dirs: AppDirs) -> Self {
-        Self::with_backend(dirs, Box::new(NativeStore::default()))
+        #[cfg(not(target_os = "android"))]
+        let backend: Box<dyn ProtectedStore> = Box::new(NativeStore::default());
+        #[cfg(target_os = "android")]
+        let backend: Box<dyn ProtectedStore> = Box::new(NoopStore);
+        Self::with_backend(dirs, backend)
     }
 
     #[cfg(any(test, feature = "test-support"))]

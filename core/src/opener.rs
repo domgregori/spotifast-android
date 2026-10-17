@@ -9,7 +9,7 @@ use std::ffi::OsStr;
 use std::io;
 
 /// Opens a URL or a path in whatever the desktop uses for it.
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_os = "android")))]
 pub fn open(target: impl AsRef<OsStr>) -> io::Result<()> {
     open::that(target.as_ref())
 }

@@ -6,12 +6,15 @@
 //! `--update-error` (stripped by [`fastframe_update::intercept`] before the
 //! argument parser), and the handoff and receipt files keep their format.
 
+#[cfg(not(target_os = "android"))]
 pub use fastframe_update::{
     CHECK_INTERVAL, DownloadState, Installation, Kind, Prepared, Release, Source, Unsupported,
     Updater,
 };
+#[cfg(not(target_os = "android"))]
 use fastframe_update::{MacConfig, ReqwestTransport, UpdateConfig};
 
+#[cfg(not(target_os = "android"))]
 pub const CONFIG: UpdateConfig = UpdateConfig {
     macos: MacConfig {
         bundle_ids: &["rocks.spotifast.Spotifast"],
@@ -30,6 +33,7 @@ pub const CONFIG: UpdateConfig = UpdateConfig {
 };
 
 /// An updater on Spotifast's HTTP client, through the configured proxy.
+#[cfg(not(target_os = "android"))]
 pub fn updater(proxy: &crate::proxy::ProxyConfig) -> anyhow::Result<Updater> {
     let builder = crate::http::blocking_builder(proxy).map_err(anyhow::Error::msg)?;
     Ok(Updater::new(CONFIG, ReqwestTransport::new(builder)?))

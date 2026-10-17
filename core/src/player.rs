@@ -39,7 +39,9 @@ use librespot_playback::{
 use sha1::{Digest, Sha1};
 
 use crate::api::models::ArtistRef;
-use crate::sink::{AudioControl, ErrorHook, RodioSink};
+use crate::sink::ErrorHook;
+#[cfg(not(target_os = "android"))]
+use crate::sink::{AudioControl, RodioSink};
 use crate::vis::{AudioTap, Tapped};
 
 #[derive(Clone, Debug)]
@@ -285,6 +287,7 @@ pub struct Engine {
     /// What was playing when the session ended on its own.
     interrupted: Arc<Mutex<Option<Interrupted>>>,
     shutting_down: Arc<std::sync::atomic::AtomicBool>,
+    #[cfg(not(target_os = "android"))]
     audio: Arc<AudioControl>,
 }
 
@@ -338,7 +341,9 @@ impl Engine {
             ..LocalState::default()
         }));
         let session = Session::new(session_config, Some(cache));
+        #[cfg(not(target_os = "android"))]
         let audio = AudioControl::new(config.buffer_ms);
+        #[cfg(not(target_os = "android"))]
         let (sink_builder, volume) = sink_builder(
             config,
             Arc::clone(&state),
@@ -347,14 +352,24 @@ impl Engine {
             Arc::clone(&normalisation_factor),
             Arc::clone(&audio),
         );
+        #[cfg(target_os = "android")]
+        let (sink_builder, volume) = {
+            let sink_builder: Box<dyn FnOnce() -> Box<dyn Sink> + Send> =
+                Box::new(|| Box::new(crate::sink::NoopSink));
+            let volume: Box<dyn VolumeGetter + Send> = Box::new(NoOpVolume);
+            (sink_builder, volume)
+        };
         let player = Player::new(player_config, session.clone(), volume, sink_builder);
-        let events = player.get_player_event_channel();
-        tokio::spawn(run_events(
-            events,
-            Arc::clone(&state),
-            Arc::clone(&notify),
-            Arc::clone(&audio),
-        ));
+        #[cfg(not(target_os = "android"))]
+        {
+            let events = player.get_player_event_channel();
+            tokio::spawn(run_events(
+                events,
+                Arc::clone(&state),
+                Arc::clone(&notify),
+                Arc::clone(&audio),
+            ));
+        }
 
         let connect_config = ConnectConfig {
             name: config.device_name.clone(),
@@ -414,6 +429,7 @@ impl Engine {
             state,
             interrupted,
             shutting_down,
+            #[cfg(not(target_os = "android"))]
             audio,
         })
     }
@@ -559,10 +575,12 @@ impl Engine {
             &self.state.lock().unwrap_or_else(|p| p.into_inner()),
             &command,
         );
+        #[cfg(not(target_os = "android"))]
         if interrupts_audio {
             self.audio.interrupt();
         }
         let result = self.send_command(command);
+        #[cfg(not(target_os = "android"))]
         if interrupts_audio && result.is_err() {
             self.audio.stopped();
         }
@@ -659,12 +677,14 @@ type SinkAndVolume = (
     Box<dyn VolumeGetter + Send>,
 );
 
+#[cfg(not(target_os = "android"))]
 fn sink_builder(
     config: &EngineConfig,
     state: Arc<Mutex<LocalState>>,
     notify: Notify,
     mixer: &Arc<dyn Mixer>,
     normalisation: Arc<std::sync::atomic::AtomicU64>,
+    #[cfg(not(target_os = "android"))]
     audio: Arc<AudioControl>,
 ) -> SinkAndVolume {
     let device = config.audio_device.clone();
@@ -753,10 +773,12 @@ impl Heard {
     }
 }
 
+#[cfg(not(target_os = "android"))]
 async fn run_events(
     mut events: tokio::sync::mpsc::UnboundedReceiver<PlayerEvent>,
     state: Arc<Mutex<LocalState>>,
     notify: Notify,
+    #[cfg(not(target_os = "android"))]
     audio: Arc<AudioControl>,
 ) {
     let mut play_request_id = None;

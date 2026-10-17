@@ -703,15 +703,19 @@ pub enum Command {
     ActivateReceiver(Box<crate::zeroconf::Receiver>),
     /// Ask GitHub whether a newer release exists. Manual checks report every
     /// outcome; the daily check only announces a new release.
+    #[cfg(not(target_os = "android"))]
     CheckForUpdates {
         manual: bool,
         source: crate::updates::Source,
     },
+    #[cfg(not(target_os = "android"))]
     InspectUpdate,
+    #[cfg(not(target_os = "android"))]
     DownloadUpdate {
         release: crate::updates::Release,
         source: crate::updates::Source,
     },
+    #[cfg(not(target_os = "android"))]
     InstallUpdate {
         prepared: Box<crate::updates::Prepared>,
         arguments: Vec<String>,
@@ -837,12 +841,16 @@ pub enum Event {
         config: ProxyConfig,
         result: Result<bool, String>,
     },
+    #[cfg(not(target_os = "android"))]
     UpdateSupport(Result<crate::updates::Installation, String>),
+    #[cfg(not(target_os = "android"))]
     UpdateProgress {
         received: u64,
         total: u64,
     },
+    #[cfg(not(target_os = "android"))]
     UpdateDownloaded(Result<Box<crate::updates::Prepared>, String>),
+    #[cfg(not(target_os = "android"))]
     UpdateInstalling(Result<(), String>),
     PlaylistCoverChecked {
         id: String,
@@ -871,6 +879,7 @@ pub enum Event {
     },
     Error(String),
     /// GitHub answered an update check, or the request failed.
+    #[cfg(not(target_os = "android"))]
     UpdateChecked {
         manual: bool,
         result: Result<Option<crate::updates::Release>, String>,
@@ -1130,16 +1139,19 @@ impl Backend {
                 .unwrap_or_else(|poisoned| poisoned.into_inner())
                 .push(cache.clone());
         }
+        #[cfg(not(target_os = "android"))]
+        let update_command = matches!(
+            command,
+            Command::CheckForUpdates { .. }
+                | Command::InspectUpdate
+                | Command::DownloadUpdate { .. }
+                | Command::InstallUpdate { .. }
+        );
+        #[cfg(target_os = "android")]
+        let update_command = false;
         if self.offline
-            && !matches!(
-                command,
-                Command::Accent { .. }
-                    | Command::Shutdown
-                    | Command::CheckForUpdates { .. }
-                    | Command::InspectUpdate
-                    | Command::DownloadUpdate { .. }
-                    | Command::InstallUpdate { .. }
-            )
+            && !matches!(command, Command::Accent { .. } | Command::Shutdown)
+            && !update_command
         {
             return;
         }
@@ -1863,6 +1875,7 @@ impl Worker {
                     let directory = self.dirs.config.join("themes");
                     let events = self.events.clone();
                     let waker = self.waker.clone();
+                    #[cfg(not(target_os = "android"))]
                     tokio::task::spawn_blocking(move || {
                         if let Err(error) = std::fs::create_dir_all(&directory)
                             .and_then(|()| crate::opener::open(&directory))
@@ -2178,9 +2191,11 @@ impl Worker {
                 Command::RetryEngine { generation } => self.retry_engine(generation),
                 Command::DiscoverReceivers => self.discover_receivers(),
                 Command::ActivateReceiver(receiver) => self.activate_receiver(*receiver),
+                #[cfg(not(target_os = "android"))]
                 Command::CheckForUpdates { manual, source } => {
                     self.check_for_updates(manual, source)
                 }
+                #[cfg(not(target_os = "android"))]
                 Command::InspectUpdate => {
                     let proxy = self.engine_config.proxy.clone();
                     let events = self.events.clone();
@@ -2195,6 +2210,7 @@ impl Worker {
                         waker.wake();
                     });
                 }
+                #[cfg(not(target_os = "android"))]
                 Command::DownloadUpdate { release, source } => {
                     let proxy = self.engine_config.proxy.clone();
                     let events = self.events.clone();
@@ -2216,6 +2232,7 @@ impl Worker {
                         waker.wake();
                     });
                 }
+                #[cfg(not(target_os = "android"))]
                 Command::InstallUpdate {
                     prepared,
                     arguments,
@@ -2832,6 +2849,7 @@ impl Worker {
             }));
         }
         let browser_url = flow.url.clone();
+        #[cfg(not(target_os = "android"))]
         tokio::task::spawn_blocking(move || {
             if let Err(error) = crate::opener::open(&browser_url) {
                 log::warn!("unable to open a browser: {error}");
@@ -3224,6 +3242,7 @@ impl Worker {
         self.cancel_signin = Some(cancel_tx);
         self.emit(Event::Playback(LocalPlayback::Authorizing));
         let browser_url = flow.url.clone();
+        #[cfg(not(target_os = "android"))]
         tokio::task::spawn_blocking(move || {
             if let Err(error) = crate::opener::open(&browser_url) {
                 log::warn!("unable to open a browser: {error}");
@@ -3603,6 +3622,7 @@ impl Worker {
         });
     }
 
+    #[cfg(not(target_os = "android"))]
     fn check_for_updates(&self, manual: bool, source: crate::updates::Source) {
         // A proxy still being restored or refused blocks the check, as it
         // blocks every other request.
