@@ -3250,6 +3250,12 @@ impl Worker {
         self.cancel_signin = Some(cancel_tx);
         self.emit(Event::Playback(LocalPlayback::Authorizing));
         let browser_url = flow.url.clone();
+        // Android opens the authorize URL in a Custom Tab, like the Web API
+        // sign-in; the loopback listener captures the returned code.
+        #[cfg(target_os = "android")]
+        self.emit(Event::Auth(AuthStatus::WaitingForBrowser {
+            url: flow.url.clone(),
+        }));
         #[cfg(not(target_os = "android"))]
         tokio::task::spawn_blocking(move || {
             if let Err(error) = crate::opener::open(&browser_url) {

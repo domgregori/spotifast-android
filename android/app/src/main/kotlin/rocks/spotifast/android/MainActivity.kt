@@ -120,6 +120,15 @@ private fun Library(username: String) {
             TextButton(onClick = { SpotifyCore.openSearch() }) {
                 Text("Search")
             }
+            val playbackStatus by SpotifyCore.playbackStatus.collectAsState()
+            TextButton(onClick = { SpotifyCore.authorizePlayback() }) {
+                Text("Authorize playback")
+            }
+            Text(
+                "Playback: ${playbackStatus.first}" +
+                    if (playbackStatus.second.isEmpty()) "" else " (${playbackStatus.second})",
+                style = MaterialTheme.typography.bodySmall,
+            )
             Spacer(Modifier.height(16.dp))
             if (library.isEmpty()) {
                 Text("Your library is empty.")

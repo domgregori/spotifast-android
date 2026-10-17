@@ -7,7 +7,7 @@ mod wake;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use spotifast_core::backend::{ApiRequest, ApiResponse, AuthStatus, Backend, Command, Event};
+use spotifast_core::backend::{ApiRequest, ApiResponse, AuthStatus, Backend, Command, Event, LocalPlayback};
 use spotifast_core::config;
 use spotifast_core::http::Http;
 use spotifast_core::paths::AppDirs;
@@ -45,6 +45,10 @@ pub trait PlaybackStateListener: Send + Sync {
     /// Search results for a query: the matching tracks, as a JSON array of
     /// `{ "uri", "name", "artist", "duration_ms" }`.
     fn on_search_tracks(&self, query: String, tracks: String);
+
+    /// Local playback state: one of `Unavailable`, `Authorizing`, `Connecting`,
+    /// `WaitingForNetwork`, `Ready`, or `Failed`.
+    fn on_playback_status(&self, status: String, detail: String);
 }
 
 /// Credential storage, implemented by Kotlin over EncryptedSharedPreferences.
@@ -174,6 +178,11 @@ impl CoreHandle {
         self.backend.lock().unwrap().api(ApiRequest::Search { query, serial });
     }
 
+    /// Authorize local playback in the browser (the streaming grant).
+    pub fn authorize_playback(&self) {
+        self.backend.lock().unwrap().send(Command::AuthorizePlayback);
+    }
+
     /// Register the outbound-state listener and start the event pump. Calling
     /// this again replaces the listener.
     pub fn set_listener(&self, listener: Arc<dyn PlaybackStateListener>) {
@@ -203,6 +212,10 @@ impl CoreHandle {
                                 listener.on_auth_status(status, detail);
                             }
                             Event::Error(message) => listener.on_error(message),
+                            Event::Playback(status) => {
+                                let (status, detail) = playback_status_parts(status);
+                                listener.on_playback_status(status, detail);
+                            }
                             Event::Api(api) => match *api {
                                 ApiResponse::MyPlaylists { result, .. } => {
                                     let entries: Vec<LibraryEntry> = match result {
@@ -289,6 +302,18 @@ fn auth_status_parts(status: AuthStatus) -> (String, String) {
         AuthStatus::Connecting => ("Connecting".into(), String::new()),
         AuthStatus::Connected { username } => ("Connected".into(), username),
         AuthStatus::Failed(message) => ("Failed".into(), message),
+    }
+}
+
+/// Splits a [`LocalPlayback`] into a tag and its optional detail for Kotlin.
+fn playback_status_parts(status: LocalPlayback) -> (String, String) {
+    match status {
+        LocalPlayback::Unavailable => ("Unavailable".into(), String::new()),
+        LocalPlayback::Authorizing => ("Authorizing".into(), String::new()),
+        LocalPlayback::Connecting => ("Connecting".into(), String::new()),
+        LocalPlayback::WaitingForNetwork => ("WaitingForNetwork".into(), String::new()),
+        LocalPlayback::Ready { device_id } => ("Ready".into(), device_id),
+        LocalPlayback::Failed(message) => ("Failed".into(), message),
     }
 }
 

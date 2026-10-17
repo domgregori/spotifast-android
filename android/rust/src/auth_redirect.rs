@@ -1,16 +1,18 @@
-//! Captures Spotify's redirect through the app's custom scheme.
+//! Captures Spotify's redirect.
 //!
-//! The desktop listens on a loopback port; Android registers a
-//! `spotifast://callback` intent filter and Kotlin hands the code from
-//! `onNewIntent` back through `CoreHandle::complete_redirect`, which
-//! resolves the in-flight channel here.
+//! The Web API grant uses the app's `spotifast://callback` custom scheme:
+//! Kotlin hands the code from `onNewIntent` back through
+//! `CoreHandle::complete_redirect`, which resolves the in-flight channel here.
+//! The playback grant uses Spotify's own client, which only has the loopback
+//! redirect registered, so it delegates to the core's loopback listener.
 
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Mutex;
 
 use anyhow::{Result, anyhow};
-use spotifast_core::auth::{AuthRedirect, AuthRedirectHandler, Grant};
+use spotifast_core::auth::{AuthRedirect, AuthRedirectHandler, Grant, PLAYBACK_REDIRECT_PORT};
+use spotifast_core::auth_redirect::LoopbackRedirectHandler;
 use tokio::sync::{oneshot, watch};
 
 /// The Android redirect handler, shared with the backend and the FFI surface.
@@ -29,11 +31,19 @@ impl AndroidAuthRedirect {
 }
 
 impl AuthRedirectHandler for AndroidAuthRedirect {
-    fn redirect_uri(&self, _grant: &Grant) -> String {
-        "spotifast://callback".to_string()
+    fn redirect_uri(&self, grant: &Grant) -> String {
+        if grant.redirect_port == PLAYBACK_REDIRECT_PORT {
+            // Spotify's desktop client only has the loopback redirect registered.
+            format!("http://127.0.0.1:{}/login", grant.redirect_port)
+        } else {
+            "spotifast://callback".to_string()
+        }
     }
 
-    fn prepare(&self, _grant: &Grant) -> Result<Box<dyn AuthRedirect + Send>> {
+    fn prepare(&self, grant: &Grant) -> Result<Box<dyn AuthRedirect + Send>> {
+        if grant.redirect_port == PLAYBACK_REDIRECT_PORT {
+            return LoopbackRedirectHandler.prepare(grant);
+        }
         let (sender, receiver) = oneshot::channel();
         *self.pending.lock().unwrap() = Some(sender);
         Ok(Box::new(AndroidRedirect { receiver }))

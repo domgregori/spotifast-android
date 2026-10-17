@@ -7,6 +7,7 @@
 //! OS stay in the desktop crate.
 
 pub mod auth;
+pub mod auth_redirect;
 pub mod api;
 pub mod account_cache;
 pub mod backend;

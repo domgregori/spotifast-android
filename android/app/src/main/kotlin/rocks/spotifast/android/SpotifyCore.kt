@@ -57,6 +57,9 @@ object SpotifyCore {
     private val _searching = MutableStateFlow(false)
     val searching: StateFlow<Boolean> = _searching.asStateFlow()
 
+    private val _playbackStatus = MutableStateFlow("Unavailable" to "")
+    val playbackStatus: StateFlow<Pair<String, String>> = _playbackStatus.asStateFlow()
+
     private var handle: CoreHandle? = null
 
     private val listener = object : PlaybackStateListener {
@@ -115,6 +118,10 @@ object SpotifyCore {
                 }
             }.getOrDefault(emptyList())
         }
+
+        override fun onPlaybackStatus(status: String, detail: String) {
+            _playbackStatus.value = status to detail
+        }
     }
 
     @Synchronized
@@ -154,4 +161,6 @@ object SpotifyCore {
         _searching.value = false
         _searchTracks.value = emptyList()
     }
+
+    fun authorizePlayback() = handle?.authorizePlayback()
 }
