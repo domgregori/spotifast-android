@@ -231,7 +231,9 @@ fn write_preferring_enterprise(
     }
 }
 
-trait ProtectedStore: Send {
+/// A platform credential store, one arm per OS. Android's arm delegates to a
+/// Kotlin-implemented callback (Phase B); the desktop arms use `keyring-core`.
+pub trait ProtectedStore: Send {
     fn read(&mut self, key: &str) -> Result<Option<Vec<u8>>, Error>;
     fn write(&mut self, key: &str, secret: &[u8]) -> Result<(), Error>;
     fn delete(&mut self, key: &str) -> Result<(), Error>;
