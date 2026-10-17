@@ -246,7 +246,7 @@ fn page_tint(app: &mut App) -> Option<Color32> {
         return None;
     }
     match image {
-        Some(url) => app.tint_for(Some(&url)).or_else(|| app.now_playing_tint()),
+        Some(url) => app.engine.tint_for(Some(&url)).map(|rgb| Color32::from_rgb(rgb[0], rgb[1], rgb[2])).or_else(|| app.now_playing_tint()),
         None => app.now_playing_tint(),
     }
 }

@@ -199,6 +199,7 @@ pub const RECENTS_PAGE: u32 = 50;
 pub struct Engine {
     pub localize: std::sync::Arc<dyn Localize>,
     pub files: std::sync::Arc<dyn FileWriter>,
+    pub accents: HashMap<String, [u8; 3]>,
     pub control_devices_stale: bool,
     pub locale: Locale,
     pub dirs: AppDirs,
@@ -6689,3 +6690,15 @@ impl Engine {
     }
 }
 
+impl Engine {
+    pub fn tint_for(&mut self, url: Option<&str>) -> Option<[u8; 3]> {
+        let url = url?;
+        if let Some(color) = self.accents.get(url) {
+            return Some(*color);
+        }
+        if self.accent_pending.insert(url.to_string()) {
+            self.backend.send(Command::Accent { url: url.to_string() });
+        }
+        None
+    }
+}

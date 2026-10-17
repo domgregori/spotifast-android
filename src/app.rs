@@ -11,7 +11,11 @@ use crate::api::models::{
     PlayableItem, Queue, Track, pick_image,
 };
 #[cfg(test)]
-use crate::api::models::{Device, PlaybackState, User};
+use crate::api::models::{Album, Artist, Device, PlaybackState, Playlist, PlaylistItem, Show, TrackCount, User};
+#[cfg(test)]
+use crate::backend::PLAYLIST_PAGE_SIZE;
+#[cfg(test)]
+use crate::i18n::Locale;
 use crate::backend::{
     ApiRequest, ApiResponse, AuthStatus, Backend, Command, Event, LocalPlayback, LyricsRequest, RecentsFor, RemoteAction,
 };
@@ -194,7 +198,6 @@ pub struct App {
     winamp_level_reassert: u8,
     /// What the window's title bar says, as last set.
     window_title: String,
-    pub accents: HashMap<String, Color32>,
     pub lyrics_backdrop: crate::images::LyricsBackdrop,
     pub softened_covers: crate::images::SoftenedCovers,
     /// The main window's size, position and maximized state: from the
@@ -539,7 +542,6 @@ impl App {
             custom_themes: theme::Catalog::default(),
             winamp_level_reassert: 0,
             window_title: String::new(),
-            accents: HashMap::new(),
             lyrics_backdrop: Default::default(),
             softened_covers: Default::default(),
             window_geometry: fastframe_shell::window::Geometry {
@@ -573,6 +575,7 @@ impl App {
             localize: std::sync::Arc::new(crate::i18n::GettextLocalize),
             files: std::sync::Arc::new(crate::services::FastframeFileWriter(fastframe_file::Writer::new())),
             control_devices_stale: true,
+            accents: HashMap::new(),
             locale,
             dirs,
             settings,
@@ -845,20 +848,7 @@ impl App {
         }
         let now = self.engine.now_playing()?;
         let url = now.art_small.or(now.art_url)?;
-        self.accents.get(&url).copied()
-    }
-
-    pub fn tint_for(&mut self, url: Option<&str>) -> Option<Color32> {
-        let url = url?;
-        if let Some(color) = self.accents.get(url) {
-            return Some(*color);
-        }
-        if self.engine.accent_pending.insert(url.to_string()) {
-            self.engine.backend.send(Command::Accent {
-                url: url.to_string(),
-            });
-        }
-        None
+        self.engine.accents.get(&url).map(|&rgb| Color32::from_rgb(rgb[0], rgb[1], rgb[2]))
     }
 
     fn handle_backend_events(&mut self, events: Vec<Event>) {
@@ -925,8 +915,7 @@ impl App {
                 Event::Api(response) => self.handle_api(*response),
                 Event::Accent { url, color } => {
                     self.engine.accent_pending.remove(&url);
-                    let tint = self.palette.tint_from_art(color);
-                    self.accents.insert(url, tint);
+                    self.engine.accents.insert(url, color);
                 }
                 Event::ProxyRestored { config, password } => {
                     self.engine.handle_proxy_restored(config, password)
@@ -1574,7 +1563,7 @@ impl App {
             theme::apply(ctx, &self.palette);
             crate::motion::apply(ctx, self.motion.reduced());
             self.applied_dark = Some(dark);
-            self.accents.clear();
+            self.engine.accents.clear();
             self.engine.accent_pending.clear();
         }
     }
@@ -1964,7 +1953,7 @@ impl App {
             Action::OpenSongRadio { uri, track } => self.engine.open_song_radio(&uri, &track),
             Action::PrepareTint(url) => {
                 if self.engine.settings.accent_from_art {
-                    self.tint_for(Some(&url));
+                    self.engine.tint_for(Some(&url));
                 }
             }
             Action::OpenUri(uri) => {
@@ -3713,7 +3702,7 @@ impl App {
         }
         self.engine.request_contains(vec![now.uri.clone()]);
         if let Some(url) = now.art_small.or(now.art_url) {
-            self.tint_for(Some(&url));
+            self.engine.tint_for(Some(&url));
         }
         if matches!(self.engine.page(), Page::Queue)
             || self.engine.show_queue_panel
@@ -4469,7 +4458,7 @@ pub fn thumb_state(&self, dark: bool) -> crate::thumbbar::ThumbState {
                         playlist.fill_from(listed);
                     }
                     if let Some(image) = pick_image(&playlist.images, 64) {
-                        self.tint_for(Some(image));
+                        self.engine.tint_for(Some(image));
                     }
                 }
                 let mut refresh_rows = false;
@@ -5180,7 +5169,7 @@ pub fn thumb_state(&self, dark: bool) -> crate::thumbbar::ThumbState {
             ApiResponse::Artist { id, result } => {
                 if let Ok(artist) = &result {
                     if let Some(image) = pick_image(&artist.images, 64) {
-                        self.tint_for(Some(image));
+                        self.engine.tint_for(Some(image));
                     }
                     if let Some(page) = self.engine.artist_pages.get_mut(&id)
                         && page.top_tracks.needs_load()
@@ -5251,7 +5240,7 @@ pub fn thumb_state(&self, dark: bool) -> crate::thumbbar::ThumbState {
                 if let Ok(album) = &result
                     && let Some(image) = pick_image(&album.images, 64)
                 {
-                    self.tint_for(Some(image));
+                    self.engine.tint_for(Some(image));
                 }
                 if let Some(page) = self.engine.album_pages.get_mut(&id) {
                     match result {
@@ -5316,7 +5305,7 @@ pub fn thumb_state(&self, dark: bool) -> crate::thumbbar::ThumbState {
                 if let Ok(show) = &result
                     && let Some(image) = pick_image(&show.images, 64)
                 {
-                    self.tint_for(Some(image));
+                    self.engine.tint_for(Some(image));
                 }
                 if let Some(page) = self.engine.show_pages.get_mut(&id) {
                     match result {
@@ -11460,8 +11449,8 @@ mod tests {
             color: [200, 40, 40],
         }]);
         assert_eq!(
-            app.tint_for(Some(url)),
-            Some(app.palette.tint_from_art([200, 40, 40]))
+            app.engine.tint_for(Some(url)),
+            Some([200, 40, 40])
         );
     }
 
