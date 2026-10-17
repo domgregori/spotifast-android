@@ -36,4 +36,5 @@ pub mod settings;
 pub mod sink;
 pub mod util;
 pub mod vis;
+pub mod wake;
 pub mod zeroconf;
