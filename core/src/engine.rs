@@ -24,10 +24,10 @@ use crate::model::{
 };
 use crate::now_playing::NowPlaying;
 use crate::paths::AppDirs;
-use crate::settings::Settings;
+use crate::settings::{CachedRootlist, Settings};
 use std::time::Duration;
 
-use crate::backend::{ApiRequest, ApiResponse, Command, PLAYLIST_PAGE_SIZE, PlaylistCacheRows, RecentsFor, RemoteAction};
+use crate::backend::{ApiRequest, ApiResponse, Command, Event, PLAYLIST_PAGE_SIZE, PlaylistCacheRows, RecentsFor, RemoteAction};
 use crate::player::{LoadSpec, LocalState, Playback, PlayerCommand, RepeatMode};
 use crate::util;
 use crate::util::{percent_to_volume, volume_to_percent};
@@ -8507,3 +8507,178 @@ impl Engine {
         })));
     }
 }
+
+impl Engine {
+    pub fn handle_event(&mut self, event: Event) {
+        match event {
+                Event::PlaylistCoverChecked {
+                    id,
+                    request,
+                    images,
+                    result,
+                } => {
+                    self.cover_checked(&id, request, images, result);
+                }
+                Event::PlaylistCoverChosen {
+                    id,
+                    request,
+                    result,
+                } => {
+                    self.cover_chosen(&id, request, result);
+                }
+                Event::Auth(status) => self.handle_auth(status),
+                Event::Playback(status) => self.handle_playback(status),
+                Event::NetworkStatus(reachable) => {
+                    let became_reachable = !self.network_reachable && reachable;
+                    self.network_reachable = reachable;
+                    if became_reachable {
+                        self.on_network_restored();
+                    }
+                }
+                Event::Receivers(receivers) => self.receivers = receivers,
+                Event::ReceiverActivated { name, result } => {
+                    self.activating_receiver = None;
+                    match result {
+                        Ok(()) => {
+                            self.toast(
+                                // Translators: {name} is the name of a speaker or other playback device.
+                                self.localize.t(self.locale, "{name} is ready").replace("{name}", &name),
+                            );
+                            // It takes a moment to appear in the device list.
+                            self.pending_transfer_to = Some((name, Instant::now()));
+                            self.devices_fetched_at = None;
+                            self.refresh_devices();
+                        }
+                        Err(error) => self.toast_error(format!("{name}: {error}")),
+                    }
+                }
+                Event::Local(state) => self.handle_local(*state),
+                Event::Api(response) => self.handle_api(*response),
+                Event::Accent { url, color } => {
+                    self.accent_pending.remove(&url);
+                    self.accents.insert(url, color);
+                }
+                Event::ProxyRestored { config, password } => {
+                    self.handle_proxy_restored(config, password)
+                }
+                Event::ProxyStorageFailed(error) => {
+                    let message = if self.settings.proxy_password_legacy {
+                        self.localize.t(
+                            self.locale,
+                            // Translators: {error} is a sentence saying why the proxy password could not be stored.
+                            "{error} The original settings file is kept intact; changed preferences are not saved yet.",
+                        )
+                        .replace("{error}", error.proxy_message())
+                    } else {
+                        error.proxy_message().to_string()
+                    };
+                    self.toast_error(message);
+                }
+                Event::Error(message) => self.toast_error(message),
+                Event::Rootlist { result } => match result {
+                    Ok(rootlist) => {
+                        let account_id = self.user_id().map(str::to_owned).or_else(|| {
+                            if let AuthStatus::Connected { username } = &self.auth {
+                                Some(username.clone())
+                            } else {
+                                None
+                            }
+                        });
+                        self.rootlist = rootlist.entries;
+                        self.editable_by_grant = rootlist.editable;
+                        if let Some(account_id) = account_id {
+                            self.rootlist_cache = Some(CachedRootlist {
+                                account_id,
+                                entries: self.rootlist.clone(),
+                            });
+                            self.session_dirty = true;
+                        }
+                    }
+                    Err(error) => log::warn!("rootlist unavailable: {error}"),
+                },
+                Event::Lyrics { uri, result } => {
+                    if self.lyrics_uri.as_deref() == Some(uri.as_str()) {
+                        self.lyrics = match result {
+                            Ok(found) => Loadable::Loaded(found),
+                            Err(error) => Loadable::Failed(error),
+                        };
+                    }
+                }
+                Event::PlaylistCache {
+                    account_id,
+                    id,
+                    generation,
+                    cache,
+                } => {
+                    self.receive_playlist_cache(&account_id, &id, generation, cache);
+                }
+                Event::PlaylistCacheStored {
+                    account_id,
+                    id,
+                    generation,
+                    snapshot,
+                    success,
+                } => {
+                    self.receive_playlist_cache_stored(
+                        &account_id,
+                        &id,
+                        generation,
+                        &snapshot,
+                        success,
+                    );
+                }
+                Event::LikedSongsCache {
+                    account_id,
+                    generation,
+                    cache,
+                } => {
+                    self.receive_liked_cache(&account_id, generation, cache);
+                }
+                Event::AccountCaches {
+                    account_id,
+                    generation,
+                    playlists,
+                    home,
+                } => {
+                    self.receive_account_caches(&account_id, generation, playlists, home);
+                }
+                Event::UserName { id, name, image } => {
+                    self.set_user_name(id.clone(), name);
+                    self.set_user_image(id, image);
+                }
+                Event::AudiobookShows(uris) => {
+                    self.audiobook_shows.extend(uris);
+                }
+                Event::PlaylistHeader(header) => {
+                    self.playlist_headers.insert(header.id.clone(), *header);
+                    self.fill_blank_playlists();
+                }
+                Event::Radio {
+                    seed,
+                    generation,
+                    result,
+                } => self.receive_radio(&seed, generation, result),
+                Event::Prerelease {
+                    uri,
+                    generation,
+                    result,
+                } => self.receive_prerelease(&uri, generation, result.map(|data| *data)),
+                Event::PrereleaseSaved {
+                    uri,
+                    saved,
+                    generation,
+                    result,
+                } => self.receive_prerelease_saved(&uri, saved, generation, result),
+                Event::AlbumType { uri, result } => match result {
+                    Ok(true) => {
+                        self.confirmed_ep_albums.insert(uri);
+                    }
+                    Ok(false) => {}
+                    Err(error) => log::debug!("album type unavailable for {uri}: {error}"),
+                },
+                Event::WebApp { client_id } => self.web_app = client_id,
+                _ => {}
+        }
+    }
+}
+

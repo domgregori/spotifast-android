@@ -853,8 +853,6 @@ impl App {
 
     fn handle_backend_events(&mut self, events: Vec<Event>) {
         for event in events {
-            // Offline, as in demo mode, only colours read from cover art and
-            // local update checks come through.
             if self.engine.offline
                 && !matches!(&event, Event::Accent { .. })
                 && (self.update_source.is_github()
@@ -870,178 +868,6 @@ impl App {
                 continue;
             }
             match event {
-                Event::PlaylistCoverChecked {
-                    id,
-                    request,
-                    images,
-                    result,
-                } => {
-                    self.engine.cover_checked(&id, request, images, result);
-                }
-                Event::PlaylistCoverChosen {
-                    id,
-                    request,
-                    result,
-                } => {
-                    self.engine.cover_chosen(&id, request, result);
-                }
-                Event::Auth(status) => self.engine.handle_auth(status),
-                Event::Playback(status) => self.engine.handle_playback(status),
-                Event::NetworkStatus(reachable) => {
-                    let became_reachable = !self.engine.network_reachable && reachable;
-                    self.engine.network_reachable = reachable;
-                    if became_reachable {
-                        self.engine.on_network_restored();
-                    }
-                }
-                Event::Receivers(receivers) => self.engine.receivers = receivers,
-                Event::ReceiverActivated { name, result } => {
-                    self.engine.activating_receiver = None;
-                    match result {
-                        Ok(()) => {
-                            self.engine.toast(
-                                // Translators: {name} is the name of a speaker or other playback device.
-                                self.engine.localize.t(self.engine.locale, "{name} is ready").replace("{name}", &name),
-                            );
-                            // It takes a moment to appear in the device list.
-                            self.engine.pending_transfer_to = Some((name, Instant::now()));
-                            self.engine.devices_fetched_at = None;
-                            self.engine.refresh_devices();
-                        }
-                        Err(error) => self.engine.toast_error(format!("{name}: {error}")),
-                    }
-                }
-                Event::Local(state) => self.engine.handle_local(*state),
-                Event::Api(response) => self.engine.handle_api(*response),
-                Event::Accent { url, color } => {
-                    self.engine.accent_pending.remove(&url);
-                    self.engine.accents.insert(url, color);
-                }
-                Event::ProxyRestored { config, password } => {
-                    self.engine.handle_proxy_restored(config, password)
-                }
-                Event::ProxyPasswordStored => self.handle_proxy_password_stored(),
-                Event::ProxyStorageFailed(error) => {
-                    let message = if self.engine.settings.proxy_password_legacy {
-                        self.engine.localize.t(
-                            self.engine.locale,
-                            // Translators: {error} is a sentence saying why the proxy password could not be stored.
-                            "{error} The original settings file is kept intact; changed preferences are not saved yet.",
-                        )
-                        .replace("{error}", error.proxy_message())
-                    } else {
-                        error.proxy_message().to_string()
-                    };
-                    self.engine.toast_error(message);
-                }
-                Event::ProxyApplied {
-                    request,
-                    config,
-                    result,
-                } => self.handle_proxy_applied(request, config, result),
-                Event::Error(message) => self.engine.toast_error(message),
-                Event::Rootlist { result } => match result {
-                    Ok(rootlist) => {
-                        let account_id = self.engine.user_id().map(str::to_owned).or_else(|| {
-                            if let AuthStatus::Connected { username } = &self.engine.auth {
-                                Some(username.clone())
-                            } else {
-                                None
-                            }
-                        });
-                        self.engine.rootlist = rootlist.entries;
-                        self.engine.editable_by_grant = rootlist.editable;
-                        if let Some(account_id) = account_id {
-                            self.engine.rootlist_cache = Some(CachedRootlist {
-                                account_id,
-                                entries: self.engine.rootlist.clone(),
-                            });
-                            self.engine.session_dirty = true;
-                        }
-                    }
-                    Err(error) => log::warn!("rootlist unavailable: {error}"),
-                },
-                Event::Lyrics { uri, result } => {
-                    if self.engine.lyrics_uri.as_deref() == Some(uri.as_str()) {
-                        self.engine.lyrics = match result {
-                            Ok(found) => Loadable::Loaded(found),
-                            Err(error) => Loadable::Failed(error),
-                        };
-                    }
-                }
-                Event::PlaylistCache {
-                    account_id,
-                    id,
-                    generation,
-                    cache,
-                } => {
-                    self.engine.receive_playlist_cache(&account_id, &id, generation, cache);
-                }
-                Event::PlaylistCacheStored {
-                    account_id,
-                    id,
-                    generation,
-                    snapshot,
-                    success,
-                } => {
-                    self.engine.receive_playlist_cache_stored(
-                        &account_id,
-                        &id,
-                        generation,
-                        &snapshot,
-                        success,
-                    );
-                }
-                Event::LikedSongsCache {
-                    account_id,
-                    generation,
-                    cache,
-                } => {
-                    self.engine.receive_liked_cache(&account_id, generation, cache);
-                }
-                Event::AccountCaches {
-                    account_id,
-                    generation,
-                    playlists,
-                    home,
-                } => {
-                    self.engine.receive_account_caches(&account_id, generation, playlists, home);
-                }
-                Event::UserName { id, name, image } => {
-                    self.engine.set_user_name(id.clone(), name);
-                    self.engine.set_user_image(id, image);
-                }
-                Event::AudiobookShows(uris) => {
-                    self.engine.audiobook_shows.extend(uris);
-                }
-                Event::PlaylistHeader(header) => {
-                    self.engine.playlist_headers.insert(header.id.clone(), *header);
-                    self.engine.fill_blank_playlists();
-                }
-                Event::Radio {
-                    seed,
-                    generation,
-                    result,
-                } => self.engine.receive_radio(&seed, generation, result),
-                Event::Prerelease {
-                    uri,
-                    generation,
-                    result,
-                } => self.engine.receive_prerelease(&uri, generation, result.map(|data| *data)),
-                Event::PrereleaseSaved {
-                    uri,
-                    saved,
-                    generation,
-                    result,
-                } => self.engine.receive_prerelease_saved(&uri, saved, generation, result),
-                Event::AlbumType { uri, result } => match result {
-                    Ok(true) => {
-                        self.engine.confirmed_ep_albums.insert(uri);
-                    }
-                    Ok(false) => {}
-                    Err(error) => log::debug!("album type unavailable for {uri}: {error}"),
-                },
-                Event::WebApp { client_id } => self.engine.web_app = client_id,
                 Event::UpdateSupport(result) => {
                     if result.is_ok()
                         && self.engine.settings.download_updates_automatically
@@ -1108,9 +934,17 @@ impl App {
                         }
                     }
                 }
+                Event::ProxyPasswordStored => self.handle_proxy_password_stored(),
+                Event::ProxyApplied {
+                    request,
+                    config,
+                    result,
+                } => self.handle_proxy_applied(request, config, result),
+                _ => self.engine.handle_event(event),
             }
         }
     }
+
 
     fn push_winamp_level(&self, ctx: &egui::Context) {
         if self.window_level_supported
