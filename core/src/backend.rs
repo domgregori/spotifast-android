@@ -33,6 +33,7 @@ use crate::session_reads;
 use crate::proxy::ProxyConfig;
 use crate::services::Services;
 use crate::wake::Wake;
+use crate::auth::AuthRedirectHandler;
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
@@ -1020,6 +1021,7 @@ impl Backend {
         web_client_id: Option<String>,
         waker: Arc<dyn Wake>,
         services: Arc<dyn Services>,
+        redirect: Arc<dyn AuthRedirectHandler>,
         runtime: tokio::runtime::Runtime,
         http: Http,
         restore_sign_in: bool,
@@ -1030,6 +1032,7 @@ impl Backend {
 
         let worker_activity = Arc::clone(&activity);
         let worker_services = Arc::clone(&services);
+        let worker_redirect = Arc::clone(&redirect);
         let worker_commands = command_tx.clone();
         let thread = std::thread::Builder::new()
             .name("spotifast-backend".to_string())
@@ -1041,6 +1044,7 @@ impl Backend {
                         web_client_id,
                         http,
                         worker_services,
+                        worker_redirect,
                         worker_activity,
                         event_tx,
                         worker_commands,
@@ -1565,8 +1569,8 @@ struct Worker {
     made_for_you: Arc<crate::made_for_you::MadeForYou>,
     connect: Arc<crate::sonos::Controller>,
     background_session: Arc<tokio::sync::Semaphore>,
-    #[cfg(not(target_os = "android"))]
     services: Arc<dyn Services>,
+    redirect: Arc<dyn AuthRedirectHandler>,
     events: std::sync::mpsc::Sender<Event>,
     commands: mpsc::UnboundedSender<Command>,
     waker: Arc<dyn Wake>,
@@ -1630,8 +1634,8 @@ impl Worker {
         engine_config: EngineConfig,
         web_client_id: Option<String>,
         http: Http,
-        #[cfg(not(target_os = "android"))]
-    services: Arc<dyn Services>,
+        services: Arc<dyn Services>,
+        redirect: Arc<dyn AuthRedirectHandler>,
         activity: Arc<NetActivity>,
         events: std::sync::mpsc::Sender<Event>,
         commands: mpsc::UnboundedSender<Command>,
@@ -1662,6 +1666,7 @@ impl Worker {
             background_session: Arc::new(tokio::sync::Semaphore::new(4)),
             http,
             services,
+            redirect,
             events,
             commands,
             waker,
@@ -2800,8 +2805,8 @@ impl Worker {
                 }
             }
         };
-        let listener = match crate::auth::listen_for_redirect(grant.redirect_port) {
-            Ok(listener) => listener,
+        let prepared = match self.redirect.prepare(&grant) {
+            Ok(prepared) => prepared,
             Err(error) => {
                 if source == ApiSource::Shared {
                     self.emit(Event::Auth(AuthStatus::Failed(error.to_string())));
@@ -2816,7 +2821,7 @@ impl Worker {
         let lease = self.credentials.lease(web_slot(source));
         self.authorization_attempt += 1;
         let attempt = self.authorization_attempt;
-        let flow = crate::auth::begin(grant.clone());
+        let flow = crate::auth::begin(grant.clone(), self.redirect.as_ref());
         let (cancel_tx, cancel_rx) = watch::channel(false);
         self.cancel_signin = Some(cancel_tx);
         self.authorizing_source = Some(source);
@@ -2835,12 +2840,18 @@ impl Worker {
         let events = self.events.clone();
         let waker = self.waker.clone();
         let commands = self.commands.clone();
+        let redirect = self.redirect.clone();
         tokio::spawn(async move {
             let result = async {
-                let code = crate::auth::wait_for_code_on_listener(listener, &flow.state, cancel_rx)
-                    .await?;
-                let response =
-                    crate::auth::exchange_code(&http, &grant, &code, &flow.verifier).await?;
+                let code = prepared.wait_for_code(&flow.state, cancel_rx).await?;
+                let response = crate::auth::exchange_code(
+                    &http,
+                    &grant,
+                    &code,
+                    &flow.verifier,
+                    redirect.as_ref(),
+                )
+                .await?;
                 crate::auth::StoredToken::from_response(&grant.client_id, response, None)
             }
             .await;
@@ -3196,8 +3207,8 @@ impl Worker {
         // opening the browser (#899, as #754 did for the Web API). A busy
         // port must keep the saved grant and show the conflict, not send the
         // approval to whichever app holds the port.
-        let listener = match crate::auth::listen_for_redirect(grant.redirect_port) {
-            Ok(listener) => listener,
+        let prepared = match self.redirect.prepare(&grant) {
+            Ok(prepared) => prepared,
             Err(error) => {
                 self.emit(Event::Playback(LocalPlayback::Failed(error.to_string())));
                 return;
@@ -3208,7 +3219,7 @@ impl Worker {
         self.authorization_attempt += 1;
         let attempt = self.authorization_attempt;
         let lease = self.credentials.lease(CredentialSlot::Playback);
-        let flow = crate::auth::begin(grant.clone());
+        let flow = crate::auth::begin(grant.clone(), self.redirect.as_ref());
         let (cancel_tx, cancel_rx) = watch::channel(false);
         self.cancel_signin = Some(cancel_tx);
         self.emit(Event::Playback(LocalPlayback::Authorizing));
@@ -3222,11 +3233,12 @@ impl Worker {
         let events = self.events.clone();
         let waker = self.waker.clone();
         let commands = self.commands.clone();
+        let redirect = self.redirect.clone();
         tokio::spawn(async move {
             let result = async {
-                let code = crate::auth::wait_for_code_on_listener(listener, &flow.state, cancel_rx)
-                    .await?;
-                crate::auth::exchange_code(&http, &grant, &code, &flow.verifier).await
+                let code = prepared.wait_for_code(&flow.state, cancel_rx).await?;
+                crate::auth::exchange_code(&http, &grant, &code, &flow.verifier, redirect.as_ref())
+                    .await
             }
             .await;
             match result {
@@ -7066,6 +7078,17 @@ mod authorization_tests {
         Worker,
         std::sync::mpsc::Receiver<Event>,
     ) {
+        worker_with_redirect(name, Arc::new(crate::auth::NoRedirect))
+    }
+
+    fn worker_with_redirect(
+        name: &str,
+        redirect: Arc<dyn AuthRedirectHandler>,
+    ) -> (
+        tokio::runtime::Runtime,
+        Worker,
+        std::sync::mpsc::Receiver<Event>,
+    ) {
         let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()
@@ -7096,6 +7119,7 @@ mod authorization_tests {
             Some("personal".into()),
             http,
             services,
+            redirect,
             Arc::new(NetActivity::default()),
             sender,
             commands,
@@ -7104,12 +7128,31 @@ mod authorization_tests {
         (runtime, worker, events)
     }
 
+    /// A redirect handler whose port is always busy, standing in for the
+    /// desktop loopback listener when its port is taken.
+    struct BusyRedirect;
+
+    impl AuthRedirectHandler for BusyRedirect {
+        fn redirect_uri(&self, grant: &crate::auth::Grant) -> String {
+            format!("http://127.0.0.1:{}/login", grant.redirect_port)
+        }
+
+        fn prepare(
+            &self,
+            grant: &crate::auth::Grant,
+        ) -> anyhow::Result<Box<dyn crate::auth::AuthRedirect + Send>> {
+            Err(anyhow::anyhow!(
+                "Cannot start Spotify sign-in: port {} is in use or unavailable. Close the app using this port, then try again.",
+                grant.redirect_port
+            ))
+        }
+    }
+
     #[test]
     fn occupied_login_port_reports_persistent_failure_before_browser_sign_in() {
-        let (runtime, mut worker, events) = worker("occupied-login-port");
+        let (runtime, mut worker, events) =
+            worker_with_redirect("occupied-login-port", Arc::new(BusyRedirect));
         let _entered = runtime.enter();
-        let _occupied =
-            std::net::TcpListener::bind(("127.0.0.1", crate::auth::WEB_REDIRECT_PORT)).unwrap();
         for _ in 0..2 {
             worker.sign_in_source(ApiSource::Shared);
             let received: Vec<_> = events.try_iter().collect();
@@ -7127,9 +7170,6 @@ mod authorization_tests {
             assert_eq!(worker.authorization_attempt, 0);
         }
     }
-
-    /// Tests that bind the playback callback port take turns.
-    static PLAYBACK_PORT: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn failed(events: &std::sync::mpsc::Receiver<Event>) -> Vec<String> {
         events
@@ -7217,7 +7257,8 @@ mod authorization_tests {
     /// clearing it and opening the browser (#818, #824).
     #[test]
     fn set_up_playback_reconnects_with_the_saved_grant_first() {
-        let (runtime, mut worker, events) = worker("set-up-with-saved-grant");
+        let (runtime, mut worker, events) =
+            worker_with_redirect("set-up-with-saved-grant", Arc::new(BusyRedirect));
         let _entered = runtime.enter();
         verify(&mut worker, ApiSource::Shared, "alice");
         worker.playback_grant = Some(Credentials::with_password("alice", "dummy-grant"));
@@ -7244,12 +7285,9 @@ mod authorization_tests {
                 .any(|event| matches!(event, Event::Playback(LocalPlayback::Authorizing)))
         );
 
-        // Only Spotify rejecting the grant goes to the browser. The port is
-        // held so the browser flow stops at its port check and opens nothing.
-        let _port = PLAYBACK_PORT.lock().unwrap_or_else(|p| p.into_inner());
-        let _occupied =
-            std::net::TcpListener::bind(("127.0.0.1", crate::auth::PLAYBACK_REDIRECT_PORT))
-                .unwrap();
+        // Only Spotify rejecting the grant goes to the browser. The busy
+        // redirect handler stops the browser flow at its port check and opens
+        // nothing.
         let session = worker.album_type_lookup.session_generation;
         worker.on_engine_connected(
             session,
@@ -7292,8 +7330,8 @@ mod authorization_tests {
     /// saved playback grant alone, without opening the browser (#899).
     #[test]
     fn occupied_playback_port_keeps_the_saved_grant() {
-        let _port = PLAYBACK_PORT.lock().unwrap_or_else(|p| p.into_inner());
-        let (runtime, mut worker, events) = worker("occupied-playback-port");
+        let (runtime, mut worker, events) =
+            worker_with_redirect("occupied-playback-port", Arc::new(BusyRedirect));
         let _entered = runtime.enter();
         verify(&mut worker, ApiSource::Shared, "alice");
         let saved = worker.credentials.lease(CredentialSlot::Playback);
@@ -7304,9 +7342,6 @@ mod authorization_tests {
             ))))
             .unwrap();
         let _ = events.try_iter().count();
-        let _occupied =
-            std::net::TcpListener::bind(("127.0.0.1", crate::auth::PLAYBACK_REDIRECT_PORT))
-                .unwrap();
         let attempt = worker.authorization_attempt;
 
         worker.authorize_playback();

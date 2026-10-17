@@ -800,12 +800,14 @@ impl App {
         let services = std::sync::Arc::new(crate::services::DesktopServices {
             art: art.clone(),
         });
+        let redirect = std::sync::Arc::new(crate::auth_redirect::LoopbackRedirectHandler);
         let backend = Backend::spawn(
             dirs.clone(),
             engine_config,
             settings.web_client_id.clone(),
             std::sync::Arc::new(waker.clone()),
             services,
+            redirect,
             runtime,
             http,
             options.restore_sign_in,

@@ -9,6 +9,7 @@ pub mod appearance;
 pub use spotifast_core::auth;
 pub mod autoscroll;
 pub use spotifast_core::backend;
+pub mod auth_redirect;
 pub mod backend_ext;
 pub mod bidi;
 pub use spotifast_core::cast;

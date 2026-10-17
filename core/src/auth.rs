@@ -9,21 +9,21 @@
 //!   reusable credential kept in the platform credential store.
 //!
 //! The browser does the password entry; this process only ever sees the
-//! one-time authorization code that Spotify sends back to a loopback
-//! listener.
+//! one-time authorization code that Spotify sends back. How the code is
+//! captured is the front end's [`AuthRedirectHandler`]: the desktop listens
+//! on a loopback port, Android completes a channel from `onNewIntent`.
 
-use std::net::SocketAddr;
+use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{Result, anyhow, bail};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::net::TcpListener;
 use tokio::sync::watch;
 
 /// Spotify's own desktop client identity, the one librespot streams with.
@@ -34,8 +34,6 @@ pub const PLAYBACK_REDIRECT_PORT: u16 = 8898;
 /// Omarchy Spotify.
 pub const DEFAULT_WEB_CLIENT_ID: &str = "d420a117a32841c2b3474932e49fb54b";
 pub const WEB_REDIRECT_PORT: u16 = 8989;
-
-pub const REDIRECT_PATH: &str = "/login";
 
 /// Playback: what librespot needs to stream and join Spotify Connect.
 pub const PLAYBACK_SCOPES: &[&str] = &["streaming"];
@@ -63,11 +61,6 @@ pub const WEB_SCOPES: &[&str] = &[
 
 const AUTHORIZE_URL: &str = "https://accounts.spotify.com/authorize";
 const TOKEN_URL: &str = "https://accounts.spotify.com/api/token";
-const LOGIN_TIMEOUT: Duration = Duration::from_secs(10 * 60);
-/// A browser sends its request line at once; anything slower or longer is
-/// not the redirect, and must not hold the listener while the user waits.
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
-const REQUEST_LINE_LIMIT: u64 = 8 * 1024;
 /// Refresh this long before the access token expires.
 const REFRESH_MARGIN: Duration = Duration::from_secs(90);
 
@@ -107,9 +100,43 @@ impl Grant {
             scopes: WEB_SCOPES,
         })
     }
+}
 
-    pub fn redirect_uri(&self) -> String {
-        format!("http://127.0.0.1:{}{REDIRECT_PATH}", self.redirect_port)
+/// Captures Spotify's redirect and returns the authorization code.
+///
+/// The desktop listens on a loopback port; Android completes a channel when
+/// Kotlin's `onNewIntent` hands in the captured code.
+pub trait AuthRedirectHandler: Send + Sync {
+    /// The URI Spotify sends the code to for this grant. The desktop's is a
+    /// loopback URL; Android's is a custom scheme.
+    fn redirect_uri(&self, grant: &Grant) -> String;
+
+    /// Reserve the redirect mechanism before the browser is offered, so a
+    /// busy loopback port reports before the browser opens.
+    fn prepare(&self, grant: &Grant) -> Result<Box<dyn AuthRedirect + Send>>;
+}
+
+/// A reserved redirect mechanism awaiting the code.
+pub trait AuthRedirect: Send {
+    fn wait_for_code(
+        self: Box<Self>,
+        expected_state: &str,
+        cancel: watch::Receiver<bool>,
+    ) -> Pin<Box<dyn Future<Output = Result<String>> + Send>>;
+}
+
+/// A redirect handler that never captures a code, for headless runs and for
+/// tests that bypass browser sign-in.
+#[derive(Default)]
+pub struct NoRedirect;
+
+impl AuthRedirectHandler for NoRedirect {
+    fn redirect_uri(&self, grant: &Grant) -> String {
+        format!("http://127.0.0.1:{}/login", grant.redirect_port)
+    }
+
+    fn prepare(&self, _grant: &Grant) -> Result<Box<dyn AuthRedirect + Send>> {
+        Err(anyhow!("no redirect handler"))
     }
 }
 
@@ -127,7 +154,7 @@ fn random_token(bytes: usize) -> String {
     URL_SAFE_NO_PAD.encode(buffer)
 }
 
-pub fn begin(grant: Grant) -> Flow {
+pub fn begin(grant: Grant, redirect: &dyn AuthRedirectHandler) -> Flow {
     let verifier = random_token(48);
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
     let state = random_token(18);
@@ -136,10 +163,11 @@ pub fn begin(grant: Grant) -> Flow {
     } else {
         ""
     };
+    let redirect_uri = redirect.redirect_uri(&grant);
     let url = format!(
         "{AUTHORIZE_URL}?client_id={}&response_type=code&redirect_uri={}&code_challenge_method=S256&code_challenge={challenge}&state={state}&scope={}{show_dialog}",
         grant.client_id,
-        urlencoding::encode(&grant.redirect_uri()),
+        urlencoding::encode(&redirect_uri),
         urlencoding::encode(&grant.scopes.join(" "))
     );
     Flow {
@@ -160,113 +188,21 @@ pub struct TokenResponse {
     pub scope: Option<String>,
 }
 
-/// Reserve the callback port before offering or opening browser sign-in.
-pub fn listen_for_redirect(port: u16) -> Result<TcpListener> {
-    let address: SocketAddr = ([127, 0, 0, 1], port).into();
-    let listener = std::net::TcpListener::bind(address).with_context(|| {
-        format!("Cannot start Spotify sign-in: port {port} is in use or unavailable. Close the app using this port, then try again.")
-    })?;
-    listener.set_nonblocking(true)?;
-    Ok(TcpListener::from_std(listener)?)
-}
-
-/// Listens on a reserved port for Spotify's redirect and returns the
-/// authorization code.
-///
-/// Ends early when `cancel` flips to true (the user gave up) or after ten
-/// minutes.
-pub async fn wait_for_code_on_listener(
-    listener: TcpListener,
-    expected_state: &str,
-    mut cancel: watch::Receiver<bool>,
-) -> Result<String> {
-    let deadline = tokio::time::sleep(LOGIN_TIMEOUT);
-    tokio::pin!(deadline);
-
-    loop {
-        let (mut stream, _) = tokio::select! {
-            accepted = listener.accept() => accepted.context("redirect listener failed")?,
-            _ = cancel.changed() => {
-                if *cancel.borrow() { bail!("sign-in cancelled"); }
-                continue;
-            }
-            _ = &mut deadline => bail!("sign-in timed out; try again"),
-        };
-
-        let mut reader = BufReader::new(&mut stream).take(REQUEST_LINE_LIMIT);
-        let mut request_line = String::new();
-        match tokio::time::timeout(REQUEST_TIMEOUT, reader.read_line(&mut request_line)).await {
-            Ok(Ok(_)) if request_line.ends_with('\n') => {}
-            _ => continue,
-        }
-        let outcome = parse_request_line(&request_line, expected_state);
-        let (status, body) = match &outcome {
-            Ok(_) => ("200 OK", success_page()),
-            Err(error) => ("400 Bad Request", failure_page(&error.to_string())),
-        };
-        let response = format!(
-            "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{body}",
-            body.len()
-        );
-        let _ = stream.write_all(response.as_bytes()).await;
-        let _ = stream.shutdown().await;
-        match outcome {
-            Ok(code) => return Ok(code),
-            Err(error) => {
-                // A favicon request or a stale tab is not the redirect; keep waiting.
-                log::debug!("ignored request on the redirect listener: {error}");
-                continue;
-            }
-        }
-    }
-}
-
-fn parse_request_line(line: &str, expected_state: &str) -> Result<String> {
-    let target = line
-        .split_whitespace()
-        .nth(1)
-        .ok_or_else(|| anyhow!("malformed request"))?;
-    let (path, query) = target.split_once('?').unwrap_or((target, ""));
-    if path != REDIRECT_PATH {
-        bail!("unexpected redirect path");
-    }
-    let mut code = None;
-    let mut state = None;
-    let mut error = None;
-    for pair in query.split('&') {
-        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
-        let value = urlencoding::decode(value)
-            .map(|value| value.into_owned())
-            .unwrap_or_else(|_| value.to_string());
-        match key {
-            "code" => code = Some(value),
-            "state" => state = Some(value),
-            "error" => error = Some(value),
-            _ => {}
-        }
-    }
-    if error.is_some() {
-        bail!("Spotify refused the sign-in. Try again.");
-    }
-    if state.as_deref() != Some(expected_state) {
-        bail!("state mismatch");
-    }
-    code.ok_or_else(|| anyhow!("Spotify did not return an authorization code"))
-}
-
 pub async fn exchange_code(
     http: &reqwest::Client,
     grant: &Grant,
     code: &str,
     verifier: &str,
+    redirect: &dyn AuthRedirectHandler,
 ) -> Result<TokenResponse> {
+    let redirect_uri = redirect.redirect_uri(grant);
     token_request(
         http,
         &[
             ("client_id", grant.client_id.as_str()),
             ("grant_type", "authorization_code"),
             ("code", code),
-            ("redirect_uri", grant.redirect_uri().as_str()),
+            ("redirect_uri", redirect_uri.as_str()),
             ("code_verifier", verifier),
         ],
     )
@@ -461,36 +397,6 @@ fn now_secs() -> u64 {
         .unwrap_or(0)
 }
 
-fn page(title: &str, heading: &str, body: &str, accent: &str) -> String {
-    format!(
-        "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>{title}</title>\
-<style>:root{{color-scheme:dark}}body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#0f1114;color:#e8eaed;font-family:Inter,system-ui,sans-serif}}\
-main{{max-width:28rem;padding:2.5rem;border-radius:1.25rem;background:#181b20;box-shadow:0 20px 60px rgba(0,0,0,.5);text-align:center}}\
-.mark{{width:64px;height:64px;border-radius:50%;background:{accent};display:grid;place-items:center;margin:0 auto 1.25rem}}\
-.mark svg{{width:30px;height:30px;fill:#0f1114}}h1{{font-size:1.4rem;margin:.25rem 0 .5rem}}p{{color:#a5adba;line-height:1.5;margin:0}}</style>\
-<main><div class=\"mark\"><svg viewBox=\"0 0 24 24\"><path d=\"M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z\"/></svg></div>\
-<h1>{heading}</h1><p>{body}</p></main><script>setTimeout(function(){{window.close()}},1500)</script></html>"
-    )
-}
-
-fn success_page() -> String {
-    page(
-        "Signed in to Spotifast",
-        "You're signed in",
-        "You can close this tab and go back to Spotifast.",
-        "#1ed760",
-    )
-}
-
-fn failure_page(reason: &str) -> String {
-    page(
-        "Sign-in failed",
-        "Sign-in didn't complete",
-        &format!("{reason}. Return to Spotifast and try again."),
-        "#f5717f",
-    )
-}
-
 #[cfg(test)]
 mod tests {
     #[test]
@@ -512,77 +418,22 @@ mod tests {
                     .unwrap_err();
             assert!(!format!("{error:?} {error}").contains("dummy-refresh-secret"));
         }
-        for request in [
-            "GET /login?error=dummy-authorization-secret&state=ok HTTP/1.1",
-            "GET /dummy-authorization-secret HTTP/1.1",
-        ] {
-            let error = super::parse_request_line(request, "ok").unwrap_err();
-            assert!(!format!("{error:?} {error}").contains("dummy-authorization-secret"));
-        }
     }
 
     use super::*;
 
-    #[tokio::test]
-    async fn redirect_listener_can_retry_after_port_is_released() {
-        // A test running alongside can be handed the port between its
-        // release and the retry, so that case tries again on another port.
-        let (listener, port) = (0..10)
-            .find_map(|_| {
-                let occupied = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-                let port = occupied.local_addr().unwrap().port();
-                let error = listen_for_redirect(port).unwrap_err().to_string();
-                assert!(error.contains(&port.to_string()));
-                assert!(error.contains("try again"));
-                drop(occupied);
-                Some((listen_for_redirect(port).ok()?, port))
-            })
-            .expect("a released port can be listened on again");
-        let (cancel, receiver) = watch::channel(false);
-        let waiting =
-            tokio::spawn(
-                async move { wait_for_code_on_listener(listener, "state", receiver).await },
-            );
-        let mut browser = tokio::net::TcpStream::connect(("127.0.0.1", port))
-            .await
-            .unwrap();
-        browser
-            .write_all(b"GET /login?code=test-code&state=state HTTP/1.1\r\n\r\n")
-            .await
-            .unwrap();
-        let code = tokio::time::timeout(Duration::from_secs(2), waiting)
-            .await
-            .unwrap()
-            .unwrap()
-            .unwrap();
-        assert_eq!(code, "test-code");
-        drop(cancel);
-    }
+    /// A loopback redirect URI for the PKCE tests, without a real listener.
+    #[derive(Default)]
+    struct TestRedirect;
 
-    #[tokio::test(start_paused = true)]
-    async fn a_stalled_or_endless_request_does_not_hold_the_redirect_listener() {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let port = listener.local_addr().unwrap().port();
-        let mut stalled = tokio::net::TcpStream::connect(("127.0.0.1", port))
-            .await
-            .unwrap();
-        stalled.write_all(b"GET /login?code=").await.unwrap();
-        let mut endless = tokio::net::TcpStream::connect(("127.0.0.1", port))
-            .await
-            .unwrap();
-        endless.write_all(&[b'a'; 16 * 1024]).await.unwrap();
-        let mut browser = tokio::net::TcpStream::connect(("127.0.0.1", port))
-            .await
-            .unwrap();
-        browser
-            .write_all(b"GET /login?code=test-code&state=state HTTP/1.1\r\n\r\n")
-            .await
-            .unwrap();
-        let (_cancel, receiver) = watch::channel(false);
-        let code = wait_for_code_on_listener(listener, "state", receiver)
-            .await
-            .unwrap();
-        assert_eq!(code, "test-code");
+    impl AuthRedirectHandler for TestRedirect {
+        fn redirect_uri(&self, grant: &Grant) -> String {
+            format!("http://127.0.0.1:{}/login", grant.redirect_port)
+        }
+
+        fn prepare(&self, _grant: &Grant) -> Result<Box<dyn AuthRedirect + Send>> {
+            unimplemented!("the PKCE tests never capture a redirect")
+        }
     }
 
     #[test]
@@ -606,7 +457,8 @@ mod tests {
 
     #[test]
     fn begin_produces_valid_pkce_material() {
-        let flow = begin(Grant::shared_web_api());
+        let redirect = TestRedirect;
+        let flow = begin(Grant::shared_web_api(), &redirect);
         assert!(flow.verifier.len() >= 43);
         assert!(flow.url.contains("code_challenge_method=S256"));
         assert!(flow.url.contains(&format!("state={}", flow.state)));
@@ -616,7 +468,7 @@ mod tests {
         );
         assert!(flow.url.contains("8989"));
         assert!(!flow.url.contains("show_dialog=true"));
-        let playback = begin(Grant::playback());
+        let playback = begin(Grant::playback(), &redirect);
         assert!(
             playback
                 .url
@@ -632,7 +484,7 @@ mod tests {
         let playback = Grant::playback();
         assert_eq!(playback.scopes, vec!["streaming".to_string()]);
         let personal = Grant::personal_web_api("test-id").unwrap();
-        let flow = begin(personal);
+        let flow = begin(personal, &TestRedirect);
         assert!(!flow.url.contains("show_dialog=true"));
     }
 
@@ -640,18 +492,6 @@ mod tests {
     fn personal_client_id_is_validated_at_the_boundary() {
         assert_eq!(Grant::personal_web_api("  abc ").unwrap().client_id, "abc");
         assert!(Grant::personal_web_api("  ").is_err());
-    }
-
-    #[test]
-    fn request_line_parsing() {
-        let code =
-            parse_request_line("GET /login?code=abc%20d&state=s1 HTTP/1.1\r\n", "s1").unwrap();
-        assert_eq!(code, "abc d");
-        assert!(parse_request_line("GET /login?code=abc&state=other HTTP/1.1", "s1").is_err());
-        assert!(parse_request_line("GET /favicon.ico HTTP/1.1", "s1").is_err());
-        assert!(
-            parse_request_line("GET /login?error=access_denied&state=s1 HTTP/1.1", "s1").is_err()
-        );
     }
 
     #[test]
