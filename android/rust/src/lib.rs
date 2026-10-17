@@ -80,6 +80,11 @@ pub struct CoreHandle {
 impl CoreHandle {
     #[uniffi::constructor]
     pub fn new(web_client_id: String, credential_store: Arc<dyn CredentialStore>) -> Arc<Self> {
+        android_logger::init_once(
+            android_logger::Config::default()
+                .with_max_level(log::LevelFilter::Debug)
+                .with_tag("spotifast"),
+        );
         let dirs = AppDirs::discover();
         let _ = dirs.ensure();
         let settings = Settings::default();

@@ -17,3 +17,5 @@ tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"
 anyhow = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+android_logger = "0.15"
+log = "0.4"

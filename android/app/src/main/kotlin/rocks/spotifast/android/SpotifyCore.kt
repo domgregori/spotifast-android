@@ -60,6 +60,8 @@ object SpotifyCore {
     private val _playbackStatus = MutableStateFlow("Unavailable" to "")
     val playbackStatus: StateFlow<Pair<String, String>> = _playbackStatus.asStateFlow()
 
+    private var signedInUsername: String? = null
+
     private var handle: CoreHandle? = null
 
     private val listener = object : PlaybackStateListener {
@@ -68,7 +70,10 @@ object SpotifyCore {
                 "Starting", "SignedOut" -> AuthState.SignedOut
                 "WaitingForBrowser" -> AuthState.WaitingForBrowser(detail)
                 "Connecting" -> AuthState.Connecting
-                "Connected" -> AuthState.Connected(detail)
+                "Connected" -> {
+                    signedInUsername = detail
+                    AuthState.Connected(detail)
+                }
                 "Failed" -> AuthState.Failed(detail)
                 else -> AuthState.SignedOut
             }
@@ -121,6 +126,11 @@ object SpotifyCore {
 
         override fun onPlaybackStatus(status: String, detail: String) {
             _playbackStatus.value = status to detail
+            // The playback grant's browser flow (reusing WaitingForBrowser) is
+            // done; return to the library rather than leaving the spinner up.
+            if (_authState.value is AuthState.WaitingForBrowser) {
+                signedInUsername?.let { _authState.value = AuthState.Connected(it) }
+            }
         }
     }
 

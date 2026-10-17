@@ -46,7 +46,11 @@ async fn wait_for_code_on_listener(
 
     loop {
         let (mut stream, _) = tokio::select! {
-            accepted = listener.accept() => accepted.context("redirect listener failed")?,
+            accepted = listener.accept() => {
+                let (stream, peer) = accepted.context("redirect listener failed")?;
+                log::info!("redirect listener accepted a connection from {peer}");
+                (stream, peer)
+            }
             _ = cancel.changed() => {
                 if *cancel.borrow() { bail!("sign-in cancelled"); }
                 continue;
@@ -72,7 +76,10 @@ async fn wait_for_code_on_listener(
         let _ = stream.write_all(response.as_bytes()).await;
         let _ = stream.shutdown().await;
         match outcome {
-            Ok(code) => return Ok(code),
+            Ok(code) => {
+                log::info!("redirect listener captured the authorization code");
+                return Ok(code);
+            }
             Err(error) => {
                 // A favicon request or a stale tab is not the redirect; keep waiting.
                 log::debug!("ignored request on the redirect listener: {error}");
