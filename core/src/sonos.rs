@@ -23,7 +23,7 @@ use serde_json::{Value, json};
 
 use crate::api::client::PlayRequest;
 use crate::api::models::Device;
-use crate::backend::RemoteAction;
+use crate::remote_action::RemoteAction;
 
 const PORT: u16 = 1400;
 const ZEROCONF_PATH: &str = "/spotifyzc";

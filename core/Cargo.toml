@@ -33,6 +33,17 @@ http = "1"
 sha1 = "0.10"
 sha2 = "0.10"
 base64 = "0.22"
+# zeroconf.rs's ZeroConf login (AES-CTR + HMAC-SHA1 + PBKDF2) and discovery.
+aes = "0.8"
+ctr = "0.9"
+hmac = "0.12"
+pbkdf2 = "0.12"
+mdns-sd = "0.21"
+# cast.rs's Cast v2 device-auth handshake (TLS + SHA-1 signatures).
+md-5 = "0.10"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-webpki = { version = "0.103", default-features = false, features = ["ring", "std"] }
+ring = "0.17"
 rand = "0.9"
 directories = "6"
 urlencoding = "2"

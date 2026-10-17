@@ -90,17 +90,7 @@ pub enum AuthStatus {
     Failed(String),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum RemoteAction {
-    Play,
-    Pause,
-    Next,
-    Previous,
-    Seek,
-    Volume,
-    Shuffle,
-    Repeat,
-}
+pub use spotifast_core::remote_action::RemoteAction;
 
 /// Which of the two readers of the recently-played endpoint an answer
 /// belongs to: the shelf on Home, or the Recents tab in the queue panel.
