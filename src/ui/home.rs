@@ -760,7 +760,7 @@ mod tests {
     fn quick_access_tiles_ask_for_art_the_display_can_show() {
         let root = std::env::temp_dir().join(format!("spotifast-tiles-{}", std::process::id()));
         let mut app = App::new(
-            &crate::backend::Waker::default(),
+            &crate::wake::Waker::default(),
             crate::paths::AppDirs {
                 config: root.join("config"),
                 state: root.join("state"),

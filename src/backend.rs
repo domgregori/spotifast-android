@@ -31,6 +31,7 @@ use crate::player::{
 };
 use crate::session_reads;
 use crate::settings::ProxyConfig;
+use spotifast_core::wake::Wake;
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
@@ -982,7 +983,6 @@ pub enum LocalPlayback {
 /// windows: the window is destroyed when it closes to the tray and created
 /// again on demand. They therefore hold this handle, which repaints
 /// whichever window exists, instead of an `egui::Context`.
-pub use fastframe_shell::Waker;
 
 /// The interface's handle to the runtime.
 pub struct Backend {
@@ -1028,7 +1028,7 @@ impl Backend {
         dirs: AppDirs,
         engine_config: EngineConfig,
         web_client_id: Option<String>,
-        waker: Waker,
+        waker: Arc<dyn Wake>,
         restore_sign_in: bool,
     ) -> Self {
         let (command_tx, command_rx) = mpsc::unbounded_channel();
@@ -1605,7 +1605,7 @@ struct Worker {
     art: ArtLoader,
     events: std::sync::mpsc::Sender<Event>,
     commands: mpsc::UnboundedSender<Command>,
-    waker: Waker,
+    waker: Arc<dyn Wake>,
     engine: Option<Arc<Engine>>,
     /// What the engine is heard at, so the engine that replaces it starts
     /// there. `engine_config` alone knows only the level the app launched
@@ -1670,7 +1670,7 @@ impl Worker {
         activity: Arc<NetActivity>,
         events: std::sync::mpsc::Sender<Event>,
         commands: mpsc::UnboundedSender<Command>,
-        waker: Waker,
+        waker: Arc<dyn Wake>,
     ) -> Self {
         Self {
             #[cfg(not(test))]
@@ -5479,7 +5479,7 @@ fn read_incremental_playlist_cache_file(path: &std::path::Path) -> std::io::Resu
 async fn store_playlist_caches(
     mut writes: mpsc::Receiver<PlaylistCacheJob>,
     events: std::sync::mpsc::Sender<Event>,
-    waker: Waker,
+    waker: Arc<dyn Wake>,
 ) {
     while let Some(job) = writes.recv().await {
         let write = match job {
@@ -7147,7 +7147,7 @@ mod authorization_tests {
             Arc::new(NetActivity::default()),
             sender,
             commands,
-            Waker::default(),
+            std::sync::Arc::new(crate::wake::Waker::default()),
         );
         (runtime, worker, events)
     }

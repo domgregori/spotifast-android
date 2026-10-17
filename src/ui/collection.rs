@@ -3133,7 +3133,7 @@ mod tests {
                 .as_nanos()
         ));
         App::new(
-            &crate::backend::Waker::default(),
+            &crate::wake::Waker::default(),
             crate::paths::AppDirs {
                 config: root.join("config"),
                 state: root.join("state"),

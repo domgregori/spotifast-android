@@ -289,7 +289,7 @@ fn big_button(ui: &mut egui::Ui, app: &App, label: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{app::AppOptions, backend::Waker, paths::AppDirs, settings::Settings};
+    use crate::{app::AppOptions, paths::AppDirs, settings::Settings, wake::Waker};
 
     #[test]
     fn expanded_proxy_settings_remain_reachable_in_a_short_window() {

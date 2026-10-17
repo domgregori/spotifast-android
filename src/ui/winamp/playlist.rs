@@ -851,7 +851,7 @@ mod tests {
             std::env::temp_dir().join(format!("spotifast-winamp-remove-{}", std::process::id()));
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         let mut app = App::new(
             &waker,
             AppDirs {

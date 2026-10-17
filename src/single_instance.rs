@@ -192,13 +192,13 @@ fn reply(line: &str) -> std::io::Result<Reply> {
 /// Claims the running-instance role, or hands `link` (a canonical
 /// `spotify:` URI, see [`crate::link::parse`]) to the instance that has it
 /// and asks that one to come forward.
-pub fn acquire(waker: &crate::backend::Waker, link: Option<&str>) -> Outcome {
+pub fn acquire(waker: &crate::wake::Waker, link: Option<&str>) -> Outcome {
     claim(&slot(), waker, link)
 }
 
 fn claim(
     slot: &fastframe_instance::Slot,
-    waker: &crate::backend::Waker,
+    waker: &crate::wake::Waker,
     link: Option<&str>,
 ) -> Outcome {
     let mut guard = Guard::unguarded();
@@ -238,7 +238,7 @@ fn handler(
     commands: std::sync::Arc<std::sync::Mutex<Vec<ControlCommand>>>,
     now_playing: std::sync::Arc<std::sync::Mutex<String>>,
     devices: std::sync::Arc<std::sync::Mutex<String>>,
-    waker: crate::backend::Waker,
+    waker: crate::wake::Waker,
 ) -> impl FnMut(&str) -> Option<String> + Send + 'static {
     move |request| {
         let queue = |command| {
@@ -519,7 +519,7 @@ mod tests {
     fn a_second_launch_hands_its_link_to_the_first() {
         // #given
         let (slot, dir) = test_slot("second-launch");
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         let Outcome::Only(first) = claim(&slot, &waker, None) else {
             panic!("the first launch runs");
         };
@@ -544,7 +544,7 @@ mod tests {
     fn a_client_reaches_the_command_queue_and_the_snapshot() {
         // #given
         let (slot, dir) = test_slot("round-trip");
-        let Outcome::Only(guard) = claim(&slot, &crate::backend::Waker::default(), None) else {
+        let Outcome::Only(guard) = claim(&slot, &crate::wake::Waker::default(), None) else {
             panic!("the slot is free");
         };
         *guard.now_playing.lock().expect("the snapshot") = "playing\tGo\tThe Band".to_owned();

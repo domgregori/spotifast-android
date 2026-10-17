@@ -1343,7 +1343,7 @@ mod tests {
             std::env::temp_dir().join(format!("spotifast-a11y-{name}-{}", std::process::id()));
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -5742,7 +5742,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -5816,7 +5816,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -5930,7 +5930,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -6011,7 +6011,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -6097,7 +6097,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -6177,7 +6177,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -6273,7 +6273,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -6518,7 +6518,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("spotifast-lyrics-layout-{}", std::process::id()));
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -6593,7 +6593,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -6711,7 +6711,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -6779,7 +6779,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -7221,7 +7221,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -8237,7 +8237,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -8315,7 +8315,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -9108,7 +9108,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,
@@ -9400,7 +9400,7 @@ mod tests {
         };
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,

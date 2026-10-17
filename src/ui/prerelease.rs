@@ -502,7 +502,7 @@ mod tests {
             std::process::id()
         ));
         let ctx = egui::Context::default();
-        let waker = crate::backend::Waker::default();
+        let waker = crate::wake::Waker::default();
         waker.attach(&ctx);
         let mut app = App::new(
             &waker,

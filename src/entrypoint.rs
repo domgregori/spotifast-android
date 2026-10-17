@@ -1,4 +1,4 @@
-use spotifast::{app, backend, paths, settings, single_instance, util};
+use spotifast::{app, paths, settings, single_instance, util, wake};
 
 use clap::{CommandFactory, FromArgMatches, Parser};
 use fastframe_shell::window::Geometry;
@@ -416,7 +416,7 @@ pub(crate) fn run() -> eframe::Result<()> {
     // window. Closing to the tray destroys the window and the shell below
     // creates a new one when the tray or MPRIS asks for it. Plain window
     // lifecycle, portable across desktops.
-    let waker = backend::Waker::default();
+    let waker = wake::Waker::default();
 
     // A second launch surfaces the instance already running instead of
     // starting a rival one. Held for the lifetime of the process.
@@ -579,7 +579,7 @@ pub(crate) fn run() -> eframe::Result<()> {
     spotifast::window::set_fixed_size(demo_inner.is_some());
     #[cfg(feature = "demo")]
     let demo_storage = app.dirs.cache.join("demo-window.ron");
-    let shell = fastframe_shell::Shell::new(app, &waker);
+    let shell = fastframe_shell::Shell::new(app, &waker.0);
     // The menu-bar item answers only while AppKit's loop runs. Elsewhere
     // nothing needs the main thread between headless ticks, so the shell
     // sleeps until the waker wakes it.

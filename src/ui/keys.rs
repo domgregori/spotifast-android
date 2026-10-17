@@ -334,7 +334,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let mut app = App::new(
-            &crate::backend::Waker::default(),
+            &crate::wake::Waker::default(),
             dirs,
             Settings::default(),
             AppOptions {
@@ -541,7 +541,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let mut app = App::new(
-            &crate::backend::Waker::default(),
+            &crate::wake::Waker::default(),
             dirs,
             Settings::default(),
             AppOptions {
@@ -589,7 +589,7 @@ mod tests {
             cache: root.join("cache"),
         };
         let mut app = App::new(
-            &crate::backend::Waker::default(),
+            &crate::wake::Waker::default(),
             dirs,
             Settings::default(),
             AppOptions {

@@ -9,7 +9,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use crate::backend::Waker;
+use crate::wake::Waker;
 use crate::single_instance::ControlCommand;
 
 /// Answers the desktop's links for the rest of the process. Main thread
@@ -28,7 +28,7 @@ mod mac_impl {
         MainThreadMarker, NSAppleEventDescriptor, NSAppleEventManager, NSObject,
     };
 
-    use crate::backend::Waker;
+    use crate::wake::Waker;
     use crate::single_instance::ControlCommand;
 
     /// `kInternetEventClass` and `kAEGetURL`: both the four characters

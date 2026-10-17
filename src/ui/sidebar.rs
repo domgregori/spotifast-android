@@ -2151,7 +2151,7 @@ mod ordering_tests {
         let root =
             std::env::temp_dir().join(format!("spotifast-order-{name}-{}", std::process::id()));
         let mut app = App::new(
-            &crate::backend::Waker::default(),
+            &crate::wake::Waker::default(),
             crate::paths::AppDirs {
                 config: root.join("config"),
                 state: root.join("state"),

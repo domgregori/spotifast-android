@@ -14,8 +14,9 @@ use crate::api::models::{
 };
 use crate::backend::{
     ApiRequest, ApiResponse, AuthStatus, Backend, Command, Event, LocalPlayback, LyricsRequest,
-    PLAYLIST_PAGE_SIZE, PlaylistCacheRows, RecentsFor, RemoteAction, Waker,
+    PLAYLIST_PAGE_SIZE, PlaylistCacheRows, RecentsFor, RemoteAction,
 };
+use crate::wake::Waker;
 use crate::i18n::{Locale, gettext, ngettext};
 use crate::model::QueueTab;
 use crate::model::*;
@@ -780,7 +781,7 @@ impl App {
             dirs.clone(),
             engine_config,
             settings.web_client_id.clone(),
-            waker.clone(),
+            std::sync::Arc::new(waker.clone()),
             options.restore_sign_in,
         );
         let locale = settings.language.resolve();

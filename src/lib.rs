@@ -59,6 +59,7 @@ pub mod ui;
 pub mod updates;
 pub mod util;
 pub mod vis;
+pub mod wake;
 pub mod winamp;
 pub mod window;
 pub mod zeroconf;
