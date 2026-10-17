@@ -6053,6 +6053,7 @@ dependencies = [
  "ctr",
  "directories",
  "fastframe-audio",
+ "fastframe-update",
  "hmac 0.12.1",
  "http",
  "hyper-util",
@@ -6068,6 +6069,7 @@ dependencies = [
  "md-5",
  "mdns-sd",
  "memmap2",
+ "open",
  "pbkdf2",
  "percent-encoding",
  "protobuf",
@@ -6085,6 +6087,7 @@ dependencies = [
  "tokio",
  "urlencoding",
  "windows-native-keyring-store",
+ "windows-sys 0.60.2",
  "zbus-secret-service-keyring-store",
 ]
 

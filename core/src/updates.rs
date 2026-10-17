@@ -30,7 +30,7 @@ pub const CONFIG: UpdateConfig = UpdateConfig {
 };
 
 /// An updater on Spotifast's HTTP client, through the configured proxy.
-pub fn updater(proxy: &crate::settings::ProxyConfig) -> anyhow::Result<Updater> {
+pub fn updater(proxy: &crate::proxy::ProxyConfig) -> anyhow::Result<Updater> {
     let builder = crate::http::blocking_builder(proxy).map_err(anyhow::Error::msg)?;
     Ok(Updater::new(CONFIG, ReqwestTransport::new(builder)?))
 }

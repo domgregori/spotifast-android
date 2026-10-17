@@ -74,6 +74,12 @@ fastframe-audio = { git = "https://github.com/crmne/fastframe", rev = "3339a8bc5
 rodio = { version = "0.21", default-features = false }
 # MilkDrop's shared-memory audio ring (memmap2).
 memmap2 = "0.9"
+# Self-update from GitHub releases, and the OS's open-URL launcher.
+fastframe-update = { git = "https://github.com/crmne/fastframe", rev = "3339a8bc524a51c47f87ca78c368dde3569d90f5", features = ["reqwest"] }
+open = "5"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.60", features = ["Win32_Foundation", "Win32_System_Com", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus-secret-service-keyring-store = { version = "1.0.1", features = ["rt-tokio-crypto-rust"] }
