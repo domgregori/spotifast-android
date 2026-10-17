@@ -237,7 +237,6 @@ pub struct App {
     scrolling: fastframe_scroll::Scrolling,
     autoscroll: crate::autoscroll::Autoscroll,
     /// Last good tree and the account it belongs to, kept across restarts.
-    rootlist_cache: Option<CachedRootlist>,
     /// A newer release than this build, once GitHub has said so.
     pub update: Option<crate::updates::Release>,
     last_update_check: Option<Instant>,
@@ -526,7 +525,6 @@ impl App {
             milkdrop_host: None,
             scrolling: fastframe_scroll::Scrolling::default(),
             autoscroll: crate::autoscroll::Autoscroll::default(),
-            rootlist_cache: session.rootlist.clone(),
             update: None,
             last_update_check: None,
             update_checking: false,
@@ -707,6 +705,7 @@ impl App {
             play_search_serial: 0,
             last_album_queue: None,
             rootlist: Vec::new(),
+            rootlist_cache: session.rootlist.clone(),
             account_caches_generation: 0,
             account_caches_due: false,
             rootlist_read_at: None,
@@ -1722,7 +1721,7 @@ impl App {
                         self.engine.rootlist = rootlist.entries;
                         self.engine.editable_by_grant = rootlist.editable;
                         if let Some(account_id) = account_id {
-                            self.rootlist_cache = Some(CachedRootlist {
+                            self.engine.rootlist_cache = Some(CachedRootlist {
                                 account_id,
                                 entries: self.engine.rootlist.clone(),
                             });
@@ -1910,7 +1909,7 @@ impl App {
                 self.engine.local_playback = LocalPlayback::Unavailable;
                 self.engine.remote = None;
                 self.engine.rootlist.clear();
-                self.rootlist_cache = None;
+                self.engine.rootlist_cache = None;
                 self.engine.editable_by_grant.clear();
                 self.engine.account_caches_due = false;
                 self.engine.session_dirty = true;
@@ -5392,8 +5391,7 @@ impl App {
                     let due = std::mem::take(&mut self.engine.account_caches_due);
                     let changed = self.user_id() != Some(user.id.as_str());
                     if changed {
-                        self.engine.rootlist = self
-                            .rootlist_cache
+                        self.engine.rootlist = self.engine.rootlist_cache
                             .as_ref()
                             .filter(|cached| cached.account_id == user.id)
                             .map(|cached| cached.entries.clone())
@@ -10983,7 +10981,7 @@ impl App {
                 last_track: self.engine.resume_track.clone(),
                 last_position_ms: self.engine.resume_position_ms,
                 collapsed_folders: self.engine.collapsed_folders.clone(),
-                rootlist: self.rootlist_cache.clone(),
+                rootlist: self.engine.rootlist_cache.clone(),
                 last_added_queue: if self.engine.resume_queue.is_empty() {
                     self.engine.manual_queue.clone()
                 } else {
@@ -26271,7 +26269,7 @@ mod tests {
         restored.handle_auth(AuthStatus::SignedOut);
         assert!(restored.engine.rootlist.is_empty());
         assert_eq!(
-            restored.rootlist_cache, None,
+            restored.engine.rootlist_cache, None,
             "signing out removes the account's cached tree"
         );
         drop(restored);

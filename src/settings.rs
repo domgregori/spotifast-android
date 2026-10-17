@@ -730,11 +730,7 @@ mod tests {
 ///
 /// Only folder order is cached. Edit grants must always come from the live
 /// session because they can be revoked.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct CachedRootlist {
-    pub account_id: String,
-    pub entries: Vec<crate::player::RootlistEntry>,
-}
+pub use spotifast_core::settings::CachedRootlist;
 
 /// Restorable UI session: what was open when the app last closed.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

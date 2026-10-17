@@ -405,6 +405,8 @@ pub struct Engine {
     /// The account's playlist tree from Spotify, folders and all; empty
     /// until the session answers.
     pub rootlist: Vec<crate::player::RootlistEntry>,
+    /// Last good tree and the account it belongs to, kept across restarts.
+    pub rootlist_cache: Option<crate::settings::CachedRootlist>,
     /// The read of the verified account's cached library on its way.
     pub account_caches_generation: u64,
     /// A session connected and its account's cache is still to be read,

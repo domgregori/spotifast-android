@@ -583,3 +583,12 @@ impl Settings {
         }
     }
 }
+
+/// Last good playlist tree, scoped to the account that supplied it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct CachedRootlist {
+    pub account_id: String,
+    pub entries: Vec<crate::player::RootlistEntry>,
+}
+
