@@ -1,0 +1,9 @@
+namespace spotifast {};
+
+/// The long-lived core handle: owns the tokio runtime and the backend.
+interface CoreHandle {
+    constructor();
+
+    /// The core version, for smoke tests.
+    string version();
+};

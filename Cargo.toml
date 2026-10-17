@@ -1,5 +1,5 @@
 [workspace]
-members = ["core"]
+members = ["core", "android/rust"]
 resolver = "3"
 
 [package]
