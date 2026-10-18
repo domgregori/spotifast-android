@@ -2,7 +2,8 @@
 """Fails when a dependency comes from a source the maintainer does not control.
 
 Crates come from crates.io. A git dependency or a [patch] entry may only name
-a repository under https://github.com/crmne/, and adding or changing one needs
+a repository under https://github.com/crmne/ or the maintainer's Gitea fork
+https://gitea.home.doms.place/domgregori/, and adding or changing one needs
 the maintainer's approval (CONTRIBUTING.md, "Pull requests"). This reads every
 tracked Cargo.toml, Cargo.lock and .cargo/config.toml.
 """
@@ -22,16 +23,21 @@ MANIFESTS = ("/Cargo.toml", "/Cargo.lock", "/.cargo/config.toml", "/.cargo/confi
 
 
 def owned(url):
-    """True for https://github.com/crmne/<repository> and nothing else."""
+    """True for the maintainer's github.com/crmne/ and Gitea forks, nothing else."""
     parts = urlsplit(url)
     segments = parts.path.strip("/").removesuffix(".git").split("/")
     return (
         parts.scheme == "https"
-        and parts.netloc == "github.com"
         and len(segments) == 2
-        and segments[0] == "crmne"
         and segments[1] not in ("", ".", "..")
         and "%" not in parts.path
+        and (
+            (parts.netloc == "github.com" and segments[0] == "crmne")
+            or (
+                parts.netloc == "gitea.home.doms.place"
+                and segments[0] == "domgregori"
+            )
+        )
     )
 
 

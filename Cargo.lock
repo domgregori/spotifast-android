@@ -3481,7 +3481,7 @@ dependencies = [
 [[package]]
 name = "librespot-audio"
 version = "0.8.0"
-source = "git+https://github.com/crmne/librespot?rev=ef27e124fe50b8519b5a5c6fa92c8f47f2544385#ef27e124fe50b8519b5a5c6fa92c8f47f2544385"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=7e47a51e371b3cc698701e920792f5e85a4dc8fc#7e47a51e371b3cc698701e920792f5e85a4dc8fc"
 dependencies = [
  "aes 0.8.4",
  "bytes",
@@ -3500,7 +3500,7 @@ dependencies = [
 [[package]]
 name = "librespot-connect"
 version = "0.8.0"
-source = "git+https://github.com/crmne/librespot?rev=ef27e124fe50b8519b5a5c6fa92c8f47f2544385#ef27e124fe50b8519b5a5c6fa92c8f47f2544385"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=7e47a51e371b3cc698701e920792f5e85a4dc8fc#7e47a51e371b3cc698701e920792f5e85a4dc8fc"
 dependencies = [
  "futures-util",
  "librespot-core",
@@ -3519,7 +3519,7 @@ dependencies = [
 [[package]]
 name = "librespot-core"
 version = "0.8.0"
-source = "git+https://github.com/crmne/librespot?rev=ef27e124fe50b8519b5a5c6fa92c8f47f2544385#ef27e124fe50b8519b5a5c6fa92c8f47f2544385"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=7e47a51e371b3cc698701e920792f5e85a4dc8fc#7e47a51e371b3cc698701e920792f5e85a4dc8fc"
 dependencies = [
  "aes 0.8.4",
  "base64",
@@ -3577,7 +3577,7 @@ dependencies = [
 [[package]]
 name = "librespot-metadata"
 version = "0.8.0"
-source = "git+https://github.com/crmne/librespot?rev=ef27e124fe50b8519b5a5c6fa92c8f47f2544385#ef27e124fe50b8519b5a5c6fa92c8f47f2544385"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=7e47a51e371b3cc698701e920792f5e85a4dc8fc#7e47a51e371b3cc698701e920792f5e85a4dc8fc"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3594,7 +3594,7 @@ dependencies = [
 [[package]]
 name = "librespot-oauth"
 version = "0.8.0"
-source = "git+https://github.com/crmne/librespot?rev=ef27e124fe50b8519b5a5c6fa92c8f47f2544385#ef27e124fe50b8519b5a5c6fa92c8f47f2544385"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=7e47a51e371b3cc698701e920792f5e85a4dc8fc#7e47a51e371b3cc698701e920792f5e85a4dc8fc"
 dependencies = [
  "log",
  "oauth2",
@@ -3608,7 +3608,7 @@ dependencies = [
 [[package]]
 name = "librespot-playback"
 version = "0.8.0"
-source = "git+https://github.com/crmne/librespot?rev=ef27e124fe50b8519b5a5c6fa92c8f47f2544385#ef27e124fe50b8519b5a5c6fa92c8f47f2544385"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=7e47a51e371b3cc698701e920792f5e85a4dc8fc#7e47a51e371b3cc698701e920792f5e85a4dc8fc"
 dependencies = [
  "form_urlencoded",
  "futures-util",
@@ -3631,7 +3631,7 @@ dependencies = [
 [[package]]
 name = "librespot-protocol"
 version = "0.8.0"
-source = "git+https://github.com/crmne/librespot?rev=ef27e124fe50b8519b5a5c6fa92c8f47f2544385#ef27e124fe50b8519b5a5c6fa92c8f47f2544385"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=7e47a51e371b3cc698701e920792f5e85a4dc8fc#7e47a51e371b3cc698701e920792f5e85a4dc8fc"
 dependencies = [
  "protobuf",
  "protobuf-codegen",
