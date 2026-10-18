@@ -330,10 +330,10 @@ hyper-proxy2 = { git = "https://github.com/crmne/hyper-proxy2", rev = "efca48113
 # Connect device, player and queue state (#1704).
 # Every librespot crate comes from the fork so one copy exists. Drop each
 # patch once upstream merges it.
-librespot-audio = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "7e47a51e371b3cc698701e920792f5e85a4dc8fc" }
-librespot-connect = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "7e47a51e371b3cc698701e920792f5e85a4dc8fc" }
-librespot-core = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "7e47a51e371b3cc698701e920792f5e85a4dc8fc" }
-librespot-metadata = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "7e47a51e371b3cc698701e920792f5e85a4dc8fc" }
-librespot-oauth = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "7e47a51e371b3cc698701e920792f5e85a4dc8fc" }
-librespot-playback = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "7e47a51e371b3cc698701e920792f5e85a4dc8fc" }
-librespot-protocol = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "7e47a51e371b3cc698701e920792f5e85a4dc8fc" }
+librespot-audio = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
+librespot-connect = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
+librespot-core = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
+librespot-metadata = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
+librespot-oauth = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
+librespot-playback = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
+librespot-protocol = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
