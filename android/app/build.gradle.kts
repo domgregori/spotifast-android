@@ -79,6 +79,9 @@ val cargoNdkBuild = tasks.register<Exec>("cargoNdkBuild") {
     workingDir = rustRoot
     inputs.dir(rustRoot.resolve("core/src"))
     inputs.dir(rustRoot.resolve("android/rust/src"))
+    // A dependency change (in Cargo.toml/Cargo.lock) must rebuild the cdylib.
+    inputs.file(rustRoot.resolve("Cargo.toml"))
+    inputs.file(rustRoot.resolve("Cargo.lock"))
     outputs.dir(jniLibs)
 }
 
