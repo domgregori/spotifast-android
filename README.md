@@ -1,163 +1,106 @@
 <p align="center">
-  <img src="docs/assets/images/logo.svg" alt="Spotifast logo" width="88" height="88">
+  <img src="android/docs/assets/logo.png" alt="Spotifast Android logo" width="88" height="88">
 </p>
 
-<h1 align="center">Spotifast</h1>
+<h1 align="center">Spotifast for Android</h1>
 
-<p align="center"><strong>Spotify, native and fast.</strong><br>A lightweight music app for Linux, macOS, and Windows.</p>
-
-<p align="center">
-  <a href="https://spotifast.rocks/download/"><strong>Download</strong></a> ·
-  <a href="https://spotifast.rocks/getting-started/">Getting started</a> ·
-  <a href="https://spotifast.rocks/using-spotifast/">User guide</a> ·
-  <a href="CONTRIBUTING.md">Contribute</a>
-</p>
+<p align="center"><strong>Spotify, native and fast — now in your pocket.</strong><br>An unofficial Android client built on Spotifast's own Rust core.</p>
 
 <p align="center">
-  <a href="Cargo.toml"><img src="https://img.shields.io/badge/Built_with-Rust-1ed760" alt="Built with Rust"></a>
-  <a href="https://spotifast.rocks/download/"><img src="https://img.shields.io/badge/Linux_%C2%B7_macOS_%C2%B7_Windows-24292f" alt="Linux, macOS, and Windows"></a>
+  <a href="Cargo.toml"><img src="https://img.shields.io/badge/Built_with-Rust_%26_Kotlin-1ed760" alt="Built with Rust and Kotlin"></a>
+  <a href="android/app/build.gradle.kts"><img src="https://img.shields.io/badge/Android-8.0%2B-3DDC84" alt="Android 8.0 and up"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-1ed760" alt="MIT license"></a>
 </p>
 
-Spotifast is a Spotify client written in Rust with
-[egui](https://www.egui.rs) and [fastframe](https://fastframe.dev), the
-framework behind a family of native desktop apps. It plays music through
-[librespot](https://github.com/librespot-org/librespot), typically uses
-100–250 MB of RAM, starts in well under a second, and has no browser engine.
-
-The interface includes complete
-[translations for all supported languages](docs/_reference/translating.md#languages-and-coverage).
+Spotifast for Android reuses Spotifast's Rust core — the same
+[librespot](https://github.com/librespot-org/librespot)-based playback
+engine and Web API client that power the original desktop app — behind a
+Jetpack Compose interface built for a phone. It talks to Spotify Connect
+directly, so it plays locally or hands off to any other Connect device,
+and it goes further than a typical client with deep
+[ListenBrainz](https://listenbrainz.org) integration: weekly recommendation
+playlists, an LB Radio playlist generator, a personalized fresh-releases
+feed, and a listening-activity heatmap, all native to the app rather than
+bolted on.
 
 **Playback needs Spotify Premium.** Free accounts can browse and search, but
-cannot play music through Spotifast.
+cannot play music.
 
-![Spotifast Home with the playlist library, recommendations, queue, and player visible](docs/screenshot.png)
+<p align="center">
+  <img src="android/docs/assets/home.png" alt="Spotifast's Android home screen, in the Comic Noir theme" width="30%">
+  <img src="android/docs/assets/library.png" alt="Your Library, with Weekly Jams and other playlists" width="30%">
+  <img src="android/docs/assets/now-playing.png" alt="The full-screen now-playing view" width="30%">
+</p>
 
-<details>
-<summary><strong>Watch Spotifast in action</strong></summary>
-
-https://github.com/user-attachments/assets/a5f669ce-b3b7-4f8e-9933-976a78876c7e
-
-</details>
-
-[Features](#your-music-on-your-desktop) · [Install](#install) · [First playback](#start-listening) · [Mini player](#the-winamp-mini-player) · [MilkDrop](#music-in-motion) · [Help](#guides-and-help)
-
-## Your music, on your desktop
+## What's here
 
 | Feature | What you can do |
 |---|---|
-| **Library and search** | Browse playlists, Liked Songs, albums, artists, and podcasts. Search the catalogue and edit playlists you own. |
-| **Spotify Connect** | Play on this computer or control playback on your other devices, including Google Cast speakers and groups. |
-| **Themes** | Choose light, dark, system appearance, or custom colours. On Omarchy, follow your desktop theme. |
-| **Desktop controls** | Use keyboard shortcuts and media keys. Keep music playing from the tray when supported by your desktop and settings. |
-| **Winamp mini player** | Use classic skins with an equalizer, playlist, and animated sound displays. |
-| **MilkDrop** | Watch music-reactive visuals in a separate window or full screen. See platform availability below. |
+| **Library and search** | Browse playlists, Liked Songs, albums, artists, and podcasts. Search the catalogue, and create, save, or delete playlists. |
+| **Spotify Connect** | Play on this phone or hand off to any other Connect device — speakers, the desktop app, other phones. |
+| **ListenBrainz** | Weekly Jams and Weekly Exploration as a playlist grid, an LB Radio generator (from an artist, a genre, or your own stats), a personalized Fresh Releases feed, and a daily listening-activity heatmap. See [LISTENBRAINZ_FEATURES.md](android/LISTENBRAINZ_FEATURES.md) for the full list. |
+| **Media session** | Lock-screen and Bluetooth playback controls, including a one-tap Liked Songs heart right next to play/pause. |
+| **Comic Noir theme** | A second, hand-drawn visual identity — bold display type, inked borders, a dedicated monochrome app icon for Android's Themed Icons — alongside the default theme. |
+| **Caching** | Playlists, cover art, and recently played audio are cached for offline-friendly scrolling and instant resumes; cached audio ages out automatically after 30 days, and Settings has a one-tap "Clear Cache". |
+
+<p align="center">
+  <img src="android/docs/assets/listenbrainz.png" alt="ListenBrainz recent listens" width="23%">
+  <img src="android/docs/assets/weekly-playlists.png" alt="Weekly Jams and Weekly Exploration as a playlist grid" width="23%">
+  <img src="android/docs/assets/activity.png" alt="The daily listening-activity heatmap" width="23%">
+</p>
 
 ## Install
 
-| Platform | Installation |
-|---|---|
-| **macOS** | `brew install --cask crmne/tap/spotifast`, or [download the Mac app](https://spotifast.rocks/download/#macos). |
-| **Arch Linux** | `yay -S spotifast-bin` |
-| **Windows** | Choose your build on the [Download page](https://spotifast.rocks/download/). |
-| **Other Linux** | Find Flatpak, AppImage, Nix, and other options on the [Download page](https://spotifast.rocks/download/). |
-| **From source** | Follow [Build from source](https://spotifast.rocks/getting-started/#build-from-source) for dependencies and commands. |
+There's no Play Store listing yet — build from source and sideload the APK:
+
+```sh
+cd android
+./gradlew :app:assembleDebug
+# APK lands at app/build/outputs/apk/debug/app-debug.apk
+```
+
+A release build needs a signing config; see
+[`android/app/build.gradle.kts`](android/app/build.gradle.kts). The Rust
+core builds as part of the Gradle build via `cargoNdkBuild` — no separate
+step needed, just the Android NDK and a Rust toolchain with the Android
+targets installed.
 
 ## Start listening
 
-1. Open Spotifast and choose **Sign in with Spotify**. Approve access in your
-   browser, then return to the app to see your library.
-2. To listen on this computer, open the device menu in the bottom player bar
-   and choose **Set up playback here**, also available in Settings.
-3. Complete the separate playback approval in your browser. Your computer
-   appears as a Spotify Connect device named **Spotifast**.
+1. Open the app and sign in with Spotify. Library access and local
+   playback are separate approvals, same as the desktop app — see
+   [How it connects](https://spotifast.rocks/how-it-connects/) for the
+   details that still apply here.
+2. To play on this phone, tap the mini player and authorize playback when
+   prompted. Your phone appears as a Spotify Connect device.
+3. Optional: connect a [ListenBrainz](https://listenbrainz.org) account in
+   Settings to unlock the Weekly Playlists, LB Radio generator, Fresh
+   Releases, and Activity tabs.
 
-Library access and local playback have separate approvals. Spotifast remembers
-both using your computer's protected storage. See
-[Getting started](https://spotifast.rocks/getting-started/) for the full walkthrough
-and [How it connects](https://spotifast.rocks/how-it-connects/) for the details.
+## Themes and app icon
 
-## The Winamp mini player
+Switch between the default theme and Comic Noir — and between the matching
+Indigo and Comic launcher icons — in Settings. The Comic icon also ships a
+dedicated monochrome layer, so it renders correctly when Android's
+**Themed icons** setting is on.
 
-A classic look for your music, with Winamp 2 `.wsz` skins, an equalizer,
-a playlist, and animated sound displays. Switch with **Ctrl+M**
-(**Cmd+Shift+M** on macOS), the shrink button, or Settings.
+## Relationship to the desktop app
 
-<p align="center">
-  <img src="docs/assets/images/winamp.png" alt="Spotifast's Winamp mini player with the built-in skin, equalizer, and playlist" width="320">
-</p>
-
-[Explore the mini player](https://spotifast.rocks/winamp/), including skins,
-window sizes, controls, and the return to the main player.
-
-## Music in motion
-
-MilkDrop reacts to music playing on this computer, with more than 10,000
-presets downloaded on first use. Open it from the visualiser button,
-Settings, or the mini player's **V** menu.
-
-![MilkDrop visualiser displaying coloured concentric patterns in Spotifast](docs/assets/images/milkdrop-poster.jpg)
-
-Included on **Linux**, **macOS**, and **Windows Intel/AMD** builds.
-It is not included in the Windows on ARM download.
-[Read the MilkDrop guide](https://spotifast.rocks/milkdrop/) for presets,
-controls, and fullscreen mode.
-
-## Guides and help
-
-The complete guide lives at **[spotifast.rocks](https://spotifast.rocks/)**.
-
-| You want to… | Read |
-|---|---|
-| Sign in, set up playback, or configure themes, fonts, and proxies | [Getting started](https://spotifast.rocks/getting-started/) |
-| Learn shortcuts, command-line controls, and updates | [Everyday use](https://spotifast.rocks/using-spotifast/) |
-| Find configuration and stored files | [Settings and files](https://spotifast.rocks/settings-and-files/) |
-| Understand scrolling performance and reduce loading delays | [Make it even faster](https://spotifast.rocks/make-it-even-faster/) |
-| Understand what is stored and sent | [Privacy](https://spotifast.rocks/privacy/) · [How it connects](https://spotifast.rocks/how-it-connects/) |
-| Check Spotify and librespot limitations | [What Spotify allows](https://spotifast.rocks/what-spotify-allows/) |
-| Understand account risk | [Will my account get banned?](https://spotifast.rocks/what-is-spotifast/#will-my-spotify-account-get-banned) |
-| Report a bug or propose a feature | Read [Contributing](CONTRIBUTING.md), then use the [issue forms](https://github.com/crmne/spotifast/issues/new/choose). |
-
-## Contributing
-
-Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull
-request. To look at the interface without a Spotify account, run:
-
-```sh
-cargo run --features demo -- --demo
-```
-
-Translations live in `assets/i18n/`; see
-[Translating Spotifast](docs/_reference/translating.md). Release packaging
-is described in [PACKAGING.md](PACKAGING.md).
-
-## More native apps
-
-**Want WhatsApp just as fast and native?** [ZapFast](https://zapfast.rocks)
-is Spotifast's sibling. Both are built on
-[fastframe](https://fastframe.dev).
-
-## Sonos playback
-
-Sonos speakers use the Spotify Connect session for playback control. Enable
-local playback first, then select the speaker in the device picker.
+This repository started as [Spotifast](https://spotifast.rocks), a Rust
+desktop Spotify client for Linux, macOS, and Windows (still here, under
+[`src/`](src)), and this Android app is a Jetpack Compose frontend built
+on top of the same [`core/`](core) crate the desktop app uses — kept
+portable on purpose, so new Web API or playback logic lives there once
+and both apps get it. The Android-specific pieces are the UI
+(`android/app/src/main/kotlin/rocks/spotifast/android/`), the UniFFI
+bridge (`android/rust/`), and the ListenBrainz integration, which is
+Android-only for now.
 
 ## Acknowledgements
 
-Spotifast uses [librespot](https://github.com/librespot-org/librespot),
-[egui](https://www.egui.rs), [fastframe](https://fastframe.dev), the [Inter](https://rsms.me/inter/)
-typeface (OFL), and [Lucide](https://lucide.dev) icons (ISC).
-
-Spotifast is an independent project and is not affiliated with Spotify.
+Like the desktop app, Spotifast for Android uses
+[librespot](https://github.com/librespot-org/librespot) for playback and
+is an independent project, not affiliated with Spotify or ListenBrainz.
 Spotify is a trademark of Spotify AB.
 
 Licensed under the [MIT License](LICENSE).
-
-## Star history
-
-<a href="https://www.star-history.com/?repos=crmne%2Fspotifast&amp;type=date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=crmne/spotifast&amp;type=date&amp;theme=dark">
-    <img alt="Spotifast GitHub stars over time" src="https://api.star-history.com/chart?repos=crmne/spotifast&amp;type=date">
-  </picture>
-</a>
