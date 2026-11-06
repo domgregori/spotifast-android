@@ -3,6 +3,12 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
         android:label="@string/app_name"
@@ -16,10 +22,6 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/Theme.Spotifast">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
             <!-- The custom scheme Spotify redirects the authorization code to. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
@@ -30,5 +32,70 @@
                     android:host="callback" />
             </intent-filter>
         </activity>
+
+        <!-- The launcher entry point lives on these aliases, not on
+             MainActivity directly — a Settings → App icon choice enables
+             exactly one and disables the other (AppIcon.kt), which is the
+             sanctioned way to offer alternate launcher icons: Android has
+             no API to change one activity's own icon at runtime, only to
+             toggle which of several statically-declared aliases is active. -->
+        <activity-alias
+            android:name=".IconIndigo"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".IconComic"
+            android:targetActivity=".MainActivity"
+            android:icon="@mipmap/ic_launcher_comic"
+            android:label="@string/app_name"
+            android:enabled="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+
+        <!-- Keeps the engine's network connection alive in the background and
+             exempts it from Doze/App Standby network throttling: mediaPlayback
+             because it streams audio, connectedDevice because it's a Spotify
+             Connect receiver other devices can hand playback to. Promotes
+             itself to a true foreground service (and posts the notification)
+             automatically via the MediaSession once playback starts — see
+             SpotifastPlayer.getState(). -->
+        <service
+            android:name=".service.PlaybackService"
+            android:exported="true"
+            android:foregroundServiceType="mediaPlayback|connectedDevice">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
+
+        <!-- The system's "Screen saver" (Settings → Display → Screen saver) —
+             a landscape ambient now-playing display, offered while docked/
+             charging and idle. Purely a read-only view of SpotifyCore's
+             already-running state; it neither starts nor needs to keep
+             playback alive itself, unlike PlaybackService. -->
+        <service
+            android:name=".service.PlaybackDreamService"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

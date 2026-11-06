@@ -66,6 +66,37 @@ pub struct EngineConfig {
     pub proxy: crate::proxy::ProxyConfig,
 }
 
+/// How long a cached audio file can sit unplayed before `open_cache` prunes
+/// it, regardless of how much of the size budget is still free.
+const AUDIO_CACHE_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 60 * 60);
+
+/// Deletes files under `dir` (recursively — librespot nests cache files in
+/// hex-prefix subdirectories) whose last access is older than `max_age`.
+/// Best-effort: a directory that can't be read, or a file that can't be
+/// removed, is left for librespot's own size-based eviction to deal with.
+fn prune_stale_cache_files(dir: &std::path::Path, max_age: Duration) {
+    let Some(cutoff) = std::time::SystemTime::now().checked_sub(max_age) else {
+        return;
+    };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            prune_stale_cache_files(&path, max_age);
+            continue;
+        }
+        let stale = entry
+            .metadata()
+            .and_then(|meta| meta.accessed().or_else(|_| meta.modified()))
+            .is_ok_and(|accessed| accessed < cutoff);
+        if stale {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+}
+
 impl EngineConfig {
     /// A stable Connect device id derived from the name, so Spotify keeps
     /// recognising this computer across restarts.
@@ -74,6 +105,12 @@ impl EngineConfig {
     }
 
     pub fn open_cache(&self) -> Result<Cache> {
+        // librespot's own cache only evicts by total size, which never
+        // removes a track that is rarely played but keeps the cache under
+        // its byte budget — age it out on top of that, independently.
+        if let Some(dir) = &self.audio_cache_dir {
+            prune_stale_cache_files(dir, AUDIO_CACHE_MAX_AGE);
+        }
         Cache::new(
             None,
             Some(self.volume_dir.as_path()),
@@ -289,6 +326,10 @@ pub struct Engine {
     shutting_down: Arc<std::sync::atomic::AtomicBool>,
     #[cfg(not(target_os = "android"))]
     audio: Arc<AudioControl>,
+    /// Shared with the `AndroidSink` this engine's player writes to — see
+    /// `AndroidSink::new`'s doc and `command`'s android branch.
+    #[cfg(target_os = "android")]
+    audio_buffer: Arc<Mutex<std::collections::VecDeque<f32>>>,
 }
 
 impl Engine {
@@ -357,9 +398,12 @@ impl Engine {
             Arc::clone(&audio),
         );
         #[cfg(target_os = "android")]
+        let audio_buffer: Arc<Mutex<std::collections::VecDeque<f32>>> = Arc::default();
+        #[cfg(target_os = "android")]
         let (sink_builder, volume) = {
+            let buffer = Arc::clone(&audio_buffer);
             let sink_builder: Box<dyn FnOnce() -> Box<dyn Sink> + Send> =
-                Box::new(|| Box::new(crate::sink::AndroidSink::new()));
+                Box::new(move || Box::new(crate::sink::AndroidSink::new(buffer)));
             let volume: Box<dyn VolumeGetter + Send> = Box::new(NoOpVolume);
             (sink_builder, volume)
         };
@@ -373,6 +417,11 @@ impl Engine {
                 Arc::clone(&notify),
                 Arc::clone(&audio),
             ));
+        }
+        #[cfg(target_os = "android")]
+        {
+            let events = player.get_player_event_channel();
+            tokio::spawn(run_events_android(events, Arc::clone(&state), Arc::clone(&notify)));
         }
 
         let connect_config = ConnectConfig {
@@ -435,6 +484,8 @@ impl Engine {
             shutting_down,
             #[cfg(not(target_os = "android"))]
             audio,
+            #[cfg(target_os = "android")]
+            audio_buffer,
         })
     }
 
@@ -583,6 +634,21 @@ impl Engine {
         if interrupts_audio {
             self.audio.interrupt();
         }
+        // AndroidSink buffers audio ahead of real-time playback (see its
+        // doc) and its `stop()` doesn't clear that buffer — pause, then
+        // switch tracks, and the old track's leftover buffered audio
+        // bleeds through the new stream for a couple of seconds once
+        // playback resumes, regardless of how long the pause lasted.
+        // Scoped to commands that actually change track, not every pause:
+        // clearing on a plain resume would make resuming the *same* track
+        // wait to rebuffer instead of feeling instant.
+        #[cfg(target_os = "android")]
+        if command_changes_track(&command) {
+            self.audio_buffer
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clear();
+        }
         let result = self.send_command(command);
         #[cfg(not(target_os = "android"))]
         if interrupts_audio && result.is_err() {
@@ -650,11 +716,17 @@ impl Engine {
 }
 
 fn command_interrupts_audio(state: &LocalState, command: &PlayerCommand) -> bool {
-    state.playback == Playback::Playing
-        && matches!(
-            command,
-            PlayerCommand::Next | PlayerCommand::Previous | PlayerCommand::Load(_)
-        )
+    state.playback == Playback::Playing && command_changes_track(command)
+}
+
+/// Next/Previous/Load replace what's currently loaded; every other
+/// command (Toggle, Seek, volume, shuffle, repeat, …) acts on the same
+/// track that's already loaded.
+fn command_changes_track(command: &PlayerCommand) -> bool {
+    matches!(
+        command,
+        PlayerCommand::Next | PlayerCommand::Previous | PlayerCommand::Load(_)
+    )
 }
 
 /// The librespot backend a saved setting names, when this build has it.
@@ -800,6 +872,44 @@ async fn run_events(
             continue;
         }
         audio.handle_player_event(&event);
+        let snapshot = {
+            let mut current = state.lock().unwrap_or_else(|p| p.into_inner());
+            if apply_event(&mut current, event) {
+                Some(current.clone())
+            } else {
+                None
+            }
+        };
+        if let Some(snapshot) = snapshot {
+            notify(EngineEvent::State(snapshot));
+        }
+    }
+}
+
+/// Android's counterpart to [`run_events`], without the desktop-only
+/// `AudioControl` (OS media session/now-playing) integration — Android's
+/// equivalent lives in Kotlin, driven by the `LocalState` this forwards
+/// through `notify` instead.
+#[cfg(target_os = "android")]
+async fn run_events_android(
+    mut events: tokio::sync::mpsc::UnboundedReceiver<PlayerEvent>,
+    state: Arc<Mutex<LocalState>>,
+    notify: Notify,
+) {
+    let mut play_request_id = None;
+    while let Some(event) = events.recv().await {
+        if let PlayerEvent::PlayRequestIdChanged {
+            play_request_id: next,
+        } = &event
+        {
+            play_request_id = Some(*next);
+            continue;
+        }
+        if let (Some(current), Some(incoming)) = (play_request_id, event.get_play_request_id())
+            && current != incoming
+        {
+            continue;
+        }
         let snapshot = {
             let mut current = state.lock().unwrap_or_else(|p| p.into_inner());
             if apply_event(&mut current, event) {

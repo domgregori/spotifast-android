@@ -1631,14 +1631,28 @@ mod tests {
 pub struct AndroidSink {
     stream: Option<cpal::Stream>,
     buffer: Arc<Mutex<std::collections::VecDeque<f32>>>,
+    /// Converts from Spotify's fixed 44.1 kHz to the device's rate; `None`
+    /// when they already agree.
+    resampler: Option<Resampler>,
+    /// The output device's actual rate (post-resample), for sizing the
+    /// backpressure watermark in `write` below. `SAMPLE_RATE` until `start`
+    /// learns the real one.
+    output_rate: u32,
 }
 
 #[cfg(target_os = "android")]
 impl AndroidSink {
-    pub fn new() -> Self {
+    /// `buffer` is shared with the `Engine` that owns this sink
+    /// (`android_audio_buffer` in `player.rs`'s `connect`), so a
+    /// track-changing command can clear it directly — `stop()` alone
+    /// leaves stale decoded audio queued for the next `start()` to drain,
+    /// see `Engine::command`'s android branch.
+    pub fn new(buffer: Arc<Mutex<std::collections::VecDeque<f32>>>) -> Self {
         Self {
             stream: None,
-            buffer: Arc::new(Mutex::new(std::collections::VecDeque::new())),
+            buffer,
+            resampler: None,
+            output_rate: SAMPLE_RATE,
         }
     }
 }
@@ -1655,6 +1669,14 @@ impl Sink for AndroidSink {
         let config = device
             .default_output_config()
             .map_err(|error| SinkError::OnWrite(error.to_string()))?;
+        let device_rate = config.sample_rate();
+        self.output_rate = device_rate;
+        self.resampler = Resampler::new(SAMPLE_RATE, device_rate, NUM_CHANNELS as usize);
+        if self.resampler.is_some() {
+            log::info!(
+                "the Android output runs at {device_rate} Hz; the music is converted from {SAMPLE_RATE} Hz"
+            );
+        }
         let sample_format = config.sample_format();
         let buffer = Arc::clone(&self.buffer);
         let stream = match sample_format {
@@ -1679,15 +1701,42 @@ impl Sink for AndroidSink {
             return Ok(());
         };
         let samples = converter.f64_to_f32(&samples);
+        let samples = match &mut self.resampler {
+            Some(resampler) => resampler.process(&samples),
+            None => samples,
+        };
         self.buffer
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .extend(samples);
+        // Nothing else paces this to real playback speed: the cpal callback
+        // drains the buffer on its own schedule, off this thread, so without
+        // a cap `write` would hand the whole track to an ever-growing
+        // VecDeque in a fraction of a second — decoding runs far faster than
+        // real time. librespot would then see end-of-stream, and report
+        // EndOfTrack, long before any of it had actually played, racing
+        // through the rest of the queue behind audio that's still draining
+        // out the speaker. Block once buffered audio is comfortably ahead,
+        // so decoding can only run as fast as the device actually consumes it.
+        const HIGH_WATERMARK_SECS: u32 = 2;
+        let high_watermark = self.output_rate as usize * NUM_CHANNELS as usize * HIGH_WATERMARK_SECS as usize;
+        loop {
+            let len = self
+                .buffer
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .len();
+            if len <= high_watermark {
+                break;
+            }
+            thread::sleep(Duration::from_millis(20));
+        }
         Ok(())
     }
 
     fn stop(&mut self) -> SinkResult<()> {
         self.stream.take();
+        self.resampler = None;
         Ok(())
     }
 }

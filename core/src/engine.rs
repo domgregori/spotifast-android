@@ -7842,6 +7842,8 @@ impl Engine {
                     Err(error) => list.error = Some(friendly_api_error(self.localize.as_ref(), self.locale, &error)),
                 }
             }
+            // Not surfaced in the desktop UI.
+            ApiResponse::NewReleases { .. } => {}
             ApiResponse::SavedShows { offset, .. }
                 if self.library.shows.next_offset != Some(offset) => {}
             ApiResponse::SavedShows { offset, result } => match result {

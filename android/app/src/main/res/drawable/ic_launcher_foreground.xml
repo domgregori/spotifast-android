@@ -4,14 +4,33 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- A simple white note mark centred in the adaptive icon. -->
-    <group
-        android:scaleX="0.5"
-        android:scaleY="0.5"
-        android:translateX="27"
-        android:translateY="27">
-        <path
-            android:fillColor="#FFFFFF"
-            android:pathData="M36,24 L52,24 L52,54 A10,10 0 1 1 48,45.4 L48,28 L36,32 Z" />
-    </group>
+    <!-- A play mark with three speed lines trailing into it — "play" for
+         Spotify, "fast" for the rest of the name. Kept inside the adaptive
+         icon's safe zone (the inner ~72dp circle centred on 54,54) so
+         nothing is clipped by a circular or squircle mask. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M44,32 L44,78 L82,56 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.55"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.55"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:pathData="M24,38 L34,38" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:pathData="M16,56 L34,56" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.55"
+        android:strokeColor="#FFFFFF"
+        android:strokeAlpha="0.55"
+        android:strokeWidth="7"
+        android:strokeLineCap="round"
+        android:pathData="M24,74 L34,74" />
 </vector>

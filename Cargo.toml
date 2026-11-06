@@ -326,14 +326,28 @@ hyper-proxy2 = { git = "https://github.com/crmne/hyper-proxy2", rev = "efca48113
 # disconnect (#1765), a volume set while the device is inactive (#1770),
 # the dealer connection through the configured proxy (#1665), tokens and
 # credentials kept out of Debug output (#1806), and a bounded handshake
-# packet size (#1807), removal of one upcoming track (#1809), and live
-# Connect device, player and queue state (#1704).
+# packet size (#1807), removal of one upcoming track (#1809), live
+# Connect device, player and queue state (#1704), buddylist and listening
+# activity requests (#1829), a public local-file lookup (#1830),
+# positional playlist-item removal via post_playlist_changes (#1831),
+# prefetching the start of upcoming tracks so a skip doesn't cost a beat
+# of silence (#1832), collection-set reads and writes for Liked
+# Songs/saved albums/followed artists/playlist bans (#1833), queueing
+# local files (#1839), a windowed-sinc resampler (#1838), and decoding
+# local files in any channel layout (#1840).
+# Our own branch, spotifast-android-user-agent, rebases four Android-only
+# commits on top of that dev branch: pacing AP/connection retries, the
+# desktop OS/user-agent reported on Android, and Spirc::prev_force — a
+# previous-track command that always steps back a track, unlike Spirc's
+# own prev() which restarts the current track past 3s of play. Pushed to
+# both this gitea mirror (what the git deps below resolve against) and
+# github.com/domgregori/librespot (for opening PRs upstream).
 # Every librespot crate comes from the fork so one copy exists. Drop each
 # patch once upstream merges it.
-librespot-audio = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
-librespot-connect = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
-librespot-core = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
-librespot-metadata = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
-librespot-oauth = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
-librespot-playback = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
-librespot-protocol = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "4fe50713fb1ba6442dd7a6656ad5f435a172abce" }
+librespot-audio = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
+librespot-connect = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
+librespot-core = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
+librespot-metadata = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
+librespot-oauth = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
+librespot-playback = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
+librespot-protocol = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }

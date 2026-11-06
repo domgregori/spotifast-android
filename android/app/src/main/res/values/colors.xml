@@ -1,3 +1,14 @@
 <resources>
-    <color name="ic_launcher_background">#1DB954</color>
+    <!-- The app's own identity, not Spotify's green — this isn't an
+         official Spotify client. -->
+    <color name="ic_launcher_background">#5B4FE0</color>
+
+    <!-- The comic-themed launcher icon's ground — mirrors NoirBrand's
+         near-black page in ui/Theme.kt. -->
+    <color name="ic_launcher_background_comic">#0A0810</color>
+
+    <!-- Mirrors ui/Theme.kt's SpotifyBrand swatches, for the pre-Compose
+         window background/status bar so there is no light flash on launch. -->
+    <color name="spotify_surface">#121212</color>
+    <color name="spotify_green">#1ED760</color>
 </resources>

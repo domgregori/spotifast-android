@@ -1,3 +1,10 @@
 <resources>
-    <style name="Theme.Spotifast" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- Spotify's app is dark-only; the window background/status+nav bars
+         match app/src/main/kotlin/.../ui/Theme.kt's surface color so there
+         is no light flash before Compose's SpotifastTheme takes over. -->
+    <style name="Theme.Spotifast" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/spotify_surface</item>
+        <item name="android:statusBarColor">@color/spotify_surface</item>
+        <item name="android:navigationBarColor">@color/spotify_surface</item>
+    </style>
 </resources>

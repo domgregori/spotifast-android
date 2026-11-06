@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- A comic "burst" behind an inked play mark — the Comic Noir theme's
+         own look, for anyone who wants that identity on their home screen
+         instead of the default indigo mark. Kept inside the adaptive
+         icon's safe zone (the inner ~72dp circle centred on 54,54). -->
+    <path
+        android:fillColor="#FF3B57"
+        android:strokeColor="#000000"
+        android:strokeWidth="3"
+        android:pathData="M54,22 L60.12,39.22 L76.63,31.37 L68.78,47.88 L86,54
+            L68.78,60.12 L76.63,76.63 L60.12,68.78 L54,86 L47.88,68.78
+            L31.37,76.63 L39.22,60.12 L22,54 L39.22,47.88 L31.37,31.37 L47.88,39.22 Z" />
+    <path
+        android:fillColor="#EFE9DC"
+        android:strokeColor="#000000"
+        android:strokeWidth="3"
+        android:pathData="M46,40 L46,68 L70,54 Z" />
+</vector>

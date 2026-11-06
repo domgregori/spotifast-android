@@ -1099,6 +1099,16 @@ impl ApiClient {
         .await
     }
 
+    pub async fn new_releases(&self, offset: u32, limit: u32) -> Result<Page<Album>> {
+        let releases: NewReleases = self
+            .get(
+                "/browse/new-releases",
+                &[("limit", limit.to_string()), ("offset", offset.to_string())],
+            )
+            .await?;
+        Ok(releases.albums)
+    }
+
     pub async fn followed_artists(
         &self,
         after: Option<&str>,

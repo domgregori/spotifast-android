@@ -117,9 +117,22 @@ fn session_serves(operation: Operation, personal_ready: bool) -> bool {
 /// serve anything; later requests move once a response reveals the owner.
 fn plan(operation: Operation, personal_ready: bool) -> ApiSource {
     // Android signs in with a single Web API app (the registered client id),
-    // so every operation routes there rather than to the absent shared app.
+    // so every operation routes there rather than to the absent shared app —
+    // except reading a playlist this account doesn't own (External) or
+    // hasn't classified yet (Unknown), which falls through to the match
+    // below like on desktop. That's not about the shared app at all: it's
+    // what lets `session_serves` send the read over the streaming session
+    // instead, the only way to reach Spotify's own editorial/algorithmic
+    // playlists (Discover Weekly, a Daily Mix, Release Radar) — the
+    // personal Web API token gets a flat 404 for those, no matter the app.
     #[cfg(target_os = "android")]
-    if personal_ready {
+    if personal_ready
+        && !matches!(
+            operation,
+            Operation::PlaylistMetadata(PlaylistAccess::External | PlaylistAccess::Unknown)
+                | Operation::PlaylistItems(PlaylistAccess::External | PlaylistAccess::Unknown)
+        )
+    {
         return ApiSource::Personal;
     }
     use Operation::*;

@@ -627,6 +627,29 @@ impl PlayableItem {
     pub fn is_track(&self) -> bool {
         matches!(self, Self::Track(_))
     }
+
+    /// The primary (first-listed) artist's id, for a "View artist" link.
+    /// `None` for an episode — a podcast has a show, not an artist.
+    pub fn primary_artist_id(&self) -> Option<&str> {
+        match self {
+            Self::Track(track) => track.artists.first().and_then(|artist| artist.id.as_deref()),
+            Self::Episode(_) => None,
+        }
+    }
+
+    /// The track's album id, for a "View album" link. `None` for an
+    /// episode, or a track response that omitted its album (e.g. one
+    /// fetched already scoped to a single album).
+    pub fn album_id(&self) -> Option<&str> {
+        match self {
+            Self::Track(track) => track
+                .album
+                .as_ref()
+                .map(|album| album.id.as_str())
+                .filter(|id| !id.is_empty()),
+            Self::Episode(_) => None,
+        }
+    }
 }
 
 /// An entry in a playlist. `item` is the 2026 name, `track` the classic one.
@@ -688,6 +711,14 @@ pub struct SavedEpisode {
 #[derive(Clone, Debug, Default, Deserialize, PartialEq)]
 pub struct FollowedArtists {
     pub artists: CursorPage<Artist>,
+}
+
+/// `GET /browse/new-releases`'s wrapped shape — unlike `/me/albums`, which
+/// is a bare paging object, this one nests it under `albums`.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct NewReleases {
+    #[serde(default)]
+    pub albums: Page<Album>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq)]

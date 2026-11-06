@@ -211,6 +211,9 @@ pub enum ApiRequest {
     FollowedArtists {
         after: Option<String>,
     },
+    NewReleases {
+        offset: u32,
+    },
     SavedShows {
         offset: u32,
     },
@@ -442,6 +445,10 @@ pub enum ApiResponse {
         after: Option<String>,
         result: ApiResult<CursorPage<Artist>>,
     },
+    NewReleases {
+        offset: u32,
+        result: ApiResult<Page<Album>>,
+    },
     SavedShows {
         offset: u32,
         result: ApiResult<Page<SavedShow>>,
@@ -622,6 +629,14 @@ pub enum Command {
     },
     CancelSignIn,
     SignOut,
+    /// Removes every account's cached playlist pages, without signing out —
+    /// `SignOut` already does this as part of its own cleanup; this is the
+    /// same purge for a "clear cache" action on its own.
+    ClearPlaylistCaches,
+    /// Wipes librespot's on-disk audio cache. Separate from
+    /// `ClearPlaylistCaches` since it empties a different directory and
+    /// doesn't touch the rootlist/library state the playlist purge rebuilds.
+    ClearAudioCache,
     /// Authorize local playback on this computer (a separate browser grant).
     AuthorizePlayback,
     /// Reload the engine config (audio settings changed).
@@ -1987,6 +2002,16 @@ impl Worker {
                     if cache_writes.send(purge).await.is_err() {
                         log::warn!("unable to remove the playlist caches: writer unavailable");
                     }
+                }
+                Command::ClearPlaylistCaches => {
+                    let purge = PlaylistCacheJob::Purge(self.dirs.playlist_cache_dir());
+                    if cache_writes.send(purge).await.is_err() {
+                        log::warn!("unable to remove the playlist caches: writer unavailable");
+                    }
+                }
+                Command::ClearAudioCache => {
+                    let dir = self.dirs.audio_cache_dir();
+                    log_cache_removal(&dir, tokio::fs::remove_dir_all(&dir).await);
                 }
                 Command::AuthorizePlayback => self.authorize_playback(),
                 Command::RestartEngine(mut config) => {
@@ -4308,7 +4333,8 @@ fn operation_for(api: &ApiGateway, request: &ApiRequest) -> Operation {
         | ApiRequest::ShowEpisodes { .. }
         | ApiRequest::HomeEpisodes { .. }
         | ApiRequest::Track { .. }
-        | ApiRequest::Episode { .. } => Operation::Catalog,
+        | ApiRequest::Episode { .. }
+        | ApiRequest::NewReleases { .. } => Operation::Catalog,
     }
 }
 
@@ -4714,6 +4740,10 @@ async fn handle(
         ApiRequest::FollowedArtists { after } => ApiResponse::FollowedArtists {
             result: routed!(followed_artists(after.as_deref(), 50)),
             after,
+        },
+        ApiRequest::NewReleases { offset } => ApiResponse::NewReleases {
+            offset,
+            result: routed!(new_releases(offset, 50)),
         },
         ApiRequest::SavedShows { offset } => ApiResponse::SavedShows {
             offset,

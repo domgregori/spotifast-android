@@ -236,6 +236,20 @@ pub enum TokenEndpointError {
     Unreachable(String),
 }
 
+/// `reqwest::Error`'s own `Display` only prints its own message (e.g.
+/// "error sending request for url (...)"), not the underlying transport
+/// cause (DNS, TLS, timeout, proxy) chained via `source()` — walk it so
+/// `TokenEndpointError::Unreachable` carries something diagnosable.
+fn error_chain(error: &reqwest::Error) -> String {
+    let mut message = error.to_string();
+    let mut source = std::error::Error::source(error);
+    while let Some(cause) = source {
+        message.push_str(&format!(": {cause}"));
+        source = cause.source();
+    }
+    message
+}
+
 async fn token_request(
     http: &reqwest::Client,
     form: &[(&str, &str)],
@@ -245,7 +259,7 @@ async fn token_request(
         .form(form)
         .send()
         .await
-        .map_err(|error| TokenEndpointError::Unreachable(error.to_string()))?;
+        .map_err(|error| TokenEndpointError::Unreachable(error_chain(&error)))?;
     let status = response.status();
     let text = response.text().await.unwrap_or_default();
     decode_token_response(status, &text)

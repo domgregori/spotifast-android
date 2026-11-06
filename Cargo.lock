@@ -1006,6 +1006,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "clap_complete"
+version = "4.6.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "037e2a1a92236d0aff7e845093f64661d6df4c02c9fcc61a60e9e1d736fa392f"
+dependencies = [
+ "clap",
+]
+
+[[package]]
 name = "clap_derive"
 version = "4.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3481,7 +3490,7 @@ dependencies = [
 [[package]]
 name = "librespot-audio"
 version = "0.8.0"
-source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=4fe50713fb1ba6442dd7a6656ad5f435a172abce#4fe50713fb1ba6442dd7a6656ad5f435a172abce"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=d43e196384636287a4b145c095a161231f1148b9#d43e196384636287a4b145c095a161231f1148b9"
 dependencies = [
  "aes 0.8.4",
  "bytes",
@@ -3500,7 +3509,7 @@ dependencies = [
 [[package]]
 name = "librespot-connect"
 version = "0.8.0"
-source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=4fe50713fb1ba6442dd7a6656ad5f435a172abce#4fe50713fb1ba6442dd7a6656ad5f435a172abce"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=d43e196384636287a4b145c095a161231f1148b9#d43e196384636287a4b145c095a161231f1148b9"
 dependencies = [
  "futures-util",
  "librespot-core",
@@ -3519,7 +3528,7 @@ dependencies = [
 [[package]]
 name = "librespot-core"
 version = "0.8.0"
-source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=4fe50713fb1ba6442dd7a6656ad5f435a172abce#4fe50713fb1ba6442dd7a6656ad5f435a172abce"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=d43e196384636287a4b145c095a161231f1148b9#d43e196384636287a4b145c095a161231f1148b9"
 dependencies = [
  "aes 0.8.4",
  "base64",
@@ -3577,7 +3586,7 @@ dependencies = [
 [[package]]
 name = "librespot-metadata"
 version = "0.8.0"
-source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=4fe50713fb1ba6442dd7a6656ad5f435a172abce#4fe50713fb1ba6442dd7a6656ad5f435a172abce"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=d43e196384636287a4b145c095a161231f1148b9#d43e196384636287a4b145c095a161231f1148b9"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3594,7 +3603,7 @@ dependencies = [
 [[package]]
 name = "librespot-oauth"
 version = "0.8.0"
-source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=4fe50713fb1ba6442dd7a6656ad5f435a172abce#4fe50713fb1ba6442dd7a6656ad5f435a172abce"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=d43e196384636287a4b145c095a161231f1148b9#d43e196384636287a4b145c095a161231f1148b9"
 dependencies = [
  "log",
  "oauth2",
@@ -3608,7 +3617,7 @@ dependencies = [
 [[package]]
 name = "librespot-playback"
 version = "0.8.0"
-source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=4fe50713fb1ba6442dd7a6656ad5f435a172abce#4fe50713fb1ba6442dd7a6656ad5f435a172abce"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=d43e196384636287a4b145c095a161231f1148b9#d43e196384636287a4b145c095a161231f1148b9"
 dependencies = [
  "form_urlencoded",
  "futures-util",
@@ -3631,7 +3640,7 @@ dependencies = [
 [[package]]
 name = "librespot-protocol"
 version = "0.8.0"
-source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=4fe50713fb1ba6442dd7a6656ad5f435a172abce#4fe50713fb1ba6442dd7a6656ad5f435a172abce"
+source = "git+https://gitea.home.doms.place/domgregori/librespot?rev=d43e196384636287a4b145c095a161231f1148b9#d43e196384636287a4b145c095a161231f1148b9"
 dependencies = [
  "protobuf",
  "protobuf-codegen",
@@ -4691,6 +4700,29 @@ name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
+
+[[package]]
+name = "petname"
+version = "3.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bfb4653a82ec48e6d324c788597aadf46449bfc7b8e76d2a03b513a944325c88"
+dependencies = [
+ "clap",
+ "clap_complete",
+ "petname-macros",
+ "rand 0.10.2",
+]
+
+[[package]]
+name = "petname-macros"
+version = "3.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "78c406fb544296f598ccf69b82bcf1b12440c8f23ebf75946105f86304f16eb2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.4",
+]
 
 [[package]]
 name = "phf"
@@ -6222,7 +6254,10 @@ version = "0.13.3"
 dependencies = [
  "android_logger",
  "anyhow",
+ "jni",
  "log",
+ "ndk-context",
+ "petname",
  "serde",
  "serde_json",
  "spotifast-core",
