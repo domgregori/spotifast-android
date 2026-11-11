@@ -6262,6 +6262,7 @@ dependencies = [
  "serde_json",
  "spotifast-core",
  "tokio",
+ "tracing",
  "uniffi",
 ]
 

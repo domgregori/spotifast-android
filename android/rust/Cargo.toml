@@ -19,6 +19,12 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 android_logger = "0.15"
 log = "0.4"
+# librespot logs through `tracing`, which android_logger's `log` backend never
+# sees: a failed connect showed up only as the UI's one-line error. Emitting
+# `log` records from those events puts the real cause (and the host it dialed)
+# in logcat. `log-always`, not `log`, because no tracing subscriber is
+# installed here.
+tracing = { version = "0.1", features = ["log-always"] }
 # Bootstraps ndk-context (below) so cpal's AAudio backend, deep inside
 # spotifast-core's AndroidSink, can reach the JVM/Context it needs.
 jni = "0.22"
