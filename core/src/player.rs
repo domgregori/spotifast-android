@@ -108,14 +108,29 @@ impl EngineConfig {
         // librespot's own cache only evicts by total size, which never
         // removes a track that is rarely played but keeps the cache under
         // its byte budget — age it out on top of that, independently.
+        //
+        // Where downloads exist, librespot's limiter has to be left off
+        // instead: it cannot see pins, so it would evict a track the user
+        // asked to keep the moment the budget got tight. `pins::sweep` then
+        // does both jobs, and is the only thing that deletes cache files, so
+        // a pinned one can only go by being unpinned.
+        let downloads = cfg!(target_os = "android");
         if let Some(dir) = &self.audio_cache_dir {
-            prune_stale_cache_files(dir, AUDIO_CACHE_MAX_AGE);
+            if downloads {
+                crate::pins::sweep(dir, Some(AUDIO_CACHE_MAX_AGE), self.audio_cache_limit);
+            } else {
+                prune_stale_cache_files(dir, AUDIO_CACHE_MAX_AGE);
+            }
         }
         Cache::new(
             None,
             Some(self.volume_dir.as_path()),
             self.audio_cache_dir.as_deref(),
-            self.audio_cache_limit,
+            if downloads {
+                None
+            } else {
+                self.audio_cache_limit
+            },
         )
         .map(Cache::with_memory_credentials)
         .context("unable to open the playback cache")
@@ -320,6 +335,10 @@ pub struct Engine {
     session: Session,
     mixer: Arc<dyn Mixer>,
     device_id: String,
+    /// The stream quality this engine was built for. Downloads pick the same
+    /// file the player would, so a pinned track is playable without a
+    /// second, different download at a different bitrate.
+    bitrate: Bitrate,
     state: Arc<Mutex<LocalState>>,
     /// What was playing when the session ended on its own.
     interrupted: Arc<Mutex<Option<Interrupted>>>,
@@ -479,6 +498,7 @@ impl Engine {
             session,
             mixer,
             device_id,
+            bitrate: config.bitrate(),
             state,
             interrupted,
             shutting_down,
@@ -593,6 +613,12 @@ impl Engine {
     /// The streaming session, for reads that need no Web API quota.
     pub fn session(&self) -> &Session {
         &self.session
+    }
+
+    /// The stream quality this engine plays at, and so the quality a
+    /// download fetches.
+    pub fn bitrate(&self) -> Bitrate {
+        self.bitrate
     }
 
     pub fn shutdown(&self) {

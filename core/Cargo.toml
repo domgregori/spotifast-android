@@ -61,6 +61,10 @@ librespot-protocol = { version = "0.8", default-features = false }
 librespot-metadata = { version = "0.8", default-features = false }
 # player.rs owns the Spirc Connect device and its state.
 librespot-connect = { version = "0.8", default-features = false }
+# download.rs runs librespot's own audio fetch to completion for a track the
+# user asked to keep, so the file the cache ends up holding is exactly the one
+# playback would have streamed.
+librespot-audio = { version = "0.8", default-features = false, features = ["rustls-tls-native-roots"] }
 # session_reads.rs parses the rootlist's playlist4 protobuf.
 protobuf = "3"
 

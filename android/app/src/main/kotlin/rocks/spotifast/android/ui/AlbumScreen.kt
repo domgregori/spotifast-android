@@ -34,7 +34,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import rocks.spotifast.android.AlbumItem
 import rocks.spotifast.android.PlayContext
+import rocks.spotifast.android.DownloadProgress
 import rocks.spotifast.android.SpotifyCore
+import rocks.spotifast.android.ui.components.DownloadAction
 import rocks.spotifast.android.ui.components.ArtworkPlaceholder
 import rocks.spotifast.android.ui.components.TrackRow
 
@@ -50,6 +52,10 @@ fun AlbumScreen(albumId: String, onBack: () -> Unit) {
     val tracks = albumTracks[albumId] ?: emptyList()
     val albumUri = "spotify:album:$albumId"
     val saved = likedTracks[albumUri] == true
+    val uris = tracks.map { it.uri }
+    val downloadedTracks by SpotifyCore.downloaded.collectAsState()
+    val downloadProgress by SpotifyCore.downloadProgress.collectAsState()
+    val downloaded = uris.isNotEmpty() && uris.all { it in downloadedTracks }
 
     LaunchedEffect(tracks) { SpotifyCore.checkLikedBatch(tracks.map { it.uri }) }
     LaunchedEffect(albumId) { SpotifyCore.checkLiked(albumUri) }
@@ -64,6 +70,10 @@ fun AlbumScreen(albumId: String, onBack: () -> Unit) {
                 trackCount = tracks.size,
                 saved = saved,
                 onToggleSaved = { SpotifyCore.setLiked(albumUri, !saved) },
+                downloaded = downloaded,
+                downloadProgress = downloadProgress?.takeIf { batch -> batch.uris.any { it in uris } },
+                onDownload = { SpotifyCore.download(uris) },
+                onRemoveDownload = { SpotifyCore.removeDownloads(uris) },
                 onBack = onBack,
                 onOpenMenu = {
                     SpotifyCore.openAlbumMenu(album ?: AlbumItem(albumId, "Album", "", null))
@@ -98,6 +108,10 @@ private fun AlbumHeader(
     trackCount: Int,
     saved: Boolean,
     onToggleSaved: () -> Unit,
+    downloaded: Boolean,
+    downloadProgress: DownloadProgress?,
+    onDownload: () -> Unit,
+    onRemoveDownload: () -> Unit,
     onBack: () -> Unit,
     onOpenMenu: () -> Unit,
 ) {
@@ -158,6 +172,15 @@ private fun AlbumHeader(
                         text = if (saved) "Saved" else "Save",
                         style = MaterialTheme.typography.bodySmall,
                         color = if (saved) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (trackCount > 0) {
+                    Spacer(Modifier.height(8.dp))
+                    DownloadAction(
+                        downloaded = downloaded,
+                        progress = downloadProgress,
+                        onDownload = onDownload,
+                        onRemove = onRemoveDownload,
                     )
                 }
                 Spacer(Modifier.height(12.dp))

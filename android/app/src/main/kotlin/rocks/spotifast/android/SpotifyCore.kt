@@ -32,6 +32,11 @@ sealed interface AuthState {
 /** One playlist in the library list. */
 data class LibraryItem(val id: String, val name: String, val artUrl: String?)
 
+/** How far a download batch has got, for the "Downloading 3 of 12" line.
+ *  [uris] identifies the collection it belongs to, so a header only reports a
+ *  batch of its own rather than whatever is downloading elsewhere. */
+data class DownloadProgress(val done: Int, val total: Int, val uris: Set<String> = emptySet())
+
 /** One row of the account's playlist tree — a playlist, or a folder
  *  holding more rows (playlists and, in principle, nested folders, though
  *  Spotify's own apps only ever create one level deep). Built from the
@@ -356,6 +361,14 @@ object SpotifyCore {
     /** An album's tracks, by album id. */
     private val _albumTracks = MutableStateFlow<Map<String, List<TrackItem>>>(emptyMap())
     val albumTracks: StateFlow<Map<String, List<TrackItem>>> = _albumTracks.asStateFlow()
+
+    /** Every pinned track, as the Rust side reports it. */
+    private val _downloaded = MutableStateFlow<Set<String>>(emptySet())
+    val downloaded: StateFlow<Set<String>> = _downloaded.asStateFlow()
+
+    /** The batch in flight, or null when nothing is downloading. */
+    private val _downloadProgress = MutableStateFlow<DownloadProgress?>(null)
+    val downloadProgress: StateFlow<DownloadProgress?> = _downloadProgress.asStateFlow()
 
     private val _searchTracks = MutableStateFlow<List<TrackItem>>(emptyList())
     val searchTracks: StateFlow<List<TrackItem>> = _searchTracks.asStateFlow()
@@ -1067,6 +1080,29 @@ object SpotifyCore {
                 }
             }
         }
+
+        override fun onDownloadProgress(done: UInt, total: UInt, uri: String, fetched: Boolean, error: String?) {
+            if (error != null) {
+                _downloadProgress.value = null
+                _toast.value = "Couldn't download: $error"
+                return
+            }
+            val doneCount = done.toInt()
+            val totalCount = total.toInt()
+            if (doneCount >= totalCount) {
+                _downloadProgress.value = null
+                _toast.value = "Downloaded $totalCount song${if (totalCount == 1) "" else "s"}"
+            } else {
+                // Which collection this batch is for was recorded when it
+                // started; the callback only advances the count.
+                val uris = _downloadProgress.value?.uris.orEmpty()
+                _downloadProgress.value = DownloadProgress(doneCount, totalCount, uris)
+            }
+        }
+
+        override fun onDownloads(uris: List<String>) {
+            _downloaded.value = uris.toSet()
+        }
     }
 
     @Synchronized
@@ -1104,6 +1140,9 @@ object SpotifyCore {
                 bitrateKbps.toUShort(),
             )
             handle?.setListener(listener)
+            // The pinned set lives on disk, so the downloads the user made in
+            // an earlier run must be asked for rather than assumed.
+            handle?.requestDownloads()
             // Home's recently-played feed needs this regardless of
             // Library's own sort choice, so it's no longer conditional.
             handle?.recentlyPlayed()
@@ -1490,6 +1529,24 @@ object SpotifyCore {
     fun createPlaylistFromAlbum(albumId: String, name: String) {
         val tracks = _albumTracks.value[albumId].orEmpty()
         createPlaylist(name, tracks.map { it.uri })
+    }
+
+    /** Whether every one of [uris] is already pinned. An empty list is never
+     *  "downloaded": there is nothing there to have downloaded. */
+    fun isDownloaded(uris: List<String>): Boolean =
+        uris.isNotEmpty() && uris.all { it in _downloaded.value }
+
+    /** Pins these tracks after fetching their audio, one at a time. */
+    fun download(uris: List<String>) {
+        if (uris.isEmpty()) return
+        _downloadProgress.value = DownloadProgress(0, uris.size, uris.toSet())
+        handle?.downloadTracks(uris)
+    }
+
+    /** Unpins these tracks; their audio stays cached but is evictable again. */
+    fun removeDownloads(uris: List<String>) {
+        if (uris.isEmpty()) return
+        handle?.removeDownloads(uris)
     }
 
     fun toggleShuffle() {

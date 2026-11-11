@@ -41,7 +41,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import rocks.spotifast.android.LibraryItem
 import rocks.spotifast.android.PlayContext
+import rocks.spotifast.android.DownloadProgress
 import rocks.spotifast.android.SpotifyCore
+import rocks.spotifast.android.ui.components.DownloadAction
 import rocks.spotifast.android.ui.components.ArtworkPlaceholder
 import rocks.spotifast.android.ui.components.FilterBar
 import rocks.spotifast.android.ui.components.TrackRow
@@ -62,6 +64,10 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
     val tracksHasMore by SpotifyCore.tracksHasMore.collectAsState()
     val tracksLoadingMore by SpotifyCore.tracksLoadingMore.collectAsState()
     val playlistTracks = tracks[playlistId] ?: emptyList()
+    val uris = playlistTracks.map { it.uri }
+    val downloadedTracks by SpotifyCore.downloaded.collectAsState()
+    val downloadProgress by SpotifyCore.downloadProgress.collectAsState()
+    val downloaded = uris.isNotEmpty() && uris.all { it in downloadedTracks }
     val hasMore = tracksHasMore[playlistId] == true
     val loadingMore = tracksLoadingMore.contains(playlistId)
     val playlist = if (playlistId == SpotifyCore.LIKED_SONGS_ID) {
@@ -140,6 +146,12 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
                     inLibrary = inLibrary,
                     isLikedSongs = isLiked,
                     onToggleSaved = { SpotifyCore.setLiked("spotify:playlist:$playlistId", !inLibrary) },
+                    // Liked Songs is not a real playlist: there is no id to
+                    // download into, and it is not a fixed collection.
+                    downloaded = downloaded,
+                    downloadProgress = downloadProgress?.takeIf { batch -> batch.uris.any { it in uris } },
+                    onDownload = { SpotifyCore.download(uris) },
+                    onRemoveDownload = { SpotifyCore.removeDownloads(uris) },
                     onBack = onBack,
                     onOpenMenu = {
                         SpotifyCore.openLibraryMenu(
@@ -203,6 +215,10 @@ private fun PlaylistHeader(
     inLibrary: Boolean,
     isLikedSongs: Boolean,
     onToggleSaved: () -> Unit,
+    downloaded: Boolean,
+    downloadProgress: DownloadProgress?,
+    onDownload: () -> Unit,
+    onRemoveDownload: () -> Unit,
     onBack: () -> Unit,
     onOpenMenu: () -> Unit,
 ) {
@@ -263,6 +279,15 @@ private fun PlaylistHeader(
                     }
                 }
                 Spacer(Modifier.height(8.dp))
+                if (!isLikedSongs && trackCount > 0) {
+                    DownloadAction(
+                        downloaded = downloaded,
+                        progress = downloadProgress,
+                        onDownload = onDownload,
+                        onRemove = onRemoveDownload,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                }
                 if (isLikedSongs) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(

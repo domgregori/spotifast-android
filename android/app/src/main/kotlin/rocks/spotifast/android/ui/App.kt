@@ -345,6 +345,7 @@ private fun ConnectedApp(username: String) {
         if (menuAlbum != null) {
             AlbumContextMenu(
                 name = menuAlbum.name,
+
                 onDismiss = { SpotifyCore.closeAlbumMenu() },
                 onCreatePlaylist = { createPlaylistAlbum = menuAlbum },
                 onShare = { shareUri(context, "spotify:album:${menuAlbum.id}", menuAlbum.name) },

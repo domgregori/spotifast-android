@@ -637,6 +637,20 @@ pub enum Command {
     /// `ClearPlaylistCaches` since it empties a different directory and
     /// doesn't touch the rootlist/library state the playlist purge rebuilds.
     ClearAudioCache,
+    /// Downloads these tracks into the audio cache and pins them, one at a
+    /// time. Progress arrives as `Event::DownloadProgress`; the pinned set
+    /// follows as `Event::Downloads` once the batch is finished.
+    DownloadTracks {
+        request: u64,
+        uris: Vec<String>,
+    },
+    /// Unpins these tracks. Their audio stays in the cache, where ordinary
+    /// eviction may take it again.
+    RemoveDownloads {
+        uris: Vec<String>,
+    },
+    /// Reports the currently pinned tracks as `Event::Downloads`.
+    DownloadsQuery,
     /// Authorize local playback on this computer (a separate browser grant).
     AuthorizePlayback,
     /// Reload the engine config (audio settings changed).
@@ -893,6 +907,20 @@ pub enum Event {
         color: [u8; 3],
     },
     Error(String),
+    /// One track of a download batch finished. `result` says whether the
+    /// track was fetched now (`Ok(true)`), was already cached (`Ok(false)`),
+    /// or could not be downloaded at all.
+    DownloadProgress {
+        request: u64,
+        done: u32,
+        total: u32,
+        uri: String,
+        result: Result<bool, String>,
+    },
+    /// The tracks that are pinned on disk right now, as Spotify URIs.
+    Downloads {
+        uris: Vec<String>,
+    },
     /// GitHub answered an update check, or the request failed.
     #[cfg(not(target_os = "android"))]
     UpdateChecked {
@@ -2009,6 +2037,9 @@ impl Worker {
                         log::warn!("unable to remove the playlist caches: writer unavailable");
                     }
                 }
+                Command::DownloadTracks { request, uris } => self.start_downloads(request, uris),
+                Command::RemoveDownloads { uris } => self.remove_downloads(uris),
+                Command::DownloadsQuery => self.report_downloads(),
                 Command::ClearAudioCache => {
                     let dir = self.dirs.audio_cache_dir();
                     log_cache_removal(&dir, tokio::fs::remove_dir_all(&dir).await);
@@ -3715,6 +3746,63 @@ impl Worker {
             tokio::time::sleep(std::time::Duration::from_millis(delay_ms)).await;
             let _ = commands.send(Command::VerifyResume);
         });
+    }
+
+    /// Downloads a batch of tracks, one at a time. Sequential on purpose:
+    /// each fetch already streams a whole file, and parallel ones would only
+    /// contend for the same bandwidth.
+    fn start_downloads(&mut self, request: u64, uris: Vec<String>) {
+        let Some(engine) = self.engine.clone() else {
+            let _ = self.events.send(Event::DownloadProgress {
+                request,
+                done: 0,
+                total: uris.len() as u32,
+                uri: String::new(),
+                result: Err("the playback session is not connected".to_string()),
+            });
+            return;
+        };
+        let events = self.events.clone();
+        let dir = self.dirs.audio_cache_dir();
+        tokio::spawn(async move {
+            let total = uris.len() as u32;
+            for (index, uri) in uris.into_iter().enumerate() {
+                let result = engine.download_track(&uri).await;
+                let _ = events.send(Event::DownloadProgress {
+                    request,
+                    done: index as u32 + 1,
+                    total,
+                    uri,
+                    result,
+                });
+            }
+            let _ = events.send(Event::Downloads {
+                uris: crate::pins::pinned(&dir)
+                    .into_iter()
+                    .map(|pin| pin.uri)
+                    .collect(),
+            });
+        });
+    }
+
+    fn remove_downloads(&mut self, uris: Vec<String>) {
+        let dir = self.dirs.audio_cache_dir();
+        let wanted: std::collections::HashSet<&str> = uris.iter().map(String::as_str).collect();
+        for pin in crate::pins::pinned(&dir) {
+            if wanted.contains(pin.uri.as_str()) {
+                let _ = crate::pins::unpin(&pin.audio);
+            }
+        }
+        self.report_downloads();
+    }
+
+    fn report_downloads(&mut self) {
+        let dir = self.dirs.audio_cache_dir();
+        let uris = crate::pins::pinned(&dir)
+            .into_iter()
+            .map(|pin| pin.uri)
+            .collect();
+        let _ = self.events.send(Event::Downloads { uris });
     }
 
     fn fetch_rootlist(&mut self) {

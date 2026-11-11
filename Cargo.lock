@@ -6284,6 +6284,7 @@ dependencies = [
  "image",
  "jiff",
  "keyring-core",
+ "librespot-audio",
  "librespot-connect",
  "librespot-core",
  "librespot-metadata",
