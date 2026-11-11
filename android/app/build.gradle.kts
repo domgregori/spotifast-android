@@ -79,9 +79,15 @@ val cargoNdkBuild = tasks.register<Exec>("cargoNdkBuild") {
     workingDir = rustRoot
     inputs.dir(rustRoot.resolve("core/src"))
     inputs.dir(rustRoot.resolve("android/rust/src"))
-    // A dependency change (in Cargo.toml/Cargo.lock) must rebuild the cdylib.
+    // A dependency change (in any manifest or Cargo.lock) must rebuild the
+    // cdylib. The per-crate manifests matter as much as the workspace one:
+    // adding a dependency or a feature to core/ or android/rust/ changes what
+    // is compiled without touching the workspace manifest or the lockfile.
     inputs.file(rustRoot.resolve("Cargo.toml"))
     inputs.file(rustRoot.resolve("Cargo.lock"))
+    inputs.file(rustRoot.resolve("core/Cargo.toml"))
+    inputs.file(rustRoot.resolve("android/rust/Cargo.toml"))
+    inputs.file(rustRoot.resolve("rust-toolchain.toml"))
     outputs.dir(jniLibs)
 }
 
