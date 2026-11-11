@@ -196,7 +196,7 @@ pub async fn exchange_code(
     redirect: &dyn AuthRedirectHandler,
 ) -> Result<TokenResponse> {
     let redirect_uri = redirect.redirect_uri(grant);
-    token_request(
+    token_request_with_retry(
         http,
         &[
             ("client_id", grant.client_id.as_str()),
@@ -263,6 +263,49 @@ async fn token_request(
     let status = response.status();
     let text = response.text().await.unwrap_or_default();
     decode_token_response(status, &text)
+}
+
+/// How many times the code exchange may try the token endpoint, and how long
+/// it waits between tries.
+///
+/// The exchange runs immediately after the loopback redirect, so it runs while
+/// the browser's tab, not this app, is in front. Transport failures there are
+/// ordinary and often transient: the socket can die when Android freezes the
+/// backgrounded process (`connection aborted`), and a device can fail to
+/// resolve a name at the moment of the request. Either way the grant is still
+/// good, so one attempt should not turn it into "playback unavailable". A
+/// refused grant is never retried, because only the browser can mint a new one
+/// and the same answer would just come back.
+const TOKEN_ATTEMPTS: u32 = 6;
+const TOKEN_RETRY_DELAY: Duration = Duration::from_millis(1500);
+
+/// Whether this answer ends the exchange: a grant Spotify refused will be
+/// refused again, and the attempts ran out on a transport error.
+fn final_attempt(error: &TokenEndpointError, attempt: u32) -> bool {
+    match error {
+        TokenEndpointError::Rejected { .. } => true,
+        TokenEndpointError::Unreachable(_) => attempt >= TOKEN_ATTEMPTS,
+    }
+}
+
+async fn token_request_with_retry(
+    http: &reqwest::Client,
+    form: &[(&str, &str)],
+) -> std::result::Result<TokenResponse, TokenEndpointError> {
+    let mut attempt = 1;
+    loop {
+        match token_request(http, form).await {
+            Ok(token) => return Ok(token),
+            Err(error) => {
+                if final_attempt(&error, attempt) {
+                    return Err(error);
+                }
+                log::debug!("token request attempt {attempt} failed ({error}); retrying");
+                tokio::time::sleep(TOKEN_RETRY_DELAY).await;
+                attempt += 1;
+            }
+        }
+    }
 }
 
 fn decode_token_response(
@@ -413,6 +456,22 @@ fn now_secs() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    #[test]
+    fn a_refused_grant_is_never_retried() {
+        let rejected = TokenEndpointError::Rejected { status: 400, detail: "x".into() };
+        assert!(final_attempt(&rejected, 1));
+    }
+
+    #[test]
+    fn a_transport_failure_is_retried_until_the_attempts_run_out() {
+        let unreachable = TokenEndpointError::Unreachable("connection aborted".into());
+        assert!(!final_attempt(&unreachable, 1));
+        assert!(!final_attempt(&unreachable, TOKEN_ATTEMPTS - 1));
+        assert!(final_attempt(&unreachable, TOKEN_ATTEMPTS));
+    }
+
     #[test]
     fn token_errors_never_include_authorization_response_contents() {
         for (status, body) in [
