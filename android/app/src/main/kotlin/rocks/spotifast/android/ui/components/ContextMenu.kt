@@ -67,6 +67,7 @@ fun TrackContextMenu(
     onDismiss: () -> Unit,
     onToggleLiked: () -> Unit,
     onAddToQueue: () -> Unit,
+    onAddToPlaylist: () -> Unit,
     onGoToRadio: () -> Unit,
     onShare: () -> Unit,
     onViewArtist: (() -> Unit)? = null,
@@ -96,6 +97,13 @@ fun TrackContextMenu(
             MenuRow(label = "Add to Queue", onClick = { onAddToQueue(); onDismiss() }) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.QueueMusic,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            MenuRow(label = "Add to Playlist", onClick = { onAddToPlaylist(); onDismiss() }) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.PlaylistAdd,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

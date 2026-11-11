@@ -34,6 +34,7 @@ import rocks.spotifast.android.ui.components.TrackRow
 @Composable
 fun QueueScreen(onClose: () -> Unit) {
     val queue by SpotifyCore.queue.collectAsState()
+    val likedTracks by SpotifyCore.likedTracks.collectAsState()
 
     LaunchedEffect(Unit) { SpotifyCore.loadQueue() }
 
@@ -71,7 +72,11 @@ fun QueueScreen(onClose: () -> Unit) {
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(queue, key = { it.uri }) { track ->
-                    TrackRow(track = track, onLongClick = { SpotifyCore.openTrackMenu(track) })
+                    TrackRow(
+                        track = track,
+                        onLongClick = { SpotifyCore.openTrackMenu(track) },
+                        liked = likedTracks[track.uri] == true,
+                    )
                 }
             }
         }

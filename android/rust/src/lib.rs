@@ -626,6 +626,30 @@ impl CoreHandle {
         });
     }
 
+    /// Adds one track to an existing playlist — `playlist_id`/`playlist_name`
+    /// already known, so unlike `create_playlist` this skips straight to
+    /// `AddToPlaylist` instead of waiting on `PlaylistCreated` first. Reuses
+    /// the same pending-op slot and `on_playlist_created` callback
+    /// (`added`/`requested` both 1 on success) since the add-items call and
+    /// its completion handling are otherwise identical either way. Subject
+    /// to the same one-in-flight-at-a-time limit as `create_playlist`.
+    pub fn add_track_to_playlist(&self, playlist_id: String, playlist_name: String, track_uri: String) {
+        *self.pending_playlist.lock().unwrap() = Some(PendingPlaylist {
+            name: playlist_name.clone(),
+            requested: 1,
+            remaining_uris: Vec::new(),
+            added: 0,
+            playlist_id: playlist_id.clone(),
+            last_chunk_len: 1,
+        });
+        self.backend.lock().unwrap().api(ApiRequest::AddToPlaylist {
+            playlist_id,
+            playlist_name,
+            uris: vec![track_uri],
+            position: None,
+        });
+    }
+
     /// The account's playlist tree, folders and all, read from the
     /// session's own rootlist rather than the Web API (which has no public
     /// folder endpoint). The result arrives via `on_rootlist`.

@@ -47,6 +47,9 @@ private enum class StatsFilter(val label: String) {
 fun StatsScreen(onClose: () -> Unit) {
     val topTracks by SpotifyCore.topTracks.collectAsState()
     val topArtists by SpotifyCore.topArtists.collectAsState()
+    val likedTracks by SpotifyCore.likedTracks.collectAsState()
+    val nowPlaying by SpotifyCore.localPlayback.collectAsState()
+    val nowPlayingUri = nowPlaying?.track?.uri
     var filter by remember { mutableStateOf(StatsFilter.Songs) }
 
     LaunchedEffect(Unit) {
@@ -98,6 +101,8 @@ fun StatsScreen(onClose: () -> Unit) {
                             track = track,
                             onClick = { SpotifyCore.playTracks(topTracks, topTracks.indexOf(track)) },
                             onLongClick = { SpotifyCore.openTrackMenu(track) },
+                            isPlaying = track.uri == nowPlayingUri,
+                            liked = likedTracks[track.uri] == true,
                         )
                     }
                 }

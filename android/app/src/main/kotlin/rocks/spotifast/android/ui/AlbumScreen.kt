@@ -44,6 +44,8 @@ fun AlbumScreen(albumId: String, onBack: () -> Unit) {
     val albums by SpotifyCore.albums.collectAsState()
     val albumTracks by SpotifyCore.albumTracks.collectAsState()
     val likedTracks by SpotifyCore.likedTracks.collectAsState()
+    val nowPlaying by SpotifyCore.localPlayback.collectAsState()
+    val nowPlayingUri = nowPlaying?.track?.uri
     val album = albums[albumId]
     val tracks = albumTracks[albumId] ?: emptyList()
     val albumUri = "spotify:album:$albumId"
@@ -79,6 +81,8 @@ fun AlbumScreen(albumId: String, onBack: () -> Unit) {
                     )
                 },
                 onLongClick = { SpotifyCore.openTrackMenu(track) },
+                isPlaying = track.uri == nowPlayingUri,
+                liked = likedTracks[track.uri] == true,
             )
         }
     }

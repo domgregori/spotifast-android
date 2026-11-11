@@ -59,6 +59,9 @@ fun SearchScreen(onOpenPlaylist: (String) -> Unit, onOpenArtist: (String) -> Uni
     val playlists by SpotifyCore.searchPlaylists.collectAsState()
     val library by SpotifyCore.library.collectAsState()
     val searchHistory by SpotifyCore.searchHistory.collectAsState()
+    val likedTracks by SpotifyCore.likedTracks.collectAsState()
+    val nowPlaying by SpotifyCore.localPlayback.collectAsState()
+    val nowPlayingUri = nowPlaying?.track?.uri
 
     LaunchedEffect(query) {
         if (query.isNotBlank()) {
@@ -133,6 +136,8 @@ fun SearchScreen(onOpenPlaylist: (String) -> Unit, onOpenArtist: (String) -> Uni
                                 track = track,
                                 onClick = { SpotifyCore.playTracks(tracks, index) },
                                 onLongClick = { SpotifyCore.openTrackMenu(track) },
+                                isPlaying = track.uri == nowPlayingUri,
+                                liked = likedTracks[track.uri] == true,
                             )
                         }
                         SearchFilter.Artists -> itemsIndexed(artists, key = { _, artist -> artist.id }) { _, artist ->

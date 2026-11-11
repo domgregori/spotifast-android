@@ -306,6 +306,9 @@ object SpotifyCore {
     private val _tracksLoadingMore = MutableStateFlow<Set<String>>(emptySet())
     val tracksLoadingMore: StateFlow<Set<String>> = _tracksLoadingMore.asStateFlow()
 
+    /** Ids with a [loadAllTracks] chain still running — see its doc comment. */
+    private val loadingAllIds = mutableSetOf<String>()
+
     private val _selectedPlaylist = MutableStateFlow<String?>(null)
     val selectedPlaylist: StateFlow<String?> = _selectedPlaylist.asStateFlow()
 
@@ -579,6 +582,12 @@ object SpotifyCore {
     private val _trackMenu = MutableStateFlow<TrackItem?>(null)
     val trackMenu: StateFlow<TrackItem?> = _trackMenu.asStateFlow()
 
+    /** The track an "Add to Playlist" sheet is open for, from
+     *  [TrackContextMenu]'s own entry — held centrally for the same reason
+     *  as [trackMenu] above. */
+    private val _addToPlaylistTrack = MutableStateFlow<TrackItem?>(null)
+    val addToPlaylistTrack: StateFlow<TrackItem?> = _addToPlaylistTrack.asStateFlow()
+
     /** The library item (playlist or Liked Songs) a long-press context menu
      *  is open for, or null when closed. */
     private val _libraryMenu = MutableStateFlow<LibraryItem?>(null)
@@ -617,6 +626,12 @@ object SpotifyCore {
      *  this is true. */
     private val _creatingPlaylist = MutableStateFlow(false)
     val creatingPlaylist: StateFlow<Boolean> = _creatingPlaylist.asStateFlow()
+
+    /** Which of [createPlaylist]/[addTrackToPlaylist] the in-flight
+     *  `onPlaylistCreated` callback is actually answering — both share the
+     *  one callback (and the Rust side's one pending-op slot), so this is
+     *  how it picks the right [toast] wording. */
+    private var pendingPlaylistOpIsAdd = false
 
     private var signedInUsername: String? = null
 
@@ -771,7 +786,10 @@ object SpotifyCore {
             }
             _tracks.value = _tracks.value + (playlistId to ordered)
             _tracksHasMore.value = _tracksHasMore.value + (playlistId to hasMore)
-            _tracksLoadingMore.value = _tracksLoadingMore.value - playlistId
+            if (!hasMore || !loadingAllIds.contains(playlistId)) {
+                loadingAllIds.remove(playlistId)
+                _tracksLoadingMore.value = _tracksLoadingMore.value - playlistId
+            }
         }
 
         override fun onSearchTracks(query: String, tracks: String) {
@@ -1034,11 +1052,19 @@ object SpotifyCore {
 
         override fun onPlaylistCreated(name: String, id: String, added: UInt, requested: UInt, error: String?) {
             _creatingPlaylist.value = false
-            _toast.value = when {
-                error != null -> "Couldn't create \"$name\": $error"
-                requested == 0u -> "Created \"$name\""
-                added == requested -> "Created \"$name\" with $added track${if (added == 1u) "" else "s"}"
-                else -> "Created \"$name\" — $added of $requested tracks added"
+            _toast.value = if (pendingPlaylistOpIsAdd) {
+                when {
+                    error != null -> "Couldn't add to \"$name\": $error"
+                    added > 0u -> "Added to \"$name\""
+                    else -> "Already in \"$name\""
+                }
+            } else {
+                when {
+                    error != null -> "Couldn't create \"$name\": $error"
+                    requested == 0u -> "Created \"$name\""
+                    added == requested -> "Created \"$name\" with $added track${if (added == 1u) "" else "s"}"
+                    else -> "Created \"$name\" — $added of $requested tracks added"
+                }
             }
         }
     }
@@ -1127,6 +1153,7 @@ object SpotifyCore {
         // (always arriving, cache or live) sets them correctly again.
         _tracksHasMore.value = _tracksHasMore.value - id
         _tracksLoadingMore.value = _tracksLoadingMore.value - id
+        loadingAllIds.remove(id)
         handle?.playlist(id)
     }
 
@@ -1141,10 +1168,16 @@ object SpotifyCore {
     }
 
     /** Like [loadMoreTracks], but keeps following every remaining page on
-     *  its own — the "Load all" button. */
+     *  its own — the "Load all" button. The Rust side chains every
+     *  intermediate page itself without another Kotlin call in between, so
+     *  [loadingAllIds] is what keeps [tracksLoadingMore] showing a spinner
+     *  for the whole chain instead of just the first page — see
+     *  `onPlaylistTracks`, which would otherwise clear it the moment that
+     *  first page lands. */
     fun loadAllTracks(id: String) {
         if (_tracksHasMore.value[id] != true || _tracksLoadingMore.value.contains(id)) return
         _tracksLoadingMore.value = _tracksLoadingMore.value + id
+        loadingAllIds.add(id)
         if (id == LIKED_SONGS_ID) handle?.loadAllLikedSongs() else handle?.loadAllPlaylistTracks(id)
     }
 
@@ -1435,7 +1468,20 @@ object SpotifyCore {
     fun createPlaylist(name: String, trackUris: List<String> = emptyList()) {
         if (_creatingPlaylist.value) return
         _creatingPlaylist.value = true
+        pendingPlaylistOpIsAdd = false
         handle?.createPlaylist(name, trackUris)
+    }
+
+    /** Adds one track to an existing playlist from its context menu; the
+     *  outcome arrives via the same `onPlaylistCreated` callback and
+     *  [toast] as [createPlaylist] (it shares the Rust side's single
+     *  in-flight slot too — see [creatingPlaylist]), worded as an add
+     *  rather than a create. */
+    fun addTrackToPlaylist(playlistId: String, playlistName: String, trackUri: String) {
+        if (_creatingPlaylist.value) return
+        _creatingPlaylist.value = true
+        pendingPlaylistOpIsAdd = true
+        handle?.addTrackToPlaylist(playlistId, playlistName, trackUri)
     }
 
     /** [createPlaylist] populated from [albumId]'s tracks, already cached
@@ -1466,6 +1512,7 @@ object SpotifyCore {
     fun likedSongs() {
         _tracksHasMore.value = _tracksHasMore.value - LIKED_SONGS_ID
         _tracksLoadingMore.value = _tracksLoadingMore.value - LIKED_SONGS_ID
+        loadingAllIds.remove(LIKED_SONGS_ID)
         handle?.likedSongs()
     }
 
@@ -1719,6 +1766,14 @@ object SpotifyCore {
 
     fun closeTrackMenu() {
         _trackMenu.value = null
+    }
+
+    fun openAddToPlaylist(track: TrackItem) {
+        _addToPlaylistTrack.value = track
+    }
+
+    fun closeAddToPlaylist() {
+        _addToPlaylistTrack.value = null
     }
 
     fun openLibraryMenu(item: LibraryItem) {

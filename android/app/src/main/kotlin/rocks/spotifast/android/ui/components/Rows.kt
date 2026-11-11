@@ -28,8 +28,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,7 +41,6 @@ import kotlin.random.Random
 import rocks.spotifast.android.AlbumItem
 import rocks.spotifast.android.ArtistItem
 import rocks.spotifast.android.LibraryItem
-import rocks.spotifast.android.SpotifyCore
 import rocks.spotifast.android.TrackItem
 import rocks.spotifast.android.ui.LocalIsNoir
 import java.util.concurrent.TimeUnit
@@ -258,7 +255,17 @@ fun RecentCardTile(
 }
 
 /** A single track row: small artwork, name/artist stack, duration.
- *  Long-press opens the like/add-to-queue context menu. */
+ *  Long-press opens the like/add-to-queue context menu.
+ *
+ *  [isPlaying] and [liked] are passed in rather than read here on purpose:
+ *  this row used to collect [SpotifyCore.localPlayback] and
+ *  [SpotifyCore.likedTracks] itself, which meant every visible row in a
+ *  long list resubscribed independently — a position tick or a like
+ *  toggled anywhere recomposed every row on screen, not just the one(s)
+ *  whose own state actually changed, choppering scroll performance on any
+ *  long track list. Callers collect both once and pass down the two
+ *  booleans each row actually needs, so Compose can skip a row whose
+ *  inputs didn't change. */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun TrackRow(
@@ -266,6 +273,8 @@ fun TrackRow(
     onClick: (() -> Unit)? = null,
     onLongClick: () -> Unit = {},
     showLiked: Boolean = true,
+    isPlaying: Boolean = false,
+    liked: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -277,11 +286,6 @@ fun TrackRow(
     ) {
         ArtworkPlaceholder(key = track.uri, label = track.name, modifier = Modifier.size(44.dp), artUrl = track.artUrl)
         Spacer(Modifier.width(12.dp))
-        // Whichever device is actually playing, not just this phone's own
-        // engine — matches [SpotifyCore.currentSource]'s "go to source"
-        // button, both reading the same effective-playback reconciliation.
-        val nowPlaying by SpotifyCore.localPlayback.collectAsState()
-        val isPlaying = nowPlaying?.track?.uri == track.uri
         Column(modifier = Modifier.weight(1f)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (isPlaying) {
@@ -318,8 +322,7 @@ fun TrackRow(
         // Suppressed entirely on a screen where every row is already known
         // to be liked (Liked Songs itself, or Liked Songs filtered by
         // artist) — the heart would just repeat what's already implied.
-        val likedTracks by SpotifyCore.likedTracks.collectAsState()
-        if (showLiked && likedTracks[track.uri] == true) {
+        if (showLiked && liked) {
             Icon(
                 imageVector = Icons.Filled.Favorite,
                 contentDescription = "Liked",

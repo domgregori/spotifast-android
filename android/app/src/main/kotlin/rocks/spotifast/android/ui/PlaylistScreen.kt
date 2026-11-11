@@ -4,7 +4,6 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -58,6 +57,8 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
     val tracks by SpotifyCore.tracks.collectAsState()
     val library by SpotifyCore.library.collectAsState()
     val likedTracks by SpotifyCore.likedTracks.collectAsState()
+    val nowPlaying by SpotifyCore.localPlayback.collectAsState()
+    val nowPlayingUri = nowPlaying?.track?.uri
     val tracksHasMore by SpotifyCore.tracksHasMore.collectAsState()
     val tracksLoadingMore by SpotifyCore.tracksLoadingMore.collectAsState()
     val playlistTracks = tracks[playlistId] ?: emptyList()
@@ -133,6 +134,9 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
                     name = playlist?.name ?: "Playlist",
                     artUrl = playlist?.artUrl,
                     trackCount = playlistTracks.size,
+                    hasMore = hasMore,
+                    loadingMore = loadingMore,
+                    onLoadAll = { SpotifyCore.loadAllTracks(playlistId) },
                     inLibrary = inLibrary,
                     isLikedSongs = isLiked,
                     onToggleSaved = { SpotifyCore.setLiked("spotify:playlist:$playlistId", !inLibrary) },
@@ -177,42 +181,11 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
                         },
                         onLongClick = { SpotifyCore.openTrackMenu(track) },
                         showLiked = playlistId != SpotifyCore.LIKED_SONGS_ID,
+                        isPlaying = track.uri == nowPlayingUri,
+                        liked = likedTracks[track.uri] == true,
                     )
                 }
             }
-            if (hasMore) {
-                item {
-                    LoadAllRow(loading = loadingMore, onClick = { SpotifyCore.loadAllTracks(playlistId) })
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun LoadAllRow(loading: Boolean, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(enabled = !loading, onClick = onClick)
-            .padding(horizontal = 24.dp, vertical = 16.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (loading) {
-            CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-            Spacer(Modifier.width(12.dp))
-            Text(
-                text = "Loading more…",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            Text(
-                text = "Load all",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-            )
         }
     }
 }
@@ -224,6 +197,9 @@ private fun PlaylistHeader(
     name: String,
     artUrl: String?,
     trackCount: Int,
+    hasMore: Boolean,
+    loadingMore: Boolean,
+    onLoadAll: () -> Unit,
     inLibrary: Boolean,
     isLikedSongs: Boolean,
     onToggleSaved: () -> Unit,
@@ -266,11 +242,26 @@ private fun PlaylistHeader(
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Spacer(Modifier.height(4.dp))
-                Text(
-                    text = if (trackCount == 1) "1 song" else "$trackCount songs",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (trackCount == 1) "1 song" else "$trackCount songs",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (hasMore) {
+                        Spacer(Modifier.width(8.dp))
+                        if (loadingMore) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text(
+                                text = "Load all",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.clickable(onClick = onLoadAll),
+                            )
+                        }
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 if (isLikedSongs) {
                     Row(verticalAlignment = Alignment.CenterVertically) {

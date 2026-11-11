@@ -29,6 +29,7 @@ import rocks.spotifast.android.ListenBrainz
 import rocks.spotifast.android.PlaybackPhase
 import rocks.spotifast.android.SpotifyCore
 import rocks.spotifast.android.TrackItem
+import rocks.spotifast.android.ui.components.AddToPlaylistSheet
 import rocks.spotifast.android.ui.components.AlbumContextMenu
 import rocks.spotifast.android.ui.components.DevicesSheet
 import rocks.spotifast.android.ui.components.LibraryItemContextMenu
@@ -79,6 +80,7 @@ private fun ConnectedApp(username: String) {
     val playbackStatus by SpotifyCore.playbackStatus.collectAsState()
     val localPlayback by SpotifyCore.localPlayback.collectAsState()
     val trackMenu by SpotifyCore.trackMenu.collectAsState()
+    val addToPlaylistTrack by SpotifyCore.addToPlaylistTrack.collectAsState()
     val libraryMenu by SpotifyCore.libraryMenu.collectAsState()
     val recentMenu by SpotifyCore.recentMenu.collectAsState()
     val albumMenu by SpotifyCore.albumMenu.collectAsState()
@@ -275,6 +277,7 @@ private fun ConnectedApp(username: String) {
                 onDismiss = { SpotifyCore.closeTrackMenu() },
                 onToggleLiked = { SpotifyCore.toggleLiked(menuTrack.uri) },
                 onAddToQueue = { SpotifyCore.addToQueue(menuTrack.uri, menuTrack.name) },
+                onAddToPlaylist = { SpotifyCore.openAddToPlaylist(menuTrack) },
                 onGoToRadio = { SpotifyCore.goToRadio(menuTrack.uri, "${menuTrack.name} Radio") },
                 onShare = { shareUri(context, menuTrack.uri, menuTrack.name) },
                 onViewArtist = menuTrack.artistId?.let { id ->
@@ -289,6 +292,13 @@ private fun ConnectedApp(username: String) {
                         SpotifyCore.openAlbum(id)
                     }
                 },
+            )
+        }
+        val addToPlaylistTrackValue = addToPlaylistTrack
+        if (addToPlaylistTrackValue != null) {
+            AddToPlaylistSheet(
+                track = addToPlaylistTrackValue,
+                onDismiss = { SpotifyCore.closeAddToPlaylist() },
             )
         }
         val menuItem = libraryMenu

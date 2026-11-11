@@ -62,6 +62,8 @@ fun ArtistScreen(
     val artistTracks by SpotifyCore.artistTracks.collectAsState()
     val artistAlbums by SpotifyCore.artistAlbums.collectAsState()
     val likedTracks by SpotifyCore.likedTracks.collectAsState()
+    val nowPlaying by SpotifyCore.localPlayback.collectAsState()
+    val nowPlayingUri = nowPlaying?.track?.uri
     val artist = artists[artistId]
     val tracks = artistTracks[artistId] ?: emptyList()
     val albums = artistAlbums[artistId] ?: emptyList()
@@ -105,6 +107,8 @@ fun ArtistScreen(
                     )
                 },
                 onLongClick = { SpotifyCore.openTrackMenu(track) },
+                isPlaying = track.uri == nowPlayingUri,
+                liked = likedTracks[track.uri] == true,
             )
         }
         if (albums.isNotEmpty()) {
