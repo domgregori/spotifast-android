@@ -96,9 +96,11 @@ fun LibraryScreen(
         SpotifyCore.loadFollowedArtists()
     }
 
-    // Opening the list is the moment to notice that a recorded playlist has
-    // been deleted since it was downloaded.
-    LaunchedEffect(filter) {
+    // Showing the list is the moment to notice that a recorded playlist has
+    // been deleted since it was downloaded. Keyed on the records too, so the
+    // check still runs when the tab is already selected (returning to the
+    // screen) rather than only when it is first tapped.
+    LaunchedEffect(filter, downloads) {
         if (filter == LibraryFilter.Downloaded) SpotifyCore.verifyDownloads()
     }
 

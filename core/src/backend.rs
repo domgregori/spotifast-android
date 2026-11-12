@@ -4673,6 +4673,36 @@ async fn handle(
             expired,
         );
     }
+    // Which recordings are still real is a question only the streaming session
+    // can answer: it reads editorial playlists that the personal Web API
+    // answers 404 for, so a 404 from there would also condemn a playlist that
+    // still exists. A definitive 404 here is the playlist being gone; anything
+    // else (offline, a refusal, a timeout) leaves the record alone.
+    if let ApiRequest::VerifyPlaylist { key, id } = &request {
+        let (missing, why) = match engine
+            .filter(|engine| same_account(&engine.session().username(), api.account().as_ref()))
+        {
+            Some(engine) => match session_reads::playlist(engine.session(), id).await {
+                Ok(_) => (false, "exists".to_string()),
+                Err(session_reads::Failure::Definitive(ApiError::Status { status, .. })) => {
+                    (status == 404, format!("refused with {status}"))
+                }
+                Err(session_reads::Failure::Definitive(error)) => {
+                    (false, format!("refused: {error}"))
+                }
+                Err(session_reads::Failure::Retry(error)) => (false, format!("retry: {error}")),
+            },
+            None => (false, "no session".to_string()),
+        };
+        log::debug!("Verify <{key}>: {why}");
+        return (
+            ApiResponse::PlaylistVerified {
+                key: key.clone(),
+                missing,
+            },
+            Vec::new(),
+        );
+    }
     let operation = operation_for(api, &request);
     // A session whose long-lived connection has dropped still answers over
     // its HTTP client, so the engine's presence is the only liveness test;
