@@ -151,13 +151,6 @@ fun PlaybackSheet(onDismiss: () -> Unit) {
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
             Text(
-                text = "This phone keeps playing here and changes its speaker or headphones. " +
-                    "The devices below move playback to another Spotify device.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
-            )
-            Text(
                 text = "This phone",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
