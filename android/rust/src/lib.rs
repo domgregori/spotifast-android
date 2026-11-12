@@ -693,12 +693,18 @@ impl CoreHandle {
     /// that left are unpinned. Per-track progress arrives via
     /// `on_download_progress`; the record, which is what "downloaded" means
     /// everywhere else, arrives via `on_downloads`.
-    pub fn download_collection(&self, key: String, uris: Vec<String>) {
+    pub fn download_collection(&self, key: String, name: String, art: String, uris: Vec<String>) {
         let request = self.generation.fetch_add(1, Ordering::Relaxed);
         self.backend
             .lock()
             .unwrap()
-            .send(Command::DownloadCollection { request, key, uris });
+            .send(Command::DownloadCollection {
+                request,
+                key,
+                name,
+                art,
+                uris,
+            });
     }
 
     /// Forgets a downloaded collection and unpins its tracks. The audio stays

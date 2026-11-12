@@ -72,10 +72,10 @@ fun AlbumScreen(albumId: String, onBack: () -> Unit) {
                 saved = saved,
                 onToggleSaved = { SpotifyCore.setLiked(albumUri, !saved) },
                 downloaded = manifest != null,
-                newCount = uris.count { it !in manifest.orEmpty() },
-                goneCount = manifest.orEmpty().count { it !in uris },
+                newCount = uris.count { it !in manifest?.uris.orEmpty() },
+                goneCount = manifest?.uris.orEmpty()?.count { it !in uris } ?: 0,
                 downloadProgress = downloadProgress?.takeIf { batch -> batch.uris.any { it in uris } },
-                onDownload = { SpotifyCore.downloadCollection(downloadKey, uris) },
+                onDownload = { SpotifyCore.downloadCollection(downloadKey, album?.name ?: "Album", album?.artUrl, uris) },
                 onRemoveDownload = { SpotifyCore.removeDownload(downloadKey) },
                 onBack = onBack,
                 onOpenMenu = {

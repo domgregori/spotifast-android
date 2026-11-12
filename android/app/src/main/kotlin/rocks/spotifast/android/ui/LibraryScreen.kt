@@ -49,6 +49,10 @@ private enum class LibraryFilter(val label: String) {
     Playlists("Playlists"),
     Albums("Albums"),
     Artists("Artists"),
+
+    /** Albums and playlists kept on this device, from the download record
+     *  rather than from Spotify, so it reads the same offline. */
+    Downloaded("Downloaded"),
 }
 
 /**
@@ -74,6 +78,7 @@ fun LibraryScreen(
     val tracks by SpotifyCore.tracks.collectAsState()
     val recentlyPlayedRanks by SpotifyCore.recentlyPlayedRanks.collectAsState()
     val savedAlbumItems by SpotifyCore.savedAlbumItems.collectAsState()
+    val downloads by SpotifyCore.downloads.collectAsState()
     val followedArtistItems by SpotifyCore.followedArtistItems.collectAsState()
     var filter by remember { mutableStateOf(LibraryFilter.Playlists) }
     var filterQuery by remember { mutableStateOf("") }
@@ -162,6 +167,39 @@ fun LibraryScreen(
             LibraryFilter.Artists -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(followedArtistItems, key = { it.id }) { artist ->
                     ArtistRow(artist = artist, onClick = { onOpenArtist(artist.id) })
+                }
+            }
+            LibraryFilter.Downloaded -> {
+                val recorded = remember(downloads) {
+                    downloads.values.sortedBy { it.name.lowercase() }
+                }
+                if (recorded.isEmpty()) {
+                    Text(
+                        text = "Nothing is downloaded yet. Open an album or playlist and tap Download.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(32.dp),
+                    )
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
+                        items(recorded, key = { it.key }) { collection ->
+                            PlaylistRow(
+                                item = LibraryItem(
+                                    id = collection.key,
+                                    name = collection.name,
+                                    artUrl = collection.artUrl,
+                                ),
+                                onClick = {
+                                    if (collection.isAlbum) {
+                                        onOpenAlbum(collection.id)
+                                    } else {
+                                        onOpenPlaylist(collection.id)
+                                    }
+                                },
+                                subtitle = if (collection.isAlbum) "Album" else "Playlist",
+                            )
+                        }
+                    }
                 }
             }
             LibraryFilter.Playlists -> {

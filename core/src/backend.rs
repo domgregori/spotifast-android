@@ -645,6 +645,10 @@ pub enum Command {
         /// `playlist:<id>` or `album:<id>`: what this download covers, so a
         /// later change can be told apart from the record it left.
         key: String,
+        /// The collection's name and art, so the recorded download can be
+        /// listed without asking Spotify about it.
+        name: String,
+        art: String,
         uris: Vec<String>,
     },
     /// Forgets a downloaded collection and unpins its tracks. Their audio
@@ -2041,9 +2045,13 @@ impl Worker {
                         log::warn!("unable to remove the playlist caches: writer unavailable");
                     }
                 }
-                Command::DownloadCollection { request, key, uris } => {
-                    self.start_download_collection(request, key, uris)
-                }
+                Command::DownloadCollection {
+                    request,
+                    key,
+                    name,
+                    art,
+                    uris,
+                } => self.start_download_collection(request, key, name, art, uris),
                 Command::RemoveDownload { key } => self.remove_download(key),
                 Command::DownloadsQuery => self.report_downloads(),
                 Command::ClearAudioCache => {
@@ -3762,7 +3770,14 @@ impl Worker {
     /// have left the collection are unpinned first, so the pinned set and the
     /// record cannot drift apart, and the record written at the end holds only
     /// what is actually pinned, so a track that failed is not claimed.
-    fn start_download_collection(&mut self, request: u64, key: String, uris: Vec<String>) {
+    fn start_download_collection(
+        &mut self,
+        request: u64,
+        key: String,
+        name: String,
+        art: String,
+        uris: Vec<String>,
+    ) {
         let Some(engine) = self.engine.clone() else {
             let _ = self.events.send(Event::DownloadProgress {
                 request,
@@ -3802,7 +3817,14 @@ impl Worker {
                 .into_iter()
                 .filter(|uri| pinned.contains(uri))
                 .collect();
-            downloads.set(&key, held);
+            downloads.set(
+                &key,
+                crate::downloads::Entry {
+                    uris: held,
+                    name: optional(name),
+                    art: optional(art),
+                },
+            );
             let _ = downloads.save(&dir);
             let _ = events.send(Event::DownloadsChanged {
                 collections: collections_json(&dir),
@@ -5453,6 +5475,12 @@ fn playlist_manifest_path(path: &std::path::Path) -> std::path::PathBuf {
 
 fn playlist_data_path(path: &std::path::Path, data_file: u64) -> std::path::PathBuf {
     path.with_extension(format!("rows.{data_file:016x}"))
+}
+
+/// Trims an empty string down to no value, which is how the interface says
+/// "this collection had no name or art to give".
+fn optional(value: String) -> Option<String> {
+    if value.is_empty() { None } else { Some(value) }
 }
 
 /// Unpins these track URIs, leaving their audio in the cache for ordinary

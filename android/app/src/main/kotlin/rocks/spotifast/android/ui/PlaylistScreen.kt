@@ -150,10 +150,10 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
                     // Liked Songs is not a real playlist: there is no id to
                     // download into, and it is not a fixed collection.
                     downloaded = manifest != null,
-                    newCount = uris.count { it !in manifest.orEmpty() },
-                    goneCount = manifest.orEmpty().count { it !in uris },
+                    newCount = uris.count { it !in manifest?.uris.orEmpty() },
+                    goneCount = manifest?.uris.orEmpty()?.count { it !in uris } ?: 0,
                     downloadProgress = downloadProgress?.takeIf { batch -> batch.uris.any { it in uris } },
-                    onDownload = { SpotifyCore.downloadCollection(downloadKey, uris) },
+                    onDownload = { SpotifyCore.downloadCollection(downloadKey, playlist?.name ?: "Playlist", playlist?.artUrl, uris) },
                     onRemoveDownload = { SpotifyCore.removeDownload(downloadKey) },
                     onBack = onBack,
                     onOpenMenu = {

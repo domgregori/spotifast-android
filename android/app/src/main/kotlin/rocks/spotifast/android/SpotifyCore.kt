@@ -37,6 +37,20 @@ data class LibraryItem(val id: String, val name: String, val artUrl: String?)
  *  batch of its own rather than whatever is downloading elsewhere. */
 data class DownloadProgress(val done: Int, val total: Int, val uris: Set<String> = emptySet())
 
+/** One collection recorded as downloaded on this device, with the name and
+ *  art kept in the record so the list reads without a network round trip. */
+data class DownloadedCollection(
+    val key: String,
+    val name: String,
+    val artUrl: String?,
+    val uris: List<String>,
+) {
+    val isAlbum: Boolean get() = key.startsWith("album:")
+
+    /** The Spotify id this row opens. */
+    val id: String get() = key.substringAfter(':')
+}
+
 /** One row of the account's playlist tree — a playlist, or a folder
  *  holding more rows (playlists and, in principle, nested folders, though
  *  Spotify's own apps only ever create one level deep). Built from the
@@ -364,8 +378,8 @@ object SpotifyCore {
 
     /** Every downloaded collection and the tracks it covers, keyed
      *  `playlist:<id>` or `album:<id>`, as the Rust side records them. */
-    private val _downloads = MutableStateFlow<Map<String, List<String>>>(emptyMap())
-    val downloads: StateFlow<Map<String, List<String>>> = _downloads.asStateFlow()
+    private val _downloads = MutableStateFlow<Map<String, DownloadedCollection>>(emptyMap())
+    val downloads: StateFlow<Map<String, DownloadedCollection>> = _downloads.asStateFlow()
 
     /** The batch in flight, or null when nothing is downloading. */
     private val _downloadProgress = MutableStateFlow<DownloadProgress?>(null)
@@ -1105,8 +1119,20 @@ object SpotifyCore {
             _downloads.value = runCatching {
                 val json = org.json.JSONObject(collections)
                 json.keys().asSequence().associateWith { key ->
-                    val array = json.getJSONArray(key)
-                    (0 until array.length()).map { array.getString(it) }
+                    val node = json.get(key)
+                    // The first record format held just the tracks.
+                    if (node is org.json.JSONArray) {
+                        DownloadedCollection(key, "", null, (0 until node.length()).map { node.getString(it) })
+                    } else {
+                        val object_ = node as org.json.JSONObject
+                        val array = object_.optJSONArray("uris") ?: org.json.JSONArray()
+                        DownloadedCollection(
+                            key = key,
+                            name = object_.optString("name").ifEmpty { if (key.startsWith("album:")) "Album" else "Playlist" },
+                            artUrl = object_.optString("art").ifEmpty { null },
+                            uris = (0 until array.length()).map { array.getString(it) },
+                        )
+                    }
                 }
             }.getOrDefault(emptyMap())
         }
@@ -1541,10 +1567,10 @@ object SpotifyCore {
     /** Downloads a collection and records the tracks it covers. Calling it
      *  again syncs: tracks that joined are fetched, tracks that left are
      *  unpinned. [key] is `playlist:<id>` or `album:<id>`. */
-    fun downloadCollection(key: String, uris: List<String>) {
+    fun downloadCollection(key: String, name: String, artUrl: String?, uris: List<String>) {
         if (uris.isEmpty()) return
         _downloadProgress.value = DownloadProgress(0, uris.size, uris.toSet())
-        handle?.downloadCollection(key, uris)
+        handle?.downloadCollection(key, name, artUrl.orEmpty(), uris)
     }
 
     /** Forgets a downloaded collection and unpins its tracks; their audio

@@ -33,11 +33,63 @@ pub fn is_manifest(path: &Path) -> bool {
         .is_some_and(|name| name == MANIFEST_FILE || name == MANIFEST_TEMP)
 }
 
+/// One downloaded collection.
+#[derive(Clone, Debug, Default, serde::Serialize)]
+pub struct Entry {
+    /// The tracks this download covers.
+    pub uris: Vec<String>,
+    /// The collection's name and art, kept so the interface can list a
+    /// download without asking Spotify about it. That matters most exactly
+    /// when it is most useful: offline, which is when a downloaded list should
+    /// still be readable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub art: Option<String>,
+}
+
+/// The on-disk form. The first version stored just the tracks, and records
+/// written then must keep loading, so both shapes are accepted and the
+/// detailed one is written from now on.
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+enum Stored {
+    Tracks(Vec<String>),
+    Detailed {
+        #[serde(default)]
+        uris: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        name: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        art: Option<String>,
+    },
+}
+
+impl Stored {
+    fn into_entry(self) -> Entry {
+        match self {
+            Stored::Tracks(uris) => Entry {
+                uris,
+                ..Entry::default()
+            },
+            Stored::Detailed { uris, name, art } => Entry { uris, name, art },
+        }
+    }
+
+    fn from_entry(entry: &Entry) -> Self {
+        Stored::Detailed {
+            uris: entry.uris.clone(),
+            name: entry.name.clone(),
+            art: entry.art.clone(),
+        }
+    }
+}
+
 /// One collection's downloaded tracks, keyed by a caller-chosen identity such
 /// as `playlist:<id>` or `album:<id>`.
 #[derive(Clone, Debug, Default)]
 pub struct Downloads {
-    entries: BTreeMap<String, Vec<String>>,
+    entries: BTreeMap<String, Entry>,
 }
 
 impl Downloads {
@@ -48,14 +100,24 @@ impl Downloads {
         };
         // A record that cannot be read is treated as absent rather than
         // fatal: the audio is still on disk and a fresh download rebuilds it.
-        serde_json::from_str::<BTreeMap<String, Vec<String>>>(&text)
-            .map(|entries| Self { entries })
+        serde_json::from_str::<BTreeMap<String, Stored>>(&text)
+            .map(|entries| Self {
+                entries: entries
+                    .into_iter()
+                    .map(|(key, stored)| (key, stored.into_entry()))
+                    .collect(),
+            })
             .unwrap_or_default()
     }
 
     /// Writes the record, replacing any previous one atomically.
     pub fn save(&self, dir: &Path) -> io::Result<()> {
-        let text = serde_json::to_string(&self.entries)
+        let stored: BTreeMap<&String, Stored> = self
+            .entries
+            .iter()
+            .map(|(key, entry)| (key, Stored::from_entry(entry)))
+            .collect();
+        let text = serde_json::to_string(&stored)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
         fs::create_dir_all(dir)?;
         let temporary = dir.join(MANIFEST_TEMP);
@@ -67,30 +129,36 @@ impl Downloads {
         fs::rename(&temporary, dir.join(MANIFEST_FILE))
     }
 
-    /// The tracks this collection was downloaded with, if it was.
-    pub fn get(&self, key: &str) -> Option<&[String]> {
-        self.entries.get(key).map(Vec::as_slice)
+    /// This collection's record, if it was downloaded.
+    pub fn get(&self, key: &str) -> Option<&Entry> {
+        self.entries.get(key)
     }
 
-    pub fn set(&mut self, key: &str, uris: Vec<String>) {
-        self.entries.insert(key.to_string(), uris);
+    pub fn set(&mut self, key: &str, entry: Entry) {
+        self.entries.insert(key.to_string(), entry);
     }
 
     /// Forgets a collection, returning the tracks it held so the caller can
     /// unpin them.
     pub fn remove(&mut self, key: &str) -> Vec<String> {
-        self.entries.remove(key).unwrap_or_default()
+        self.entries
+            .remove(key)
+            .map(|entry| entry.uris)
+            .unwrap_or_default()
     }
 
     /// Every collection and its tracks, for the interface's own state.
-    pub fn entries(&self) -> &BTreeMap<String, Vec<String>> {
+    pub fn entries(&self) -> &BTreeMap<String, Entry> {
         &self.entries
     }
 
     /// What a download of `wanted` has to do to bring this collection up to
     /// date: the tracks to fetch, and the pinned ones that no longer belong.
     pub fn sync(&self, key: &str, wanted: &[String]) -> (Vec<String>, Vec<String>) {
-        let held = self.get(key).unwrap_or(&[]);
+        let held: &[String] = self
+            .get(key)
+            .map(|entry| entry.uris.as_slice())
+            .unwrap_or(&[]);
         let fetch: Vec<String> = wanted
             .iter()
             .filter(|uri| !held.contains(uri))
@@ -143,21 +211,61 @@ mod tests {
         items.iter().map(|uri| uri.to_string()).collect()
     }
 
+    fn entry(items: &[&str]) -> Entry {
+        Entry {
+            uris: uris(items),
+            ..Entry::default()
+        }
+    }
+
     #[test]
     fn a_record_round_trips() {
         let fixture = Fixture::new();
         let mut downloads = Downloads::default();
         downloads.set(
             "playlist:one",
-            uris(&["spotify:track:a", "spotify:track:b"]),
+            entry(&["spotify:track:a", "spotify:track:b"]),
         );
         downloads.save(&fixture.dir).unwrap();
 
         let loaded = Downloads::load(&fixture.dir);
         assert_eq!(
-            loaded.get("playlist:one").unwrap(),
-            uris(&["spotify:track:a", "spotify:track:b"]).as_slice()
+            loaded.get("playlist:one").unwrap().uris,
+            uris(&["spotify:track:a", "spotify:track:b"])
         );
+    }
+
+    #[test]
+    fn a_record_from_the_first_format_still_loads() {
+        let fixture = Fixture::new();
+        fs::write(
+            fixture.dir.join(MANIFEST_FILE),
+            br#"{"playlist:old":["spotify:track:a","spotify:track:b"]}"#,
+        )
+        .unwrap();
+        let loaded = Downloads::load(&fixture.dir);
+        let entry = loaded.get("playlist:old").unwrap();
+        assert_eq!(entry.uris, uris(&["spotify:track:a", "spotify:track:b"]));
+        assert!(entry.name.is_none());
+    }
+
+    #[test]
+    fn a_name_and_art_round_trip() {
+        let fixture = Fixture::new();
+        let mut downloads = Downloads::default();
+        downloads.set(
+            "album:one",
+            Entry {
+                uris: uris(&["spotify:track:a"]),
+                name: Some("Forever".to_string()),
+                art: Some("https://i.scdn.co/image/abc".to_string()),
+            },
+        );
+        downloads.save(&fixture.dir).unwrap();
+        let loaded = Downloads::load(&fixture.dir);
+        let entry = loaded.get("album:one").unwrap();
+        assert_eq!(entry.name.as_deref(), Some("Forever"));
+        assert_eq!(entry.art.as_deref(), Some("https://i.scdn.co/image/abc"));
     }
 
     #[test]
@@ -177,7 +285,7 @@ mod tests {
     fn saving_leaves_no_temporary_behind() {
         let fixture = Fixture::new();
         let mut downloads = Downloads::default();
-        downloads.set("album:one", uris(&["spotify:track:a"]));
+        downloads.set("album:one", entry(&["spotify:track:a"]));
         downloads.save(&fixture.dir).unwrap();
         assert!(!fixture.dir.join(MANIFEST_TEMP).exists());
         assert!(fixture.dir.join(MANIFEST_FILE).is_file());
@@ -189,7 +297,7 @@ mod tests {
         let mut downloads = Downloads::default();
         downloads.set(
             "playlist:one",
-            uris(&["spotify:track:a", "spotify:track:b"]),
+            entry(&["spotify:track:a", "spotify:track:b"]),
         );
 
         // `b` left the playlist, `c` joined it.
@@ -212,7 +320,7 @@ mod tests {
     #[test]
     fn removing_returns_the_tracks_to_unpin() {
         let mut downloads = Downloads::default();
-        downloads.set("album:x", uris(&["spotify:track:a"]));
+        downloads.set("album:x", entry(&["spotify:track:a"]));
         assert_eq!(downloads.remove("album:x"), uris(&["spotify:track:a"]));
         assert!(downloads.get("album:x").is_none());
         assert!(downloads.remove("album:x").is_empty());
