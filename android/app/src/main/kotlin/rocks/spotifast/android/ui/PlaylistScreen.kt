@@ -63,12 +63,13 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
     val nowPlayingUri = nowPlaying?.track?.uri
     val tracksHasMore by SpotifyCore.tracksHasMore.collectAsState()
     val tracksLoadingMore by SpotifyCore.tracksLoadingMore.collectAsState()
-    val playlistTracks = tracks[playlistId] ?: emptyList()
     val downloadKey = "playlist:$playlistId"
-    val uris = playlistTracks.map { it.uri }
     val downloads by SpotifyCore.downloads.collectAsState()
     val downloadProgress by SpotifyCore.downloadProgress.collectAsState()
     val manifest = downloads[downloadKey]
+    // Offline the playlist's rows come from the download's own record.
+    val playlistTracks = (tracks[playlistId] ?: emptyList()).ifEmpty { manifest?.tracks.orEmpty() }
+    val uris = playlistTracks.map { it.uri }
     val hasMore = tracksHasMore[playlistId] == true
     val loadingMore = tracksLoadingMore.contains(playlistId)
     val playlist = if (playlistId == SpotifyCore.LIKED_SONGS_ID) {
@@ -138,7 +139,7 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
             item {
                 PlaylistHeader(
                     playlistId = playlistId,
-                    name = playlist?.name ?: "Playlist",
+                    name = playlist?.name ?: manifest?.name ?: "Playlist",
                     artUrl = playlist?.artUrl,
                     trackCount = playlistTracks.size,
                     hasMore = hasMore,
@@ -153,7 +154,15 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
                     newCount = uris.count { it !in manifest?.uris.orEmpty() },
                     goneCount = manifest?.uris.orEmpty()?.count { it !in uris } ?: 0,
                     downloadProgress = downloadProgress?.takeIf { batch -> batch.uris.any { it in uris } },
-                    onDownload = { SpotifyCore.downloadCollection(downloadKey, playlist?.name ?: "Playlist", playlist?.artUrl, uris) },
+                    onDownload = {
+                        SpotifyCore.downloadCollection(
+                            downloadKey,
+                            playlist?.name ?: manifest?.name ?: "Playlist",
+                            playlist?.artUrl ?: manifest?.artUrl,
+                            uris,
+                            playlistTracks,
+                        )
+                    },
                     onRemoveDownload = { SpotifyCore.removeDownload(downloadKey) },
                     onBack = onBack,
                     onOpenMenu = {

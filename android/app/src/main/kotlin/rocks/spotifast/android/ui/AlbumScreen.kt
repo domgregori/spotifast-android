@@ -49,14 +49,17 @@ fun AlbumScreen(albumId: String, onBack: () -> Unit) {
     val nowPlaying by SpotifyCore.localPlayback.collectAsState()
     val nowPlayingUri = nowPlaying?.track?.uri
     val album = albums[albumId]
-    val tracks = albumTracks[albumId] ?: emptyList()
     val albumUri = "spotify:album:$albumId"
     val saved = likedTracks[albumUri] == true
     val downloadKey = "album:$albumId"
-    val uris = tracks.map { it.uri }
     val downloads by SpotifyCore.downloads.collectAsState()
     val downloadProgress by SpotifyCore.downloadProgress.collectAsState()
     val manifest = downloads[downloadKey]
+    // With no network the Web API has no rows to give; the download's own
+    // record still has them, which is what makes a downloaded album usable
+    // offline.
+    val tracks = (albumTracks[albumId] ?: emptyList()).ifEmpty { manifest?.tracks.orEmpty() }
+    val uris = tracks.map { it.uri }
 
     LaunchedEffect(tracks) { SpotifyCore.checkLikedBatch(tracks.map { it.uri }) }
     LaunchedEffect(albumId) { SpotifyCore.checkLiked(albumUri) }
@@ -65,7 +68,9 @@ fun AlbumScreen(albumId: String, onBack: () -> Unit) {
         item {
             AlbumHeader(
                 albumId = albumId,
-                name = album?.name ?: "Album",
+                // The download record knows the name even when the Web API
+                // cannot answer, which is what an offline header needs.
+                name = album?.name ?: manifest?.name ?: "Album",
                 artist = album?.artist ?: "",
                 artUrl = album?.artUrl,
                 trackCount = tracks.size,
@@ -75,7 +80,15 @@ fun AlbumScreen(albumId: String, onBack: () -> Unit) {
                 newCount = uris.count { it !in manifest?.uris.orEmpty() },
                 goneCount = manifest?.uris.orEmpty()?.count { it !in uris } ?: 0,
                 downloadProgress = downloadProgress?.takeIf { batch -> batch.uris.any { it in uris } },
-                onDownload = { SpotifyCore.downloadCollection(downloadKey, album?.name ?: "Album", album?.artUrl, uris) },
+                onDownload = {
+                    SpotifyCore.downloadCollection(
+                        downloadKey,
+                        album?.name ?: manifest?.name ?: "Album",
+                        album?.artUrl ?: manifest?.artUrl,
+                        uris,
+                        tracks,
+                    )
+                },
                 onRemoveDownload = { SpotifyCore.removeDownload(downloadKey) },
                 onBack = onBack,
                 onOpenMenu = {

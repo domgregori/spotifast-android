@@ -47,6 +47,10 @@ data class DownloadedCollection(
     val name: String,
     val artUrl: String?,
     val uris: List<String>,
+    /** The collection's tracks as they were listed when it was downloaded,
+     *  so it can be opened with no network. Empty for records written before
+     *  this was kept. */
+    val tracks: List<TrackItem> = emptyList(),
 ) {
     val isAlbum: Boolean get() = key.startsWith("album:")
 
@@ -1138,7 +1142,6 @@ object SpotifyCore {
         }
 
         override fun onNetworkStatus(reachable: Boolean) {
-            android.util.Log.d("SpotifastNet", "core says reachable=$reachable")
             _online.value = reachable
         }
 
@@ -1153,11 +1156,22 @@ object SpotifyCore {
                     } else {
                         val object_ = node as org.json.JSONObject
                         val array = object_.optJSONArray("uris") ?: org.json.JSONArray()
+                        val tracks = object_.optJSONArray("tracks") ?: org.json.JSONArray()
                         DownloadedCollection(
                             key = key,
                             name = object_.optString("name").ifEmpty { if (key.startsWith("album:")) "Album" else "Playlist" },
                             artUrl = object_.optString("art").ifEmpty { null },
                             uris = (0 until array.length()).map { array.getString(it) },
+                            tracks = (0 until tracks.length()).map { index ->
+                                val track = tracks.getJSONObject(index)
+                                TrackItem(
+                                    uri = track.getString("uri"),
+                                    name = track.optString("name"),
+                                    artist = track.optString("artist"),
+                                    durationMs = track.optLong("duration_ms"),
+                                    artUrl = track.optString("art").ifEmpty { null },
+                                )
+                            },
                         )
                     }
                 }
@@ -1674,10 +1688,30 @@ object SpotifyCore {
     /** Downloads a collection and records the tracks it covers. Calling it
      *  again syncs: tracks that joined are fetched, tracks that left are
      *  unpinned. [key] is `playlist:<id>` or `album:<id>`. */
-    fun downloadCollection(key: String, name: String, artUrl: String?, uris: List<String>) {
+    fun downloadCollection(
+        key: String,
+        name: String,
+        artUrl: String?,
+        uris: List<String>,
+        tracks: List<TrackItem>,
+    ) {
         if (uris.isEmpty()) return
         _downloadProgress.value = DownloadProgress(0, uris.size, uris.toSet())
-        handle?.downloadCollection(key, name, artUrl.orEmpty(), uris)
+        // Recorded with the download so the collection can be listed and
+        // opened offline, when there is no Web API to ask for its rows.
+        val stored = org.json.JSONArray()
+        tracks.forEach { track ->
+            stored.put(
+                org.json.JSONObject().apply {
+                    put("uri", track.uri)
+                    put("name", track.name)
+                    put("artist", track.artist)
+                    put("duration_ms", track.durationMs)
+                    track.artUrl?.let { put("art", it) }
+                },
+            )
+        }
+        handle?.downloadCollection(key, name, artUrl.orEmpty(), uris, stored.toString())
     }
 
     /** Forgets a downloaded collection and unpins its tracks; their audio

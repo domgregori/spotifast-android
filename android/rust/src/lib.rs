@@ -725,7 +725,19 @@ impl CoreHandle {
     /// that left are unpinned. Per-track progress arrives via
     /// `on_download_progress`; the record, which is what "downloaded" means
     /// everywhere else, arrives via `on_downloads`.
-    pub fn download_collection(&self, key: String, name: String, art: String, uris: Vec<String>) {
+    /// `tracks` is a JSON array of `{ "uri", "name", "artist",
+    /// "duration_ms", "art_url" }`, recorded with the download so the
+    /// collection can be listed and opened with no network.
+    pub fn download_collection(
+        &self,
+        key: String,
+        name: String,
+        art: String,
+        uris: Vec<String>,
+        tracks: String,
+    ) {
+        let tracks: Vec<spotifast_core::downloads::TrackRecord> =
+            serde_json::from_str(&tracks).unwrap_or_default();
         let request = self.generation.fetch_add(1, Ordering::Relaxed);
         self.backend
             .lock()
@@ -736,6 +748,7 @@ impl CoreHandle {
                 name,
                 art,
                 uris,
+                tracks,
             });
     }
 

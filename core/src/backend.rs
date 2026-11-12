@@ -661,6 +661,9 @@ pub enum Command {
         name: String,
         art: String,
         uris: Vec<String>,
+        /// The tracks as the interface listed them, recorded so the download
+        /// can be opened with no network.
+        tracks: Vec<crate::downloads::TrackRecord>,
     },
     /// Forgets a downloaded collection and unpins its tracks. Their audio
     /// stays in the cache, where ordinary eviction may take it again.
@@ -2065,7 +2068,8 @@ impl Worker {
                     name,
                     art,
                     uris,
-                } => self.start_download_collection(request, key, name, art, uris),
+                    tracks,
+                } => self.start_download_collection(request, key, name, art, uris, tracks),
                 Command::RemoveDownload { key } => self.remove_download(key),
                 Command::DownloadsQuery => self.report_downloads(),
                 Command::ClearAudioCache => {
@@ -3794,6 +3798,7 @@ impl Worker {
         name: String,
         art: String,
         uris: Vec<String>,
+        tracks: Vec<crate::downloads::TrackRecord>,
     ) {
         // Recorded before anything is fetched: if the app is killed mid-batch,
         // the next start finds the job here and carries on from what is
@@ -3807,6 +3812,7 @@ impl Worker {
             name,
             art,
             uris,
+            tracks,
         });
         if let Err(error) = pending.save(&dir) {
             log::warn!("unable to record a download for resuming: {error}");
@@ -5598,12 +5604,19 @@ async fn run_download_job(
         .filter(|uri| pinned.contains(*uri))
         .cloned()
         .collect();
+    let tracks: Vec<_> = job
+        .tracks
+        .iter()
+        .filter(|track| held.contains(&track.uri))
+        .cloned()
+        .collect();
     downloads.set(
         &job.key,
         crate::downloads::Entry {
             uris: held,
             name: optional(job.name.clone()),
             art: optional(job.art.clone()),
+            tracks,
         },
     );
     let _ = downloads.save(dir);

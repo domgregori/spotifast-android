@@ -44,6 +44,22 @@ pub fn is_manifest(path: &Path) -> bool {
     })
 }
 
+/// One track of a downloaded collection. Kept beside the URIs so a download
+/// can be listed and opened without asking Spotify, which is the whole point
+/// when there is no network to ask.
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct TrackRecord {
+    pub uri: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub artist: String,
+    #[serde(default)]
+    pub duration_ms: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub art: Option<String>,
+}
+
 /// One download still to finish.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct PendingDownload {
@@ -53,6 +69,10 @@ pub struct PendingDownload {
     pub name: String,
     pub art: String,
     pub uris: Vec<String>,
+    /// Carried from the request so the finished record can describe its
+    /// tracks even though the worker itself only fetches audio.
+    #[serde(default)]
+    pub tracks: Vec<TrackRecord>,
 }
 
 /// The queue of unfinished downloads, oldest first. On disk it survives the
@@ -120,6 +140,10 @@ pub struct Entry {
     pub name: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub art: Option<String>,
+    /// The collection's tracks as the interface listed them, so an offline
+    /// album or playlist screen has rows to show instead of nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tracks: Vec<TrackRecord>,
 }
 
 /// The on-disk form. The first version stored just the tracks, and records
@@ -136,6 +160,8 @@ enum Stored {
         name: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         art: Option<String>,
+        #[serde(default)]
+        tracks: Vec<TrackRecord>,
     },
 }
 
@@ -146,7 +172,17 @@ impl Stored {
                 uris,
                 ..Entry::default()
             },
-            Stored::Detailed { uris, name, art } => Entry { uris, name, art },
+            Stored::Detailed {
+                uris,
+                name,
+                art,
+                tracks,
+            } => Entry {
+                uris,
+                name,
+                art,
+                tracks,
+            },
         }
     }
 
@@ -155,6 +191,7 @@ impl Stored {
             uris: entry.uris.clone(),
             name: entry.name.clone(),
             art: entry.art.clone(),
+            tracks: entry.tracks.clone(),
         }
     }
 }
@@ -317,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn a_name_and_art_round_trip() {
+    fn a_name_art_and_tracks_round_trip() {
         let fixture = Fixture::new();
         let mut downloads = Downloads::default();
         downloads.set(
@@ -326,6 +363,13 @@ mod tests {
                 uris: uris(&["spotify:track:a"]),
                 name: Some("Forever".to_string()),
                 art: Some("https://i.scdn.co/image/abc".to_string()),
+                tracks: vec![TrackRecord {
+                    uri: "spotify:track:a".to_string(),
+                    name: "Holding On".to_string(),
+                    artist: "Gus Dapperton".to_string(),
+                    duration_ms: 240_000,
+                    art: Some("https://i.scdn.co/image/track".to_string()),
+                }],
             },
         );
         downloads.save(&fixture.dir).unwrap();
@@ -333,6 +377,11 @@ mod tests {
         let entry = loaded.get("album:one").unwrap();
         assert_eq!(entry.name.as_deref(), Some("Forever"));
         assert_eq!(entry.art.as_deref(), Some("https://i.scdn.co/image/abc"));
+        // The rows an offline screen shows come from here.
+        assert_eq!(entry.tracks.len(), 1);
+        assert_eq!(entry.tracks[0].name, "Holding On");
+        assert_eq!(entry.tracks[0].artist, "Gus Dapperton");
+        assert_eq!(entry.tracks[0].duration_ms, 240_000);
     }
 
     #[test]
@@ -403,6 +452,7 @@ mod tests {
             name: "A".to_string(),
             art: String::new(),
             uris: uris(&["spotify:track:1"]),
+            tracks: Vec::new(),
         });
         pending.push(PendingDownload {
             request: 2,
@@ -410,6 +460,7 @@ mod tests {
             name: "A".to_string(),
             art: String::new(),
             uris: uris(&["spotify:track:1", "spotify:track:2"]),
+            tracks: Vec::new(),
         });
         pending.save(&fixture.dir).unwrap();
 
@@ -430,6 +481,7 @@ mod tests {
             name: "A".to_string(),
             art: String::new(),
             uris: Vec::new(),
+            tracks: Vec::new(),
         });
         pending.save(&fixture.dir).unwrap();
         let mut loaded = Pending::load(&fixture.dir);
