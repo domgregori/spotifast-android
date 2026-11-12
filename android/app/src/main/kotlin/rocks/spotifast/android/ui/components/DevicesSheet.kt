@@ -107,7 +107,7 @@ fun DevicesSheet(onDismiss: () -> Unit) {
  *  fires on release, so a drag doesn't flood Spotify's API with one
  *  request per frame. */
 @Composable
-private fun DeviceVolumeSlider(device: DeviceItem, modifier: Modifier = Modifier) {
+internal fun DeviceVolumeSlider(device: DeviceItem, modifier: Modifier = Modifier) {
     var dragging by remember(device.id) { mutableFloatStateOf(-1f) }
     val value = if (dragging >= 0f) dragging else (device.volumePercent ?: 0).toFloat()
     Row(modifier = modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {

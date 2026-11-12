@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -25,6 +26,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import rocks.spotifast.android.DeviceItem
+import rocks.spotifast.android.SpotifyCore
 
 /** One of this phone's own audio outputs: its speaker, wired headphones, a
  *  Bluetooth headset, USB audio. [handle] is the platform's own route object,
@@ -41,19 +46,18 @@ import androidx.compose.ui.unit.dp
 data class AudioOutput(val id: String, val name: String, val selected: Boolean, val handle: Any)
 
 /**
- * Where this phone's sound comes out, and how to move it.
+ * Everything playback can be sent to, in one place: this phone's own outputs
+ * first, then the account's Spotify Connect devices.
  *
- * This is deliberately separate from [DevicesSheet], which hands playback to
- * another Spotify device. Here playback stays on this phone and only its
- * output changes, which belongs to Android's media routing rather than
- * Spotify's: the app has always played to the system's default output, so the
- * picker just asks the system for a different one, and the running stream
- * follows without being rebuilt (verified on the Pixel 9 Pro by pulling the
- * Bluetooth earbuds mid-track).
+ * The two are different problems that look alike. A row under "This phone"
+ * changes Android's media route, so the sound keeps coming from this device
+ * and the running stream follows without being rebuilt. A row under "Spotify
+ * Connect" moves playback to another device entirely, through librespot's
+ * Connect receiver.
  *
- * Android 11 and newer answer through `MediaRouter2`, whose system routes are
- * exactly these outputs. Older versions only expose the first-generation
- * router, which is used as a fallback.
+ * Android 11 and newer answer the local list through `MediaRouter2`, whose
+ * system routes are exactly these outputs, but some devices return nothing
+ * there, so the first-generation router is used whenever that list is empty.
  */
 @RequiresApi(Build.VERSION_CODES.R)
 private fun currentOutputs(context: Context): List<AudioOutput> {
@@ -112,45 +116,67 @@ private fun select(context: Context, output: AudioOutput) {
     }
 }
 
-/** The output picker, laid out like the Connect sheet it sits beside. */
+/** The one playback picker: this phone's outputs and the Connect devices. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OutputRouteSheet(onDismiss: () -> Unit) {
+fun PlaybackSheet(onDismiss: () -> Unit) {
     val context = LocalContext.current
     // Read when the sheet opens. A device plugged in while it is open shows up
     // the next time it is opened, which is enough for a picker this size.
     val available = remember { outputs(context) }
+    val devices by SpotifyCore.devices.collectAsState()
+    LaunchedEffect(Unit) { SpotifyCore.loadDevices() }
+    // Whether playback is on this device at all. The output rows describe the
+    // route this phone would use, which stays set even while playback is
+    // happening on another device, so they must not claim "playing here" then.
+    val active = devices.firstOrNull { it.isActive }
+    val onThisPhone = active == null || active.name == SpotifyCore.localDeviceName
+
+    /** This phone's own Connect device, so choosing a local output can bring
+     *  playback back here first when it is currently somewhere else. */
+    fun playHere(output: AudioOutput) {
+        val own = SpotifyCore.devices.value.firstOrNull { it.name == SpotifyCore.localDeviceName }
+        val active = SpotifyCore.devices.value.firstOrNull { it.isActive }
+        if (own != null && active?.id != own.id) SpotifyCore.transferPlayback(own.id)
+        select(context, output)
+    }
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState()) {
         Column(modifier = Modifier.navigationBarsPadding()) {
             Text(
-                text = "Play on this phone",
+                text = "Playback",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
             )
             Text(
-                text = "Choose this phone's speaker, headphones or a connected device. To move " +
-                    "playback to another Spotify device, use Connect instead.",
+                text = "This phone keeps playing here and changes its speaker or headphones. " +
+                    "The devices below move playback to another Spotify device.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp),
+            )
+            Text(
+                text = "This phone",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 16.dp, bottom = 4.dp),
             )
             if (available.isEmpty()) {
                 Text(
                     text = "This phone reports no audio outputs.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
                 )
             }
             available.forEach { output ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable(enabled = !output.selected) {
-                            select(context, output)
+                        .clickable(enabled = !onThisPhone || !output.selected) {
+                            playHere(output)
                             onDismiss()
                         }
                         .padding(horizontal = 24.dp, vertical = 16.dp),
@@ -163,7 +189,7 @@ fun OutputRouteSheet(onDismiss: () -> Unit) {
                             Icons.AutoMirrored.Filled.VolumeUp
                         },
                         contentDescription = null,
-                        tint = if (output.selected) {
+                        tint = if (output.selected && onThisPhone) {
                             MaterialTheme.colorScheme.primary
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant
@@ -177,15 +203,78 @@ fun OutputRouteSheet(onDismiss: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurface,
                         )
                         Text(
-                            text = if (output.selected) "Playing here" else "This phone",
+                            text = when {
+                                !onThisPhone -> "Move playback here"
+                                output.selected -> "Playing here"
+                                else -> "Switch to this output"
+                            },
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (output.selected) {
+                            color = if (output.selected && onThisPhone) {
                                 MaterialTheme.colorScheme.primary
                             } else {
                                 MaterialTheme.colorScheme.onSurfaceVariant
                             },
                         )
                     }
+                }
+            }
+            Text(
+                text = "Spotify Connect",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 4.dp),
+            )
+            if (devices.isEmpty()) {
+                Text(
+                    text = "No other devices found.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+                )
+            }
+            devices.forEach { device: DeviceItem ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable(enabled = !device.isActive) {
+                            SpotifyCore.transferPlayback(device.id)
+                            onDismiss()
+                        }
+                        .padding(horizontal = 24.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Cast,
+                        contentDescription = null,
+                        tint = if (device.isActive) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                    Spacer(Modifier.width(20.dp))
+                    Column {
+                        Text(
+                            text = device.name,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = if (device.isActive) "Playing on this device" else device.kind,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (device.isActive) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                        )
+                    }
+                }
+                if (device.isActive && device.supportsVolume) {
+                    DeviceVolumeSlider(
+                        device = device,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                    )
                 }
             }
         }
