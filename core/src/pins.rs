@@ -38,15 +38,17 @@ pub fn pin_path(audio: &Path) -> PathBuf {
 }
 
 /// The cached audio file a marker belongs to.
+///
+/// Only the file name is touched, and only its own UTF-8 suffix is removed, so
+/// a cache directory whose *parent* path is not valid UTF-8 still resolves.
 fn audio_path(marker: &Path) -> PathBuf {
-    let mut name = marker.as_os_str().to_owned();
-    // Cutting the suffix off a `Path` is easier through the string form: the
-    // cache's own file names are ASCII hex, so this cannot split a character.
-    let text = name.to_string_lossy();
-    if let Some(stripped) = text.strip_suffix(".pin") {
-        name = stripped.into();
-    }
-    PathBuf::from(name)
+    let Some(name) = marker.file_name().and_then(|name| name.to_str()) else {
+        return marker.to_path_buf();
+    };
+    let Some(stem) = name.strip_suffix(".pin") else {
+        return marker.to_path_buf();
+    };
+    marker.with_file_name(stem)
 }
 
 fn is_marker(path: &Path) -> bool {
