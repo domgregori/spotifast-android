@@ -94,6 +94,30 @@ fun ConnectingScreen() {
     }
 }
 
+/**
+ * Shown instead of "Connecting…" when the phone has no network at all. The
+ * handshake cannot finish without one, and a spinner that never resolves
+ * reads as a broken app; this says what is actually wrong. It resolves on its
+ * own once the network returns.
+ */
+@Composable
+fun OfflineScreen() {
+    AuthScaffold {
+        Text(
+            text = "Offline",
+            style = MaterialTheme.typography.headlineSmall,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = "This phone has no network. The app connects on its own when it comes back.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
 /** Shown when sign-in failed, with a retry CTA. */
 @Composable
 fun AuthFailedScreen(message: String) {

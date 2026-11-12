@@ -3,6 +3,9 @@ package rocks.spotifast.android
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -546,6 +549,15 @@ object SpotifyCore {
 
     private val _devices = MutableStateFlow<List<DeviceItem>>(emptyList())
     val devices: StateFlow<List<DeviceItem>> = _devices.asStateFlow()
+
+    /** Whether the phone has a network right now; `null` until the system
+     *  first says. The interface shows an offline bar while it is false. */
+    private val _online = MutableStateFlow<Boolean?>(null)
+    val online: StateFlow<Boolean?> = _online.asStateFlow()
+
+    private var networkWatched = false
+    /** Held for the life of the process: the system only keeps a weak one. */
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     private val _queue = MutableStateFlow<List<TrackItem>>(emptyList())
     val queue: StateFlow<List<TrackItem>> = _queue.asStateFlow()
@@ -1125,6 +1137,11 @@ object SpotifyCore {
             if (missing) removeDownload(key)
         }
 
+        override fun onNetworkStatus(reachable: Boolean) {
+            android.util.Log.d("SpotifastNet", "core says reachable=$reachable")
+            _online.value = reachable
+        }
+
         override fun onDownloads(collections: String) {
             _downloads.value = runCatching {
                 val json = org.json.JSONObject(collections)
@@ -1149,6 +1166,54 @@ object SpotifyCore {
     }
 
     @Synchronized
+    /** Registers the one callback that tells the core whether a network
+     *  exists. Called once, from [init]: a second registration would report
+     *  every change twice. */
+    private fun watchNetwork(context: Context) {
+        if (networkWatched) return
+        networkWatched = true
+        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return
+
+        // `activeNetwork` alone is not enough: a non-bypassable VPN stays the
+        // app's active network with nothing behind it, so it keeps answering
+        // non-null while the phone is offline. Validation is the framework's
+        // own "there is internet here" probe, which drops when there is not.
+        fun reachable(): Boolean {
+            val network = manager.activeNetwork ?: return false
+            val capabilities = manager.getNetworkCapabilities(network) ?: return false
+            return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        }
+
+        fun report(reachable: Boolean) {
+            _online.value = reachable
+            handle?.setNetworkReachable(reachable)
+        }
+
+        report(reachable())
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                report(reachable())
+            }
+
+            override fun onCapabilitiesChanged(
+                network: Network,
+                capabilities: NetworkCapabilities,
+            ) {
+                // Validation comes and goes without the network appearing or
+                // disappearing, which is exactly the VPN case above.
+                report(reachable())
+            }
+
+            override fun onLost(network: Network) {
+                report(reachable())
+            }
+        }
+        networkCallback = callback
+        // An explicit main-looper handler: the callback must be delivered
+        // somewhere that exists for the life of the process.
+        manager.registerDefaultNetworkCallback(callback, android.os.Handler(android.os.Looper.getMainLooper()))
+    }
+
     fun init(context: Context) {
         appContext = context.applicationContext
         ListenBrainz.init(context)
@@ -1183,6 +1248,10 @@ object SpotifyCore {
                 bitrateKbps.toUShort(),
             )
             handle?.setListener(listener)
+            // Android has no other way to tell the core whether the network
+            // exists; without this an offline moment looks like a broken
+            // Spotify and the engine keeps retrying.
+            watchNetwork(context.applicationContext)
             // The pinned set lives on disk, so the downloads the user made in
             // an earlier run must be asked for rather than assumed.
             handle?.requestDownloads()

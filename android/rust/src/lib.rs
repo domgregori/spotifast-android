@@ -148,6 +148,11 @@ pub trait PlaybackStateListener: Send + Sync {
     /// Whether a `transfer_playback` call succeeded.
     fn on_device_transferred(&self, device_id: String, ok: bool);
 
+    /// Whether this phone currently has a network. The interface shows an
+    /// offline bar while it does not, and the engine waits for it instead of
+    /// retrying on its own.
+    fn on_network_status(&self, reachable: bool);
+
     /// The upcoming tracks in Spotify's queue, as a JSON array of `{ "uri",
     /// "name", "artist", "duration_ms", "art_url" }`.
     fn on_queue(&self, tracks: String);
@@ -872,6 +877,13 @@ impl CoreHandle {
             .api(ApiRequest::TopArtists { generation });
     }
 
+    /// Tells the core whether the phone has a network right now. Android has
+    /// no other source for this, so without it the engine cannot tell an
+    /// offline moment from an unreachable Spotify.
+    pub fn set_network_reachable(&self, reachable: bool) {
+        self.backend.lock().unwrap().network_status(reachable);
+    }
+
     /// Available Spotify Connect devices; the result arrives via
     /// `on_devices`.
     pub fn devices(&self) {
@@ -1174,6 +1186,9 @@ impl CoreHandle {
                             }
                             Event::DownloadsChanged { collections } => {
                                 listener.on_downloads(collections);
+                            }
+                            Event::NetworkStatus(reachable) => {
+                                listener.on_network_status(reachable);
                             }
                             Event::Playback(status) => {
                                 if let LocalPlayback::Ready { device_id } = &status {

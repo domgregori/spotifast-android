@@ -1,8 +1,12 @@
 package rocks.spotifast.android.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -53,9 +57,12 @@ enum class AppTab { Home, Search, Library, ListenBrainz }
 @Composable
 fun SpotifastApp() {
     val authState by SpotifyCore.authState.collectAsState()
+    val online by SpotifyCore.online.collectAsState()
     when (val state = authState) {
         is AuthState.WaitingForBrowser -> BrowserRedirectScreen(state.url)
-        is AuthState.Connecting -> ConnectingScreen()
+        // Without a network the handshake cannot finish, so say that rather
+        // than spin until one appears.
+        is AuthState.Connecting -> if (online == false) OfflineScreen() else ConnectingScreen()
         is AuthState.Connected -> ConnectedApp(username = state.username)
         is AuthState.Failed -> AuthFailedScreen(state.message)
         AuthState.SignedOut -> LoginScreen()
@@ -79,6 +86,7 @@ private fun ConnectedApp(username: String) {
     val selectedAlbum by SpotifyCore.selectedAlbum.collectAsState()
     val playbackStatus by SpotifyCore.playbackStatus.collectAsState()
     val localPlayback by SpotifyCore.localPlayback.collectAsState()
+    val online by SpotifyCore.online.collectAsState()
     val trackMenu by SpotifyCore.trackMenu.collectAsState()
     val addToPlaylistTrack by SpotifyCore.addToPlaylistTrack.collectAsState()
     val libraryMenu by SpotifyCore.libraryMenu.collectAsState()
@@ -120,6 +128,7 @@ private fun ConnectedApp(username: String) {
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
                 Column {
+                    if (online == false) OfflineBar()
                     MiniPlayerBar(
                         status = playbackStatus.first,
                         detail = playbackStatus.second,
@@ -387,5 +396,26 @@ private fun ConnectedApp(username: String) {
                 onDismiss = { SpotifyCore.clearToast() },
             )
         }
+    }
+}
+
+/** A thin bar above the mini player while the phone has no network, so a
+ *  screen that cannot load reads as "there is no network" rather than as
+ *  something broken in the app. */
+@Composable
+private fun OfflineBar() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Offline",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
