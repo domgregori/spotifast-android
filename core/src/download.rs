@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
 use librespot_audio::AudioFile;
-use librespot_core::{FileId, SpotifyUri, cache::Cache};
+use librespot_core::{cache::Cache, FileId, SpotifyUri};
 use librespot_metadata::audio::{AudioFileFormat, AudioFiles, AudioItem};
 use librespot_playback::config::Bitrate;
 
@@ -24,6 +24,11 @@ use crate::player::Engine;
 /// the cache. The save runs in its own task once the fetch completes, so it is
 /// normally a moment behind the last read.
 const CACHE_WRITE_TIMEOUT: Duration = Duration::from_secs(20);
+
+/// Waits between attempts at one track. Spotify rate-limits audio keys, and
+/// the second wait is long enough for that limit to clear.
+const DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(5);
+const DOWNLOAD_RETRY_LONG_DELAY: Duration = Duration::from_secs(20);
 
 impl Engine {
     /// Downloads one track into the audio cache and pins it.
@@ -38,6 +43,25 @@ impl Engine {
             .cache()
             .ok_or_else(|| "no audio cache".to_string())?;
 
+        // Spotify rate-limits audio keys, and the metadata and CDN lookups go
+        // over the same session; a batch of a hundred tracks will meet that
+        // limit. One failure used to abandon the track for good, which left a
+        // "downloaded" album with silent holes in it. Retry the fetch a couple
+        // of times, waiting longer each time, and report only the last error.
+        for (attempt, delay) in [(1u32, DOWNLOAD_RETRY_DELAY), (2, DOWNLOAD_RETRY_LONG_DELAY)] {
+            match self.download_once(cache, uri).await {
+                Ok(fetched) => return Ok(fetched),
+                Err(error) => {
+                    log::warn!("download of <{uri}> failed on attempt {attempt}: {error}");
+                    tokio::time::sleep(delay).await;
+                }
+            }
+        }
+        self.download_once(cache, uri).await
+    }
+
+    /// One attempt at fetching and pinning a track.
+    async fn download_once(&self, cache: &Cache, uri: &str) -> Result<bool, String> {
         let track_uri = SpotifyUri::from_uri(uri).map_err(|error| format!("{error}"))?;
         let audio_item = AudioItem::get_file(self.session(), track_uri)
             .await
