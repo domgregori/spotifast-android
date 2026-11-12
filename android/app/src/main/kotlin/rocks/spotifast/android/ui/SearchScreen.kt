@@ -70,6 +70,11 @@ fun SearchScreen(onOpenPlaylist: (String) -> Unit, onOpenArtist: (String) -> Uni
         }
     }
 
+    // The rows show a heart only for tracks already known to be liked, and
+    // nothing else asks about search results, so a result the session had
+    // never seen looked unliked even when it was in Liked Songs.
+    LaunchedEffect(tracks) { SpotifyCore.checkLikedBatch(tracks.map { it.uri }) }
+
     // A local name match against the library, not a server round trip —
     // Spotify's playlist search only ever indexes public playlists, so a
     // private one of the user's own would otherwise never show up here.

@@ -57,6 +57,10 @@ fun StatsScreen(onClose: () -> Unit) {
         SpotifyCore.loadTopArtists()
     }
 
+    // Top tracks arrive without liked flags, so the hearts would stay invisible
+    // until the same track was seen somewhere that does check.
+    LaunchedEffect(topTracks) { SpotifyCore.checkLikedBatch(topTracks.map { it.uri }) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()

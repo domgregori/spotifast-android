@@ -271,6 +271,10 @@ private fun ConnectedApp(username: String) {
 
         val menuTrack = trackMenu
         if (menuTrack != null) {
+            // The menu chooses between "Add to Liked Songs" and its opposite
+            // from this state, and it can be opened from lists that never
+            // asked (search, queue, stats), so ask for the track it is about.
+            LaunchedEffect(menuTrack.uri) { SpotifyCore.checkLiked(menuTrack.uri) }
             TrackContextMenu(
                 track = menuTrack,
                 liked = likedTracks[menuTrack.uri] ?: false,

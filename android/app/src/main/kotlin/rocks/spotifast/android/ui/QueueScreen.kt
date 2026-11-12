@@ -38,6 +38,10 @@ fun QueueScreen(onClose: () -> Unit) {
 
     LaunchedEffect(Unit) { SpotifyCore.loadQueue() }
 
+    // The queue comes from the Web API without liked flags, so ask about the
+    // tracks the rows are about to show.
+    LaunchedEffect(queue) { SpotifyCore.checkLikedBatch(queue.map { it.uri }) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()

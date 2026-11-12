@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -17,6 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -55,6 +57,7 @@ fun GeneratedPlaylistScreen() {
     val open by ListenBrainz.generatedPlaylistOpen.collectAsState()
     if (!open) return
     val result by ListenBrainz.generatedPlaylistResult.collectAsState()
+    val likedTracks by SpotifyCore.likedTracks.collectAsState()
     var matchedTracks by remember(result) { mutableStateOf<List<GeneratedTrack>?>(null) }
     var matchProgress by remember(result) { mutableStateOf(0 to 0) }
     var namingForSpotify by remember { mutableStateOf(false) }
@@ -105,6 +108,11 @@ fun GeneratedPlaylistScreen() {
             else -> {
                 val playlist = result!!.getOrThrow()
                 val displayTracks = matchedTracks ?: playlist.tracks
+                // Tracks resolve to Spotify ids lazily; once they do, ask which
+                // are already in Liked Songs so the rows can show it.
+                LaunchedEffect(displayTracks) {
+                    SpotifyCore.checkLikedBatch(displayTracks.mapNotNull { it.spotifyUri })
+                }
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     item {
                         Text(
@@ -130,7 +138,11 @@ fun GeneratedPlaylistScreen() {
                         )
                     }
                     items(displayTracks.size, key = { it }) { index ->
-                        GeneratedTrackRow(track = displayTracks[index], resolved = matchedTracks != null)
+                        GeneratedTrackRow(
+                            track = displayTracks[index],
+                            resolved = matchedTracks != null,
+                            liked = displayTracks[index].spotifyUri?.let { likedTracks[it] } == true,
+                        )
                     }
                     item {
                         Row(
@@ -212,7 +224,7 @@ fun GeneratedPlaylistScreen() {
 }
 
 @Composable
-private fun GeneratedTrackRow(track: GeneratedTrack, resolved: Boolean) {
+private fun GeneratedTrackRow(track: GeneratedTrack, resolved: Boolean, liked: Boolean) {
     val unmatched = resolved && track.spotifyUri == null
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
@@ -237,6 +249,15 @@ private fun GeneratedTrackRow(track: GeneratedTrack, resolved: Boolean) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
             )
+        }
+        if (liked) {
+            Icon(
+                imageVector = Icons.Filled.Favorite,
+                contentDescription = "Liked",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp),
+            )
+            Spacer(Modifier.width(8.dp))
         }
         if (unmatched) {
             Text(
