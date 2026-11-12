@@ -344,10 +344,10 @@ hyper-proxy2 = { git = "https://github.com/crmne/hyper-proxy2", rev = "efca48113
 # github.com/domgregori/librespot (for opening PRs upstream).
 # Every librespot crate comes from the fork so one copy exists. Drop each
 # patch once upstream merges it.
-librespot-audio = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
-librespot-connect = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
-librespot-core = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
-librespot-metadata = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
-librespot-oauth = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
-librespot-playback = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
-librespot-protocol = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "d43e196384636287a4b145c095a161231f1148b9" }
+librespot-audio = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "24b0426c750551d87c0411c5db31e9e63154f507" }
+librespot-connect = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "24b0426c750551d87c0411c5db31e9e63154f507" }
+librespot-core = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "24b0426c750551d87c0411c5db31e9e63154f507" }
+librespot-metadata = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "24b0426c750551d87c0411c5db31e9e63154f507" }
+librespot-oauth = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "24b0426c750551d87c0411c5db31e9e63154f507" }
+librespot-playback = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "24b0426c750551d87c0411c5db31e9e63154f507" }
+librespot-protocol = { git = "https://gitea.home.doms.place/domgregori/librespot", rev = "24b0426c750551d87c0411c5db31e9e63154f507" }

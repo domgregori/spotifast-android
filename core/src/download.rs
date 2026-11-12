@@ -65,7 +65,10 @@ impl Engine {
     /// it land in the cache.
     async fn fetch_file(&self, file_id: FileId, format: AudioFileFormat) -> Result<(), String> {
         let rate = stream_data_rate(format);
-        let file = AudioFile::open(self.session(), file_id, rate)
+        // `open_for_download` asks for the whole file at once; the streaming
+        // open would move one playback read-ahead window per round trip, which
+        // on a high-latency link is a small fraction of the link's throughput.
+        let file = AudioFile::open_for_download(self.session(), file_id, rate)
             .await
             .map_err(|error| format!("unable to fetch {file_id}: {error}"))?;
 
