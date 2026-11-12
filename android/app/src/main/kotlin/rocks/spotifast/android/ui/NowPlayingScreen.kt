@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Album
 import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
@@ -76,6 +77,7 @@ import rocks.spotifast.android.PlayingTrack
 import rocks.spotifast.android.SpotifyCore
 import rocks.spotifast.android.ui.components.ArtworkPlaceholder
 import rocks.spotifast.android.ui.components.DevicesSheet
+import rocks.spotifast.android.ui.components.OutputRouteSheet
 import rocks.spotifast.android.ui.components.LyricsSheet
 import rocks.spotifast.android.ui.components.formatDuration
 
@@ -105,6 +107,7 @@ fun NowPlayingScreen(
     onGoToSource: (() -> Unit)? = null,
 ) {
     var devicesOpen by remember { mutableStateOf(false) }
+    var outputsOpen by remember { mutableStateOf(false) }
     var lyricsOpen by remember { mutableStateOf(false) }
     val likedTracks by SpotifyCore.likedTracks.collectAsState()
     val liked = likedTracks[track.uri] ?: false
@@ -161,6 +164,15 @@ fun NowPlayingScreen(
                 )
             }
             Row {
+                // This phone's own output (speaker, headphones, USB) — a
+                // different question from the Connect devices beside it.
+                IconButton(onClick = { outputsOpen = true }) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.VolumeUp,
+                        contentDescription = "Playback output",
+                        tint = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
                 IconButton(onClick = { devicesOpen = true }) {
                     Icon(
                         imageVector = Icons.Filled.Cast,
@@ -186,6 +198,9 @@ fun NowPlayingScreen(
         }
         if (devicesOpen) {
             DevicesSheet(onDismiss = { devicesOpen = false })
+        }
+        if (outputsOpen) {
+            OutputRouteSheet(onDismiss = { outputsOpen = false })
         }
         if (lyricsOpen) {
             LyricsSheet(track = track, positionMs = elapsedMs, onDismiss = { lyricsOpen = false })
