@@ -52,10 +52,11 @@ fun AlbumScreen(albumId: String, onBack: () -> Unit) {
     val tracks = albumTracks[albumId] ?: emptyList()
     val albumUri = "spotify:album:$albumId"
     val saved = likedTracks[albumUri] == true
+    val downloadKey = "album:$albumId"
     val uris = tracks.map { it.uri }
-    val downloadedTracks by SpotifyCore.downloaded.collectAsState()
+    val downloads by SpotifyCore.downloads.collectAsState()
     val downloadProgress by SpotifyCore.downloadProgress.collectAsState()
-    val downloaded = uris.isNotEmpty() && uris.all { it in downloadedTracks }
+    val manifest = downloads[downloadKey]
 
     LaunchedEffect(tracks) { SpotifyCore.checkLikedBatch(tracks.map { it.uri }) }
     LaunchedEffect(albumId) { SpotifyCore.checkLiked(albumUri) }
@@ -70,10 +71,12 @@ fun AlbumScreen(albumId: String, onBack: () -> Unit) {
                 trackCount = tracks.size,
                 saved = saved,
                 onToggleSaved = { SpotifyCore.setLiked(albumUri, !saved) },
-                downloaded = downloaded,
+                downloaded = manifest != null,
+                newCount = uris.count { it !in manifest.orEmpty() },
+                goneCount = manifest.orEmpty().count { it !in uris },
                 downloadProgress = downloadProgress?.takeIf { batch -> batch.uris.any { it in uris } },
-                onDownload = { SpotifyCore.download(uris) },
-                onRemoveDownload = { SpotifyCore.removeDownloads(uris) },
+                onDownload = { SpotifyCore.downloadCollection(downloadKey, uris) },
+                onRemoveDownload = { SpotifyCore.removeDownload(downloadKey) },
                 onBack = onBack,
                 onOpenMenu = {
                     SpotifyCore.openAlbumMenu(album ?: AlbumItem(albumId, "Album", "", null))
@@ -109,6 +112,8 @@ private fun AlbumHeader(
     saved: Boolean,
     onToggleSaved: () -> Unit,
     downloaded: Boolean,
+    newCount: Int,
+    goneCount: Int,
     downloadProgress: DownloadProgress?,
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
@@ -178,6 +183,8 @@ private fun AlbumHeader(
                     Spacer(Modifier.height(8.dp))
                     DownloadAction(
                         downloaded = downloaded,
+                        newCount = newCount,
+                        goneCount = goneCount,
                         progress = downloadProgress,
                         onDownload = onDownload,
                         onRemove = onRemoveDownload,

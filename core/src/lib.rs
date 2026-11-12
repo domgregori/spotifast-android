@@ -14,6 +14,7 @@ pub mod backend;
 pub mod cast;
 pub mod config;
 pub mod download;
+pub mod downloads;
 pub mod engine;
 pub mod credentials;
 pub mod eq;

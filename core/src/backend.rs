@@ -640,14 +640,17 @@ pub enum Command {
     /// Downloads these tracks into the audio cache and pins them, one at a
     /// time. Progress arrives as `Event::DownloadProgress`; the pinned set
     /// follows as `Event::Downloads` once the batch is finished.
-    DownloadTracks {
+    DownloadCollection {
         request: u64,
+        /// `playlist:<id>` or `album:<id>`: what this download covers, so a
+        /// later change can be told apart from the record it left.
+        key: String,
         uris: Vec<String>,
     },
-    /// Unpins these tracks. Their audio stays in the cache, where ordinary
-    /// eviction may take it again.
-    RemoveDownloads {
-        uris: Vec<String>,
+    /// Forgets a downloaded collection and unpins its tracks. Their audio
+    /// stays in the cache, where ordinary eviction may take it again.
+    RemoveDownload {
+        key: String,
     },
     /// Reports the currently pinned tracks as `Event::Downloads`.
     DownloadsQuery,
@@ -917,9 +920,10 @@ pub enum Event {
         uri: String,
         result: Result<bool, String>,
     },
-    /// The tracks that are pinned on disk right now, as Spotify URIs.
-    Downloads {
-        uris: Vec<String>,
+    /// Every downloaded collection and the tracks it covers, as a JSON
+    /// object of collection key to Spotify URIs.
+    DownloadsChanged {
+        collections: String,
     },
     /// GitHub answered an update check, or the request failed.
     #[cfg(not(target_os = "android"))]
@@ -2037,8 +2041,10 @@ impl Worker {
                         log::warn!("unable to remove the playlist caches: writer unavailable");
                     }
                 }
-                Command::DownloadTracks { request, uris } => self.start_downloads(request, uris),
-                Command::RemoveDownloads { uris } => self.remove_downloads(uris),
+                Command::DownloadCollection { request, key, uris } => {
+                    self.start_download_collection(request, key, uris)
+                }
+                Command::RemoveDownload { key } => self.remove_download(key),
                 Command::DownloadsQuery => self.report_downloads(),
                 Command::ClearAudioCache => {
                     let dir = self.dirs.audio_cache_dir();
@@ -3748,10 +3754,15 @@ impl Worker {
         });
     }
 
-    /// Downloads a batch of tracks, one at a time. Sequential on purpose:
-    /// each fetch already streams a whole file, and parallel ones would only
-    /// contend for the same bandwidth.
-    fn start_downloads(&mut self, request: u64, uris: Vec<String>) {
+    /// Downloads a collection, one track at a time, and records which tracks
+    /// it covers.
+    ///
+    /// Sequential on purpose: each fetch already streams a whole file, and
+    /// parallel ones would only contend for the same bandwidth. Tracks that
+    /// have left the collection are unpinned first, so the pinned set and the
+    /// record cannot drift apart, and the record written at the end holds only
+    /// what is actually pinned, so a track that failed is not claimed.
+    fn start_download_collection(&mut self, request: u64, key: String, uris: Vec<String>) {
         let Some(engine) = self.engine.clone() else {
             let _ = self.events.send(Event::DownloadProgress {
                 request,
@@ -3765,44 +3776,53 @@ impl Worker {
         let events = self.events.clone();
         let dir = self.dirs.audio_cache_dir();
         tokio::spawn(async move {
+            let mut downloads = crate::downloads::Downloads::load(&dir);
+            let (_, gone) = downloads.sync(&key, &uris);
+            drop_tracks(&dir, &gone);
+
             let total = uris.len() as u32;
-            for (index, uri) in uris.into_iter().enumerate() {
-                let result = engine.download_track(&uri).await;
+            for (index, uri) in uris.iter().enumerate() {
+                let result = engine.download_track(uri).await;
                 let _ = events.send(Event::DownloadProgress {
                     request,
                     done: index as u32 + 1,
                     total,
-                    uri,
+                    uri: uri.clone(),
                     result,
                 });
             }
-            let _ = events.send(Event::Downloads {
-                uris: crate::pins::pinned(&dir)
-                    .into_iter()
-                    .map(|pin| pin.uri)
-                    .collect(),
+
+            // The record follows the pins, not the request: a track that could
+            // not be downloaded must not look downloaded.
+            let pinned: std::collections::HashSet<String> = crate::pins::pinned(&dir)
+                .into_iter()
+                .map(|pin| pin.uri)
+                .collect();
+            let held: Vec<String> = uris
+                .into_iter()
+                .filter(|uri| pinned.contains(uri))
+                .collect();
+            downloads.set(&key, held);
+            let _ = downloads.save(&dir);
+            let _ = events.send(Event::DownloadsChanged {
+                collections: collections_json(&dir),
             });
         });
     }
 
-    fn remove_downloads(&mut self, uris: Vec<String>) {
+    fn remove_download(&mut self, key: String) {
         let dir = self.dirs.audio_cache_dir();
-        let wanted: std::collections::HashSet<&str> = uris.iter().map(String::as_str).collect();
-        for pin in crate::pins::pinned(&dir) {
-            if wanted.contains(pin.uri.as_str()) {
-                let _ = crate::pins::unpin(&pin.audio);
-            }
-        }
+        let mut downloads = crate::downloads::Downloads::load(&dir);
+        let uris = downloads.remove(&key);
+        drop_tracks(&dir, &uris);
+        let _ = downloads.save(&dir);
         self.report_downloads();
     }
 
     fn report_downloads(&mut self) {
         let dir = self.dirs.audio_cache_dir();
-        let uris = crate::pins::pinned(&dir)
-            .into_iter()
-            .map(|pin| pin.uri)
-            .collect();
-        let _ = self.events.send(Event::Downloads { uris });
+        let collections = collections_json(&dir);
+        let _ = self.events.send(Event::DownloadsChanged { collections });
     }
 
     fn fetch_rootlist(&mut self) {
@@ -5433,6 +5453,27 @@ fn playlist_manifest_path(path: &std::path::Path) -> std::path::PathBuf {
 
 fn playlist_data_path(path: &std::path::Path, data_file: u64) -> std::path::PathBuf {
     path.with_extension(format!("rows.{data_file:016x}"))
+}
+
+/// Unpins these track URIs, leaving their audio in the cache for ordinary
+/// eviction.
+fn drop_tracks(dir: &std::path::Path, uris: &[String]) {
+    if uris.is_empty() {
+        return;
+    }
+    let wanted: std::collections::HashSet<&str> = uris.iter().map(String::as_str).collect();
+    for pin in crate::pins::pinned(dir) {
+        if wanted.contains(pin.uri.as_str()) {
+            let _ = crate::pins::unpin(&pin.audio);
+        }
+    }
+}
+
+/// The downloaded collections as a JSON object of key to track URIs, which is
+/// what the interface keeps its own state from.
+fn collections_json(dir: &std::path::Path) -> String {
+    let downloads = crate::downloads::Downloads::load(dir);
+    serde_json::to_string(downloads.entries()).unwrap_or_else(|_| "{}".to_string())
 }
 
 fn log_cache_removal(path: &std::path::Path, result: std::io::Result<()>) {

@@ -258,7 +258,7 @@ pub trait PlaybackStateListener: Send + Sync {
     /// fall short of it if a later chunk failed partway through.
     fn on_playlist_created(&self, name: String, id: String, added: u32, requested: u32, error: Option<String>);
 
-    /// One track of a `download_tracks` batch finished: `done` of `total` so
+    /// One track of a `download_collection` batch finished: `done` of `total` so
     /// far. `fetched` is true when the audio was downloaded now and false
     /// when it was already cached, so the UI can tell "downloaded" from
     /// "downloaded again"; `error` is set when this particular track could
@@ -272,9 +272,11 @@ pub trait PlaybackStateListener: Send + Sync {
         error: Option<String>,
     );
 
-    /// Every pinned track, whenever that set changes — after a download
-    /// batch, a removal, or an explicit `request_downloads`.
-    fn on_downloads(&self, uris: Vec<String>);
+    /// Every downloaded collection and the tracks it covers, as a JSON
+    /// object of collection key (`playlist:<id>` or `album:<id>`) to an array
+    /// of Spotify URIs. Sent whenever that record changes: after a download,
+    /// a removal, or an explicit `request_downloads`.
+    fn on_downloads(&self, collections: String);
 }
 
 /// Credential storage, implemented by Kotlin over EncryptedSharedPreferences.
@@ -683,28 +685,33 @@ impl CoreHandle {
         self.backend.lock().unwrap().api(ApiRequest::Playlist { id, generation });
     }
 
-    /// Downloads `uris` into the audio cache and pins them, one at a time so
-    /// the rest of playback keeps its bandwidth. Per-track progress arrives
-    /// via `on_download_progress`; the resulting pinned set, which is what
-    /// "downloaded" means everywhere else, arrives via `on_downloads`.
-    pub fn download_tracks(&self, uris: Vec<String>) {
+    /// Downloads a collection (`playlist:<id>` or `album:<id>`) and records
+    /// the tracks it covers, one at a time so the rest of playback keeps its
+    /// bandwidth.
+    ///
+    /// Downloading again is a sync: tracks that joined are fetched and tracks
+    /// that left are unpinned. Per-track progress arrives via
+    /// `on_download_progress`; the record, which is what "downloaded" means
+    /// everywhere else, arrives via `on_downloads`.
+    pub fn download_collection(&self, key: String, uris: Vec<String>) {
         let request = self.generation.fetch_add(1, Ordering::Relaxed);
         self.backend
             .lock()
             .unwrap()
-            .send(Command::DownloadTracks { request, uris });
+            .send(Command::DownloadCollection { request, key, uris });
     }
 
-    /// Unpins `uris`. The audio stays in the cache (so playing it still
-    /// needs no download) but becomes ordinary eviction material again.
-    pub fn remove_downloads(&self, uris: Vec<String>) {
+    /// Forgets a downloaded collection and unpins its tracks. The audio stays
+    /// in the cache (so playing it still needs no download) but becomes
+    /// ordinary eviction material again.
+    pub fn remove_download(&self, key: String) {
         self.backend
             .lock()
             .unwrap()
-            .send(Command::RemoveDownloads { uris });
+            .send(Command::RemoveDownload { key });
     }
 
-    /// Asks for the current pinned set; it arrives via `on_downloads`.
+    /// Asks for the downloaded collections; they arrive via `on_downloads`.
     pub fn request_downloads(&self) {
         self.backend.lock().unwrap().send(Command::DownloadsQuery);
     }
@@ -1107,7 +1114,9 @@ impl CoreHandle {
                                 };
                                 listener.on_download_progress(done, total, uri, fetched, error);
                             }
-                            Event::Downloads { uris } => listener.on_downloads(uris),
+                            Event::DownloadsChanged { collections } => {
+                                listener.on_downloads(collections);
+                            }
                             Event::Playback(status) => {
                                 let (status, detail) = playback_status_parts(status);
                                 listener.on_playback_status(status, detail);

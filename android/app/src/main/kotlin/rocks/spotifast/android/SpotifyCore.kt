@@ -362,9 +362,10 @@ object SpotifyCore {
     private val _albumTracks = MutableStateFlow<Map<String, List<TrackItem>>>(emptyMap())
     val albumTracks: StateFlow<Map<String, List<TrackItem>>> = _albumTracks.asStateFlow()
 
-    /** Every pinned track, as the Rust side reports it. */
-    private val _downloaded = MutableStateFlow<Set<String>>(emptySet())
-    val downloaded: StateFlow<Set<String>> = _downloaded.asStateFlow()
+    /** Every downloaded collection and the tracks it covers, keyed
+     *  `playlist:<id>` or `album:<id>`, as the Rust side records them. */
+    private val _downloads = MutableStateFlow<Map<String, List<String>>>(emptyMap())
+    val downloads: StateFlow<Map<String, List<String>>> = _downloads.asStateFlow()
 
     /** The batch in flight, or null when nothing is downloading. */
     private val _downloadProgress = MutableStateFlow<DownloadProgress?>(null)
@@ -1100,8 +1101,14 @@ object SpotifyCore {
             }
         }
 
-        override fun onDownloads(uris: List<String>) {
-            _downloaded.value = uris.toSet()
+        override fun onDownloads(collections: String) {
+            _downloads.value = runCatching {
+                val json = org.json.JSONObject(collections)
+                json.keys().asSequence().associateWith { key ->
+                    val array = json.getJSONArray(key)
+                    (0 until array.length()).map { array.getString(it) }
+                }
+            }.getOrDefault(emptyMap())
         }
     }
 
@@ -1531,22 +1538,19 @@ object SpotifyCore {
         createPlaylist(name, tracks.map { it.uri })
     }
 
-    /** Whether every one of [uris] is already pinned. An empty list is never
-     *  "downloaded": there is nothing there to have downloaded. */
-    fun isDownloaded(uris: List<String>): Boolean =
-        uris.isNotEmpty() && uris.all { it in _downloaded.value }
-
-    /** Pins these tracks after fetching their audio, one at a time. */
-    fun download(uris: List<String>) {
+    /** Downloads a collection and records the tracks it covers. Calling it
+     *  again syncs: tracks that joined are fetched, tracks that left are
+     *  unpinned. [key] is `playlist:<id>` or `album:<id>`. */
+    fun downloadCollection(key: String, uris: List<String>) {
         if (uris.isEmpty()) return
         _downloadProgress.value = DownloadProgress(0, uris.size, uris.toSet())
-        handle?.downloadTracks(uris)
+        handle?.downloadCollection(key, uris)
     }
 
-    /** Unpins these tracks; their audio stays cached but is evictable again. */
-    fun removeDownloads(uris: List<String>) {
-        if (uris.isEmpty()) return
-        handle?.removeDownloads(uris)
+    /** Forgets a downloaded collection and unpins its tracks; their audio
+     *  stays cached but is evictable again. */
+    fun removeDownload(key: String) {
+        handle?.removeDownload(key)
     }
 
     fun toggleShuffle() {

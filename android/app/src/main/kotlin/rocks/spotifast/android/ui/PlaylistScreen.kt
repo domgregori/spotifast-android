@@ -64,10 +64,11 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
     val tracksHasMore by SpotifyCore.tracksHasMore.collectAsState()
     val tracksLoadingMore by SpotifyCore.tracksLoadingMore.collectAsState()
     val playlistTracks = tracks[playlistId] ?: emptyList()
+    val downloadKey = "playlist:$playlistId"
     val uris = playlistTracks.map { it.uri }
-    val downloadedTracks by SpotifyCore.downloaded.collectAsState()
+    val downloads by SpotifyCore.downloads.collectAsState()
     val downloadProgress by SpotifyCore.downloadProgress.collectAsState()
-    val downloaded = uris.isNotEmpty() && uris.all { it in downloadedTracks }
+    val manifest = downloads[downloadKey]
     val hasMore = tracksHasMore[playlistId] == true
     val loadingMore = tracksLoadingMore.contains(playlistId)
     val playlist = if (playlistId == SpotifyCore.LIKED_SONGS_ID) {
@@ -148,10 +149,12 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
                     onToggleSaved = { SpotifyCore.setLiked("spotify:playlist:$playlistId", !inLibrary) },
                     // Liked Songs is not a real playlist: there is no id to
                     // download into, and it is not a fixed collection.
-                    downloaded = downloaded,
+                    downloaded = manifest != null,
+                    newCount = uris.count { it !in manifest.orEmpty() },
+                    goneCount = manifest.orEmpty().count { it !in uris },
                     downloadProgress = downloadProgress?.takeIf { batch -> batch.uris.any { it in uris } },
-                    onDownload = { SpotifyCore.download(uris) },
-                    onRemoveDownload = { SpotifyCore.removeDownloads(uris) },
+                    onDownload = { SpotifyCore.downloadCollection(downloadKey, uris) },
+                    onRemoveDownload = { SpotifyCore.removeDownload(downloadKey) },
                     onBack = onBack,
                     onOpenMenu = {
                         SpotifyCore.openLibraryMenu(
@@ -216,6 +219,8 @@ private fun PlaylistHeader(
     isLikedSongs: Boolean,
     onToggleSaved: () -> Unit,
     downloaded: Boolean,
+    newCount: Int,
+    goneCount: Int,
     downloadProgress: DownloadProgress?,
     onDownload: () -> Unit,
     onRemoveDownload: () -> Unit,
@@ -282,6 +287,8 @@ private fun PlaylistHeader(
                 if (!isLikedSongs && trackCount > 0) {
                     DownloadAction(
                         downloaded = downloaded,
+                        newCount = newCount,
+                        goneCount = goneCount,
                         progress = downloadProgress,
                         onDownload = onDownload,
                         onRemove = onRemoveDownload,

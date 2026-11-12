@@ -233,6 +233,9 @@ fn collect(dir: &Path, markers: &mut Vec<PathBuf>, audio: &mut Vec<Entry>) {
         let path = entry.path();
         if path.is_dir() {
             collect(&path, markers, audio);
+        } else if crate::downloads::is_manifest(&path) {
+            // The record of what was downloaded lives beside the audio but is
+            // not audio: neither eviction pass may take it.
         } else if is_marker(&path) {
             markers.push(path);
         } else if let Some(entry) = Entry::new(path) {

@@ -23,9 +23,10 @@ import rocks.spotifast.android.DownloadProgress
  *
  * One control for the whole collection rather than a per-row one: a download
  * covers every track of what is on screen, which is also all the app can
- * honestly promise. It reads like the "Save" row beside it — the icon and word
- * show the state, and tapping flips it — so "Downloaded" removes the download
- * when tapped, exactly as "Saved" unsaves.
+ * honestly promise. It reads like the "Save" row beside it, and tapping flips
+ * what it shows: "Downloaded" removes the download, while "Downloaded · 2 new"
+ * brings it up to date instead, since that is the thing still to do. Once it
+ * is up to date, the same tap removes it.
  *
  * Hidden while [progress] is running for another collection: the in-flight
  * batch is reported where it belongs, not on a page it has nothing to do with.
@@ -33,6 +34,8 @@ import rocks.spotifast.android.DownloadProgress
 @Composable
 fun DownloadAction(
     downloaded: Boolean,
+    newCount: Int,
+    goneCount: Int,
     progress: DownloadProgress?,
     onDownload: () -> Unit,
     onRemove: () -> Unit,
@@ -50,19 +53,31 @@ fun DownloadAction(
         }
         return
     }
+    val stale = downloaded && (newCount > 0 || goneCount > 0)
+    val label = when {
+        !downloaded -> "Download"
+        !stale -> "Downloaded"
+        else -> {
+            val changes = buildList {
+                if (newCount > 0) add("$newCount new")
+                if (goneCount > 0) add("$goneCount removed")
+            }
+            "Downloaded · " + changes.joinToString(", ")
+        }
+    }
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = modifier.clickable { if (downloaded) onRemove() else onDownload() },
+        modifier = modifier.clickable { if (stale || !downloaded) onDownload() else onRemove() },
     ) {
         Icon(
             imageVector = if (downloaded) Icons.Filled.DownloadDone else Icons.Filled.Download,
-            contentDescription = if (downloaded) "Remove download" else "Download",
+            contentDescription = if (stale || !downloaded) "Download" else "Remove download",
             tint = if (downloaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(16.dp),
         )
         Spacer(Modifier.width(6.dp))
         Text(
-            text = if (downloaded) "Downloaded" else "Download",
+            text = label,
             style = MaterialTheme.typography.bodySmall,
             color = if (downloaded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
