@@ -1189,23 +1189,51 @@ object SpotifyCore {
             handle?.setNetworkReachable(reachable)
         }
 
-        report(reachable())
+        // The OS can claim a network that carries nothing: an IMS-only
+        // cellular network and a VPN with no underlying connection both stay
+        // "validated" with every radio off, so the capability check above is
+        // only the cheap first test. When it says there is a network, prove it
+        // with a real connection before believing it.
+        var probing = false
+
+        fun probe() {
+            if (probing) return
+            probing = true
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val reachable = runCatching {
+                    java.net.Socket().use { socket ->
+                        socket.connect(java.net.InetSocketAddress("api.spotify.com", 443), 3_000)
+                    }
+                    true
+                }.getOrDefault(false)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    probing = false
+                    report(reachable)
+                }
+            }
+        }
+
+        fun refresh() {
+            if (reachable()) probe() else report(false)
+        }
+
+        refresh()
         val callback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
-                report(reachable())
+                refresh()
             }
 
             override fun onCapabilitiesChanged(
                 network: Network,
                 capabilities: NetworkCapabilities,
             ) {
-                // Validation comes and goes without the network appearing or
-                // disappearing, which is exactly the VPN case above.
-                report(reachable())
+                // Capabilities change without the network appearing or
+                // disappearing, which is exactly the VPN and IMS cases above.
+                refresh()
             }
 
             override fun onLost(network: Network) {
-                report(reachable())
+                refresh()
             }
         }
         networkCallback = callback
