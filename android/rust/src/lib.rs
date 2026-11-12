@@ -325,6 +325,11 @@ struct PendingPlaylist {
 /// (backstack) at once, unlike Liked Songs below.
 struct PlaylistPage {
     generation: u64,
+    /// When this session last asked the Web API for the playlist's tracks.
+    /// Reopening a playlist moments after leaving it is almost always the same
+    /// list, and the cached copy is complete, so the request is skipped until
+    /// this is older than `PLAYLIST_REFETCH_AFTER`.
+    fetched_at: Option<std::time::Instant>,
     /// `None` once every track has been fetched.
     next_offset: Option<u32>,
     items: Vec<PlaylistItem>,
@@ -520,19 +525,36 @@ impl CoreHandle {
     /// guided by `on_playlist_tracks`'s `has_more` flag.
     pub fn playlist(&self, id: String) {
         let generation = self.generation.fetch_add(1, Ordering::Relaxed);
+        // A playlist reopened inside the window is showing what the previous
+        // fetch just produced, so asking again would only repeat the answer.
+        let fetched_at = self
+            .playlist_pages
+            .lock()
+            .unwrap()
+            .get(&id)
+            .and_then(|page| page.fetched_at);
+        let skip_fetch = fetched_at.is_some_and(|at| at.elapsed() < PLAYLIST_REFETCH_AFTER);
         self.playlist_pages.lock().unwrap().insert(
             id.clone(),
-            PlaylistPage { generation, next_offset: None, items: Vec::new(), auto_continue: false },
+            PlaylistPage {
+                generation,
+                fetched_at: if skip_fetch { fetched_at } else { None },
+                next_offset: None,
+                items: Vec::new(),
+                auto_continue: false,
+            },
         );
         self.backend.lock().unwrap().send(Command::LoadPlaylistCache {
             id: id.clone(),
             generation,
         });
-        self.backend.lock().unwrap().api(ApiRequest::PlaylistItems {
-            id,
-            offset: 0,
-            generation,
-        });
+        if !skip_fetch {
+            self.backend.lock().unwrap().api(ApiRequest::PlaylistItems {
+                id,
+                offset: 0,
+                generation,
+            });
+        }
     }
 
     /// Fetches the next page of `id`'s tracks on top of what's already
@@ -1280,6 +1302,9 @@ impl CoreHandle {
                                         let total = response.total;
                                         page.next_offset = response.next_offset();
                                         page.items.extend(response.items);
+                                        // Start the window from the answer, not the
+                                        // request, so a slow fetch still counts.
+                                        page.fetched_at = Some(std::time::Instant::now());
                                         if page.next_offset.is_none() {
                                             store_cache = Some((total, page.items.clone()));
                                         }
@@ -2273,6 +2298,11 @@ impl From<&LocalState> for NowPlayingState {
 /// rows and the larger playlist-detail header).
 const PLAYLIST_ART_TARGET: u32 = 300;
 /// The pixel width asked for a track's cover in search/playlist rows.
+/// How long a playlist's tracks are trusted without asking again. Long enough
+/// to cover backing out and reopening, short enough that an edit made on
+/// another device shows up soon after.
+const PLAYLIST_REFETCH_AFTER: std::time::Duration = std::time::Duration::from_secs(30);
+
 const TRACK_ART_TARGET: u32 = 128;
 
 /// One playlist in the bare library list, serialized to Kotlin as JSON.
