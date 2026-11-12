@@ -865,6 +865,10 @@ object SpotifyCore {
             val name = _devices.value.firstOrNull { it.id == deviceId }?.name
             _toast.value = when {
                 !ok -> "Couldn't switch devices"
+                // This phone: playback came back here, which happens both
+                // when it is chosen by hand and when the device that had it
+                // went away.
+                name == localDeviceName -> "Playback moved here"
                 name != null -> "Playing on $name"
                 else -> "Switched devices"
             }

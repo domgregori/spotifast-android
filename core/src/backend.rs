@@ -5166,7 +5166,14 @@ async fn handle(
             }
         }
         ApiRequest::Transfer { device_id, play } => ApiResponse::Transferred {
-            result: routed!(transfer(&device_id, play)),
+            result: match routed!(transfer(&device_id, play)) {
+                // Spotify carries the source's playing state across, so a
+                // transfer that asked not to play can still start on the
+                // target. Pausing right after the move makes "bring it
+                // here, but do not start it" true.
+                Ok(()) if !play => routed!(pause(Some(&device_id))),
+                other => other,
+            },
             device_id,
         },
         ApiRequest::AddToQueue {

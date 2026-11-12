@@ -1145,6 +1145,15 @@ impl CoreHandle {
                 // unique enough since only one artist screen is ever open
                 // at a time.
                 let mut artist_albums_fetch: Option<(String, String, Vec<AlbumEntry>)> = None;
+                // This phone's own Connect device id, once the engine reports
+                // it, so a device that goes away can be told apart from here.
+                let mut local_device: Option<String> = None;
+                // The device that had playback at the last poll, when it is
+                // not this phone.
+                let mut last_remote_device: Option<String> = None;
+                // A remote device whose playback disappeared; the next device
+                // list says whether it actually left or was only settling.
+                let mut missing_device: Option<String> = None;
                 loop {
                     // Drain and forward every queued event, then wait for the
                     // backend to signal the next change.
@@ -1167,6 +1176,9 @@ impl CoreHandle {
                                 listener.on_downloads(collections);
                             }
                             Event::Playback(status) => {
+                                if let LocalPlayback::Ready { device_id } = &status {
+                                    local_device = Some(device_id.clone());
+                                }
                                 let (status, detail) = playback_status_parts(status);
                                 listener.on_playback_status(status, detail);
                             }
@@ -1536,7 +1548,29 @@ impl CoreHandle {
                                 }
                                 ApiResponse::Devices(result) => {
                                     let entries: Vec<DeviceEntry> = match result {
-                                        Ok(devices) => devices
+                                        Ok(devices) => {
+                                            // The list answers whether a
+                                            // device that stopped reporting
+                                            // playback is gone for good. When
+                                            // it is, playback moves back to
+                                            // this phone, paused: coming back
+                                            // to sound already playing would
+                                            // be a surprise.
+                                            if let Some(missing) = missing_device.take()
+                                                && !devices.iter().any(|device| {
+                                                    device.id.as_deref() == Some(missing.as_str())
+                                                })
+                                                && let Some(local) = local_device.clone()
+                                            {
+                                                log::info!(
+                                                    "the device playing ({missing}) went away; moving playback here, paused"
+                                                );
+                                                backend.lock().unwrap().api(ApiRequest::Transfer {
+                                                    device_id: local,
+                                                    play: false,
+                                                });
+                                            }
+                                            devices
                                             .into_iter()
                                             .map(|device| DeviceEntry {
                                                 id: device.id.unwrap_or_default(),
@@ -1546,7 +1580,8 @@ impl CoreHandle {
                                                 volume_percent: device.volume_percent,
                                                 supports_volume: device.supports_volume.unwrap_or(false),
                                             })
-                                            .collect(),
+                                            .collect()
+                                        }
                                         Err(_) => Vec::new(),
                                     };
                                     if let Ok(json) = serde_json::to_string(&entries) {
@@ -1906,6 +1941,14 @@ impl CoreHandle {
                                     let entry = match result {
                                         Ok(Some(state)) => {
                                             let device_id = state.device.as_ref().and_then(|d| d.id.clone());
+                                            // Only a device that is not this
+                                            // phone can vanish on us; while
+                                            // this one is active there is
+                                            // nothing to take back.
+                                            last_remote_device = device_id
+                                                .clone()
+                                                .filter(|id| Some(id) != local_device.as_ref());
+                                            missing_device = None;
                                             let track = state.item.as_ref().map(|playable| {
                                                 let album = match playable {
                                                     spotifast_core::api::models::PlayableItem::Track(track) => {
@@ -1957,7 +2000,29 @@ impl CoreHandle {
                                                 context_id,
                                             }
                                         }
-                                        Ok(None) | Err(_) => RemotePlaybackEntry {
+                                        Ok(None) => {
+                                            // No device is active. If one
+                                            // was playing a moment ago, ask
+                                            // the device list whether it is
+                                            // gone or merely settling, so a
+                                            // transfer in flight is not
+                                            // mistaken for a disconnection.
+                                            if let Some(remote) = last_remote_device.clone() {
+                                                missing_device = Some(remote);
+                                                backend.lock().unwrap().api(ApiRequest::Devices);
+                                            }
+                                            RemotePlaybackEntry {
+                                                device_id: None,
+                                                is_playing: false,
+                                                position_ms: 0,
+                                                shuffle: false,
+                                                repeat: "Off".to_string(),
+                                                track: None,
+                                                context_kind: None,
+                                                context_id: None,
+                                            }
+                                        }
+                                        Err(_) => RemotePlaybackEntry {
                                             device_id: None,
                                             is_playing: false,
                                             position_ms: 0,
