@@ -18,22 +18,22 @@ use crate::api::{
     AccountId, ApiError, ApiGateway, ApiSource, NetActivity, Operation, PlayRequest, PlaylistId,
     SessionState, TokenProvider, WebTokens,
 };
+use crate::auth::AuthRedirectHandler;
 use crate::credentials::{
     Grant as StoredGrant, Lease as CredentialLease, Slot as CredentialSlot,
     Store as CredentialStore,
 };
 use crate::http::Http;
-use crate::util::accent_color;
 use crate::model::PlaylistCache;
 use crate::paths::AppDirs;
 use crate::player::{
     Engine, EngineConfig, EngineEvent, Heard, LocalState, PlaybackResume, PlayerCommand,
 };
-use crate::session_reads;
 use crate::proxy::ProxyConfig;
 use crate::services::Services;
+use crate::session_reads;
+use crate::util::accent_color;
 use crate::wake::Wake;
-use crate::auth::AuthRedirectHandler;
 
 pub type ApiResult<T> = Result<T, ApiError>;
 
@@ -1314,9 +1314,7 @@ impl Backend {
     }
 
     #[cfg(any(test, feature = "test-support"))]
-    pub fn take_library_cache_stores(
-        &self,
-    ) -> Vec<crate::account_cache::Cache<Vec<Playlist>>> {
+    pub fn take_library_cache_stores(&self) -> Vec<crate::account_cache::Cache<Vec<Playlist>>> {
         std::mem::take(
             &mut *self
                 .library_cache_stores
@@ -1651,6 +1649,10 @@ struct Worker {
     commands: mpsc::UnboundedSender<Command>,
     waker: Arc<dyn Wake>,
     engine: Option<Arc<Engine>>,
+    /// The download worker, with the engine it was started for: waking it is
+    /// only right while that engine is still the live one, since a worker
+    /// holds its own clone and a reconnect would leave it on a dead session.
+    download_worker: Option<(Arc<Engine>, tokio::sync::mpsc::UnboundedSender<()>)>,
     /// What the engine is heard at, so the engine that replaces it starts
     /// there. `engine_config` alone knows only the level the app launched
     /// with.
@@ -1750,6 +1752,7 @@ impl Worker {
             commands,
             waker,
             engine: None,
+            download_worker: None,
             heard: None,
             rootlist_pending: false,
             album_type_lookup: AlbumTypeLookup::default(),
@@ -3538,6 +3541,9 @@ impl Worker {
                     self.schedule_resume_check(1_500);
                 }
                 self.engine = Some(engine);
+                // A batch interrupted by the app being killed resumes here,
+                // now that there is an engine to run it.
+                self.spawn_download_worker();
                 self.start_rootlist();
                 self.reconnects.clear();
                 self.emit(Event::Playback(LocalPlayback::Ready { device_id }));
@@ -3789,58 +3795,74 @@ impl Worker {
         art: String,
         uris: Vec<String>,
     ) {
-        let Some(engine) = self.engine.clone() else {
+        // Recorded before anything is fetched: if the app is killed mid-batch,
+        // the next start finds the job here and carries on from what is
+        // already pinned.
+        let dir = self.dirs.audio_cache_dir();
+        let total = uris.len() as u32;
+        let mut pending = crate::downloads::Pending::load(&dir);
+        pending.push(crate::downloads::PendingDownload {
+            request,
+            key,
+            name,
+            art,
+            uris,
+        });
+        if let Err(error) = pending.save(&dir) {
+            log::warn!("unable to record a download for resuming: {error}");
+        }
+        if self.engine.is_none() {
             let _ = self.events.send(Event::DownloadProgress {
                 request,
                 done: 0,
-                total: uris.len() as u32,
+                total,
                 uri: String::new(),
-                result: Err("the playback session is not connected".to_string()),
+                result: Err(
+                    "the playback session is not connected; this download will resume when it is"
+                        .to_string(),
+                ),
             });
             return;
+        }
+        self.spawn_download_worker();
+    }
+
+    /// Drains recorded downloads one at a time, oldest first, and then waits
+    /// for more instead of exiting, so a request arriving just as the queue
+    /// empties is never left behind.
+    fn spawn_download_worker(&mut self) {
+        let Some(engine) = self.engine.clone() else {
+            return;
         };
-        let events = self.events.clone();
-        let dir = self.dirs.audio_cache_dir();
-        tokio::spawn(async move {
-            let mut downloads = crate::downloads::Downloads::load(&dir);
-            let (_, gone) = downloads.sync(&key, &uris);
-            drop_tracks(&dir, &gone);
-
-            let total = uris.len() as u32;
-            for (index, uri) in uris.iter().enumerate() {
-                let result = engine.download_track(uri).await;
-                let _ = events.send(Event::DownloadProgress {
-                    request,
-                    done: index as u32 + 1,
-                    total,
-                    uri: uri.clone(),
-                    result,
-                });
+        if let Some((worker_engine, wake)) = &self.download_worker {
+            if Arc::ptr_eq(worker_engine, &engine) {
+                let _ = wake.send(());
+                return;
             }
-
-            // The record follows the pins, not the request: a track that could
-            // not be downloaded must not look downloaded.
-            let pinned: std::collections::HashSet<String> = crate::pins::pinned(&dir)
-                .into_iter()
-                .map(|pin| pin.uri)
-                .collect();
-            let held: Vec<String> = uris
-                .into_iter()
-                .filter(|uri| pinned.contains(uri))
-                .collect();
-            downloads.set(
-                &key,
-                crate::downloads::Entry {
-                    uris: held,
-                    name: optional(name),
-                    art: optional(art),
-                },
-            );
-            let _ = downloads.save(&dir);
-            let _ = events.send(Event::DownloadsChanged {
-                collections: collections_json(&dir),
-            });
+            // A different engine replaced the one this worker holds. Let it
+            // finish and exit on its own, and start the queue on the new one.
+            self.download_worker = None;
+        }
+        let (wake, mut wake_rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+        let dir = self.dirs.audio_cache_dir();
+        let events = self.events.clone();
+        // The worker keeps its own handle; the field keeps one for comparison.
+        let task_engine = engine.clone();
+        tokio::spawn(async move {
+            loop {
+                loop {
+                    let pending = crate::downloads::Pending::load(&dir);
+                    let Some(job) = pending.front().cloned() else {
+                        break;
+                    };
+                    run_download_job(&task_engine, &events, &dir, job).await;
+                }
+                if wake_rx.recv().await.is_none() {
+                    break;
+                }
+            }
         });
+        self.download_worker = Some((engine, wake));
     }
 
     fn remove_download(&mut self, key: String) {
@@ -5501,6 +5523,62 @@ fn playlist_data_path(path: &std::path::Path, data_file: u64) -> std::path::Path
 /// "this collection had no name or art to give".
 fn optional(value: String) -> Option<String> {
     if value.is_empty() { None } else { Some(value) }
+}
+
+/// Runs one recorded download to completion, records what it covered, and only
+/// then takes it off the queue: a kill during the batch leaves it queued.
+async fn run_download_job(
+    engine: &Engine,
+    events: &std::sync::mpsc::Sender<Event>,
+    dir: &std::path::Path,
+    job: crate::downloads::PendingDownload,
+) {
+    let mut downloads = crate::downloads::Downloads::load(dir);
+    let (_, gone) = downloads.sync(&job.key, &job.uris);
+    drop_tracks(dir, &gone);
+
+    let total = job.uris.len() as u32;
+    for (index, uri) in job.uris.iter().enumerate() {
+        let result = engine.download_track(uri).await;
+        let _ = events.send(Event::DownloadProgress {
+            request: job.request,
+            done: index as u32 + 1,
+            total,
+            uri: uri.clone(),
+            result,
+        });
+    }
+
+    // The record follows the pins, not the request: a track that could not be
+    // downloaded must not look downloaded.
+    let pinned: std::collections::HashSet<String> = crate::pins::pinned(dir)
+        .into_iter()
+        .map(|pin| pin.uri)
+        .collect();
+    let held: Vec<String> = job
+        .uris
+        .iter()
+        .filter(|uri| pinned.contains(*uri))
+        .cloned()
+        .collect();
+    downloads.set(
+        &job.key,
+        crate::downloads::Entry {
+            uris: held,
+            name: optional(job.name.clone()),
+            art: optional(job.art.clone()),
+        },
+    );
+    let _ = downloads.save(dir);
+    let _ = events.send(Event::DownloadsChanged {
+        collections: collections_json(dir),
+    });
+
+    let mut pending = crate::downloads::Pending::load(dir);
+    pending.remove(&job.key);
+    if let Err(error) = pending.save(dir) {
+        log::warn!("unable to clear a finished download: {error}");
+    }
 }
 
 /// Unpins these track URIs, leaving their audio in the cache for ordinary

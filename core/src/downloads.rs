@@ -25,12 +25,86 @@ pub const MANIFEST_FILE: &str = "downloads.json";
 /// half-written one.
 const MANIFEST_TEMP: &str = "downloads.json.tmp";
 
+/// Downloads that were asked for but have not finished, so a batch interrupted
+/// by the app being killed resumes instead of vanishing. Kept beside the audio
+/// for the same reason the record is.
+pub const PENDING_FILE: &str = "downloads.pending.json";
+
+const PENDING_TEMP: &str = "downloads.pending.json.tmp";
+
 /// Whether this path is the manifest rather than cached audio. The cache's own
 /// sweep walks every file in the directory, and must not treat the record as a
 /// track to evict.
 pub fn is_manifest(path: &Path) -> bool {
-    path.file_name()
-        .is_some_and(|name| name == MANIFEST_FILE || name == MANIFEST_TEMP)
+    path.file_name().is_some_and(|name| {
+        name == MANIFEST_FILE
+            || name == MANIFEST_TEMP
+            || name == PENDING_FILE
+            || name == PENDING_TEMP
+    })
+}
+
+/// One download still to finish.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct PendingDownload {
+    /// The interface's request id, so progress keeps reporting against it.
+    pub request: u64,
+    pub key: String,
+    pub name: String,
+    pub art: String,
+    pub uris: Vec<String>,
+}
+
+/// The queue of unfinished downloads, oldest first. On disk it survives the
+/// app being killed; in memory it is just the file.
+#[derive(Clone, Debug, Default)]
+pub struct Pending {
+    jobs: Vec<PendingDownload>,
+}
+
+impl Pending {
+    pub fn load(dir: &Path) -> Self {
+        let Ok(text) = fs::read_to_string(dir.join(PENDING_FILE)) else {
+            return Self::default();
+        };
+        serde_json::from_str::<Vec<PendingDownload>>(&text)
+            .map(|jobs| Self { jobs })
+            .unwrap_or_default()
+    }
+
+    pub fn save(&self, dir: &Path) -> io::Result<()> {
+        let text = serde_json::to_string(&self.jobs)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        write_atomic(dir, PENDING_TEMP, PENDING_FILE, text.as_bytes())
+    }
+
+    /// Queues one, replacing any unfinished request for the same collection so
+    /// a second tap does not download it twice.
+    pub fn push(&mut self, job: PendingDownload) {
+        self.jobs.retain(|queued| queued.key != job.key);
+        self.jobs.push(job);
+    }
+
+    pub fn front(&self) -> Option<&PendingDownload> {
+        self.jobs.first()
+    }
+
+    pub fn remove(&mut self, key: &str) {
+        self.jobs.retain(|job| job.key != key);
+    }
+}
+
+/// Writes `bytes` through a temporary file and a rename, so a reader sees the
+/// old file or the new one and never a half-written one.
+fn write_atomic(dir: &Path, temporary: &str, target: &str, bytes: &[u8]) -> io::Result<()> {
+    fs::create_dir_all(dir)?;
+    let temporary = dir.join(temporary);
+    {
+        let mut file = fs::File::create(&temporary)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+    }
+    fs::rename(&temporary, dir.join(target))
 }
 
 /// One downloaded collection.
@@ -119,14 +193,7 @@ impl Downloads {
             .collect();
         let text = serde_json::to_string(&stored)
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-        fs::create_dir_all(dir)?;
-        let temporary = dir.join(MANIFEST_TEMP);
-        {
-            let mut file = fs::File::create(&temporary)?;
-            file.write_all(text.as_bytes())?;
-            file.sync_all()?;
-        }
-        fs::rename(&temporary, dir.join(MANIFEST_FILE))
+        write_atomic(dir, MANIFEST_TEMP, MANIFEST_FILE, text.as_bytes())
     }
 
     /// This collection's record, if it was downloaded.
@@ -324,6 +391,57 @@ mod tests {
         assert_eq!(downloads.remove("album:x"), uris(&["spotify:track:a"]));
         assert!(downloads.get("album:x").is_none());
         assert!(downloads.remove("album:x").is_empty());
+    }
+
+    #[test]
+    fn pending_downloads_round_trip_and_replace_by_key() {
+        let fixture = Fixture::new();
+        let mut pending = Pending::default();
+        pending.push(PendingDownload {
+            request: 1,
+            key: "album:a".to_string(),
+            name: "A".to_string(),
+            art: String::new(),
+            uris: uris(&["spotify:track:1"]),
+        });
+        pending.push(PendingDownload {
+            request: 2,
+            key: "album:a".to_string(),
+            name: "A".to_string(),
+            art: String::new(),
+            uris: uris(&["spotify:track:1", "spotify:track:2"]),
+        });
+        pending.save(&fixture.dir).unwrap();
+
+        let loaded = Pending::load(&fixture.dir);
+        let front = loaded.front().unwrap();
+        assert_eq!(loaded.jobs.len(), 1);
+        assert_eq!(front.request, 2);
+        assert_eq!(front.uris.len(), 2);
+    }
+
+    #[test]
+    fn a_finished_download_leaves_the_queue() {
+        let fixture = Fixture::new();
+        let mut pending = Pending::default();
+        pending.push(PendingDownload {
+            request: 1,
+            key: "album:a".to_string(),
+            name: "A".to_string(),
+            art: String::new(),
+            uris: Vec::new(),
+        });
+        pending.save(&fixture.dir).unwrap();
+        let mut loaded = Pending::load(&fixture.dir);
+        loaded.remove("album:a");
+        loaded.save(&fixture.dir).unwrap();
+        assert!(Pending::load(&fixture.dir).front().is_none());
+    }
+
+    #[test]
+    fn the_queue_is_not_mistaken_for_audio() {
+        assert!(is_manifest(&Path::new("/cache/downloads.pending.json")));
+        assert!(is_manifest(&Path::new("/cache/downloads.pending.json.tmp")));
     }
 
     #[test]
