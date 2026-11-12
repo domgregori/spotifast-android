@@ -6839,6 +6839,9 @@ impl Engine {
             _ => {}
         }
         match response {
+            // Verification answers belong to whoever holds the download
+            // records; nothing on this path acts on them.
+            ApiResponse::PlaylistVerified { .. } => {}
             ApiResponse::Me(result) => match result {
                 Ok(user) => {
                     // Spotify only takes playback commands from Premium

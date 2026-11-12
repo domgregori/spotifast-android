@@ -277,6 +277,11 @@ pub trait PlaybackStateListener: Send + Sync {
     /// of Spotify URIs. Sent whenever that record changes: after a download,
     /// a removal, or an explicit `request_downloads`.
     fn on_downloads(&self, collections: String);
+
+    /// One recorded playlist was checked against Spotify: `missing` is true
+    /// only when Spotify says it does not exist (a 404), which is what tells a
+    /// deleted playlist apart from one this account simply does not follow.
+    fn on_download_verified(&self, key: String, missing: bool);
 }
 
 /// Credential storage, implemented by Kotlin over EncryptedSharedPreferences.
@@ -715,6 +720,22 @@ impl CoreHandle {
             .lock()
             .unwrap()
             .send(Command::RemoveDownload { key });
+    }
+
+    /// Asks whether these recorded playlists still exist; each answer arrives
+    /// via `on_download_verified`. Only playlists are checked, since an album
+    /// record needs no equivalent.
+    pub fn verify_downloads(&self, keys: Vec<String>) {
+        for key in keys {
+            let Some(id) = key.strip_prefix("playlist:") else {
+                continue;
+            };
+            let id = id.to_string();
+            self.backend
+                .lock()
+                .unwrap()
+                .api(ApiRequest::VerifyPlaylist { key, id });
+        }
     }
 
     /// Asks for the downloaded collections; they arrive via `on_downloads`.
@@ -1545,6 +1566,9 @@ impl CoreHandle {
                                     }
                                     Err(_) => listener.on_playlist_unavailable(id),
                                 },
+                                ApiResponse::PlaylistVerified { key, missing } => {
+                                    listener.on_download_verified(key, missing);
+                                }
                                 ApiResponse::SavedTracks { generation, result, .. } => {
                                     let mut guard = liked_songs_page.lock().unwrap();
                                     // Stale: `liked_songs()` was called again (new generation)

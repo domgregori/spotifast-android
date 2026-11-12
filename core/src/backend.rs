@@ -145,6 +145,13 @@ pub enum ApiRequest {
         id: String,
         generation: u64,
     },
+    /// Asks whether a downloaded collection's playlist still exists. Only a
+    /// 404 counts as gone; any other failure leaves the record alone, so an
+    /// offline moment cannot delete a download.
+    VerifyPlaylist {
+        key: String,
+        id: String,
+    },
     PlaylistItems {
         id: String,
         offset: u32,
@@ -347,6 +354,10 @@ impl ApiRequest {
 #[derive(Debug)]
 pub enum ApiResponse {
     Me(ApiResult<User>),
+    PlaylistVerified {
+        key: String,
+        missing: bool,
+    },
     Devices(ApiResult<Vec<Device>>),
     PlaybackState {
         seq: u64,
@@ -4434,7 +4445,9 @@ fn operation_for(api: &ApiGateway, request: &ApiRequest) -> Operation {
         ApiRequest::Search { .. } => Operation::PlaylistSearch,
         ApiRequest::PlaySearch { kind, .. } if kind == "playlist" => Operation::PlaylistSearch,
         ApiRequest::PlaySearch { .. } => Operation::CatalogSearch,
-        ApiRequest::Playlist { id, .. } => Operation::PlaylistMetadata(api.playlist_access(id)),
+        ApiRequest::Playlist { id, .. } | ApiRequest::VerifyPlaylist { id, .. } => {
+            Operation::PlaylistMetadata(api.playlist_access(id))
+        }
         ApiRequest::PlaylistItems { id, .. }
         | ApiRequest::PlaylistSample { id, .. }
         | ApiRequest::CheckPlaylistDuplicates {
@@ -4744,6 +4757,13 @@ async fn handle(
             result: routed!(playlist(&id)),
             id,
             generation,
+        },
+        ApiRequest::VerifyPlaylist { key, id } => ApiResponse::PlaylistVerified {
+            missing: matches!(
+                routed!(playlist(&id)),
+                Err(ApiError::Status { status: 404, .. })
+            ),
+            key,
         },
         ApiRequest::PlaylistItems {
             id,

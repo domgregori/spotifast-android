@@ -96,6 +96,12 @@ fun LibraryScreen(
         SpotifyCore.loadFollowedArtists()
     }
 
+    // Opening the list is the moment to notice that a recorded playlist has
+    // been deleted since it was downloaded.
+    LaunchedEffect(filter) {
+        if (filter == LibraryFilter.Downloaded) SpotifyCore.verifyDownloads()
+    }
+
     // The rootlist reads through the local playback session, so it can lag
     // behind (or never arrive, if the user hasn't authorized playback) —
     // fall back to the flat Web API list rather than showing nothing.

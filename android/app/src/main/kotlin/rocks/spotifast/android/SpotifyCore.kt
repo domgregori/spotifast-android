@@ -1115,6 +1115,12 @@ object SpotifyCore {
             }
         }
 
+        override fun onDownloadVerified(key: String, missing: Boolean) {
+            // Only a 404 gets here, so this is a playlist Spotify says is
+            // gone; anything else (offline, a quota error) is left alone.
+            if (missing) removeDownload(key)
+        }
+
         override fun onDownloads(collections: String) {
             _downloads.value = runCatching {
                 val json = org.json.JSONObject(collections)
@@ -1577,6 +1583,14 @@ object SpotifyCore {
      *  stays cached but is evictable again. */
     fun removeDownload(key: String) {
         handle?.removeDownload(key)
+    }
+
+    /** Checks the recorded playlists against Spotify, so a playlist deleted on
+     *  another device stops sitting in the Downloaded list for ever. Only a
+     *  404 answers, so an offline moment cannot drop a download. */
+    fun verifyDownloads() {
+        val keys = _downloads.value.keys.filter { it.startsWith("playlist:") }
+        if (keys.isNotEmpty()) handle?.verifyDownloads(keys)
     }
 
     fun toggleShuffle() {
