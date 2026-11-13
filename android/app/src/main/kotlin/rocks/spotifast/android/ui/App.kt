@@ -1,5 +1,6 @@
 package rocks.spotifast.android.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -98,6 +99,7 @@ private fun ConnectedApp(username: String) {
     val activeRadio by SpotifyCore.activeRadio.collectAsState()
     val currentSource by SpotifyCore.currentSource.collectAsState()
     val toast by SpotifyCore.toast.collectAsState()
+    val generatedPlaylistOpen by ListenBrainz.generatedPlaylistOpen.collectAsState()
 
     LaunchedEffect(Unit) {
         SpotifyCore.library()
@@ -120,6 +122,37 @@ private fun ConnectedApp(username: String) {
         }
         if (selectedAlbum != null) {
             SpotifyCore.closeAlbum()
+        }
+    }
+
+    // The player closes itself if its track ever goes away, so back never
+    // spends a press on a screen that is no longer drawn.
+    LaunchedEffect(localPlayback?.track) {
+        if (localPlayback?.track == null) nowPlayingOpen = false
+    }
+
+    // Back walks up the stack instead of finishing the activity: the player
+    // and full-screen panels first, then the open playlist, artist or album,
+    // then the tab. Sheets and dialogs dismiss themselves in their own window
+    // before this runs, and at Home this is disabled, so back still leaves.
+    val backCloses = generatedPlaylistOpen || settingsOpen || devicesOpen ||
+        newReleasesOpen || statsOpen || queueOpen || nowPlayingOpen ||
+        selectedPlaylist != null || selectedArtist != null || selectedAlbum != null ||
+        selectedTab != AppTab.Home
+
+    BackHandler(enabled = backCloses) {
+        when {
+            generatedPlaylistOpen -> ListenBrainz.closeGeneratedPlaylist()
+            settingsOpen -> settingsOpen = false
+            newReleasesOpen -> newReleasesOpen = false
+            statsOpen -> statsOpen = false
+            devicesOpen -> devicesOpen = false
+            queueOpen -> queueOpen = false
+            nowPlayingOpen -> nowPlayingOpen = false
+            selectedPlaylist != null -> SpotifyCore.closePlaylist()
+            selectedArtist != null -> SpotifyCore.closeArtist()
+            selectedAlbum != null -> SpotifyCore.closeAlbum()
+            else -> selectTab(AppTab.Home)
         }
     }
 
