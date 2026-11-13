@@ -13,8 +13,8 @@
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use librespot_audio::AudioFile;
-use librespot_core::{cache::Cache, FileId, SpotifyUri};
+use librespot_audio::{AudioDecrypt, AudioFile};
+use librespot_core::{FileId, SpotifyId, SpotifyUri, cache::Cache};
 use librespot_metadata::audio::{AudioFileFormat, AudioFiles, AudioItem};
 use librespot_playback::config::Bitrate;
 
@@ -73,10 +73,35 @@ impl Engine {
             .file_path(file_id)
             .ok_or_else(|| "no audio cache path".to_string())?;
 
+        // The cache holds ciphertext, which only librespot's player can use
+        // with a live session. A download therefore also writes a decrypted
+        // copy, so the track can be played with no network at all.
+        let track_id: SpotifyId = (&audio_item.track_id)
+            .try_into()
+            .map_err(|error| format!("unable to identify <{uri}>: {error}"))?;
+        // The cache file lives at <cache>/audio/<shard>/<name>, so the cache
+        // root is three levels up.
+        let offline_dir = path
+            .parent()
+            .and_then(|shard| shard.parent())
+            .and_then(|audio| audio.parent())
+            .map(|cache| cache.join("offline"))
+            .ok_or_else(|| "no offline audio directory".to_string())?;
+        let offline = offline_dir.join(format!(
+            "{}.{}",
+            audio_item.track_id.to_id(),
+            extension(format)
+        ));
+
         let fetched = if path.is_file() {
+            // Downloaded before decrypted copies existed: make one from the
+            // cache, which needs no network.
+            if !offline.is_file() {
+                self.decrypt_from_cache(track_id, file_id, &offline).await?;
+            }
             false
         } else {
-            self.fetch_file(file_id, format).await?;
+            self.fetch_file(track_id, file_id, format, &offline).await?;
             wait_for_cache(cache, file_id).await?;
             true
         };
@@ -86,26 +111,61 @@ impl Engine {
     }
 
     /// Runs librespot's fetch for one file to completion, which is what makes
-    /// it land in the cache.
-    async fn fetch_file(&self, file_id: FileId, format: AudioFileFormat) -> Result<(), String> {
+    /// it land in the cache, and writes the decrypted copy as it goes: the
+    /// same bytes the player would decrypt, kept for offline playback.
+    async fn fetch_file(
+        &self,
+        track_id: SpotifyId,
+        file_id: FileId,
+        format: AudioFileFormat,
+        offline: &Path,
+    ) -> Result<(), String> {
         let rate = stream_data_rate(format);
+        let key = self
+            .session()
+            .audio_key()
+            .request(track_id, file_id)
+            .await
+            .map_err(|error| format!("unable to fetch the audio key for {file_id}: {error}"))?;
         // `open_for_download` asks for the whole file at once; the streaming
         // open would move one playback read-ahead window per round trip, which
         // on a high-latency link is a small fraction of the link's throughput.
         let file = AudioFile::open_for_download(self.session(), file_id, rate)
             .await
             .map_err(|error| format!("unable to fetch {file_id}: {error}"))?;
+        let mut file = AudioDecrypt::new(Some(key), file);
 
         // Reading is blocking by design (the player reads it on its own
         // thread), so it must not sit on a runtime worker.
-        tokio::task::spawn_blocking(move || {
-            let mut file = file;
-            let mut sink = std::io::sink();
-            std::io::copy(&mut file, &mut sink).map(|_| ())
-        })
-        .await
-        .map_err(|error| format!("download task failed: {error}"))?
-        .map_err(|error| format!("unable to download {file_id}: {error}"))
+        write_atomically(offline, move |out| copy_audio(&mut file, out))
+            .await
+            .map_err(|error| format!("unable to download {file_id}: {error}"))
+    }
+
+    /// Turns an already cached track into its decrypted copy. Used for
+    /// downloads made before decrypted copies were kept, and needs the audio
+    /// key but no CDN request.
+    async fn decrypt_from_cache(
+        &self,
+        track_id: SpotifyId,
+        file_id: FileId,
+        offline: &Path,
+    ) -> Result<(), String> {
+        let cached = self
+            .session()
+            .cache()
+            .and_then(|cache| cache.file(file_id))
+            .ok_or_else(|| format!("{file_id} is not in the cache"))?;
+        let key = self
+            .session()
+            .audio_key()
+            .request(track_id, file_id)
+            .await
+            .map_err(|error| format!("unable to fetch the audio key for {file_id}: {error}"))?;
+        let mut cached = AudioDecrypt::new(Some(key), cached);
+        write_atomically(offline, move |out| copy_audio(&mut cached, out))
+            .await
+            .map_err(|error| format!("unable to write the offline copy of {file_id}: {error}"))
     }
 }
 
@@ -261,5 +321,155 @@ mod tests {
     fn the_fetch_is_paced_at_the_formats_own_rate() {
         assert_eq!(stream_data_rate(AudioFileFormat::OGG_VORBIS_320), 40 * 1024);
         assert_eq!(stream_data_rate(AudioFileFormat::OGG_VORBIS_96), 12 * 1024);
+    }
+}
+
+/// The file extension for a decrypted copy, so a player can choose its decoder
+/// from the name.
+fn extension(format: AudioFileFormat) -> &'static str {
+    use AudioFileFormat::*;
+    match format {
+        OGG_VORBIS_96 | OGG_VORBIS_160 | OGG_VORBIS_320 => "ogg",
+        MP3_256 | MP3_320 | MP3_160 | MP3_96 | MP3_160_ENC => "mp3",
+        FLAC_FLAC | FLAC_FLAC_24BIT => "flac",
+        AAC_24 | AAC_48 | AAC_160 | AAC_320 | XHE_AAC_24 | XHE_AAC_16 | XHE_AAC_12 | MP4_128
+        | OTHER5 => "m4a",
+    }
+}
+
+/// Copies the decrypted stream into `out`, leaving out the one page Spotify
+/// puts before the audio.
+///
+/// That page decrypts to bytes that are not audio, and a standard Ogg reader
+/// expects the identification header on the first page, so a copy that keeps
+/// it plays in Spotify's own client but not in `ffmpeg` or an Ogg extractor.
+/// A stream whose first page *is* the identification header is left alone.
+fn copy_audio<R: std::io::Read, W: std::io::Write>(
+    reader: &mut R,
+    out: &mut W,
+) -> std::io::Result<()> {
+    use std::io::Read as _;
+
+    let mut first = [0u8; 27];
+    let mut filled = 0;
+    while filled < first.len() {
+        let read = reader.read(&mut first[filled..])?;
+        if read == 0 {
+            break;
+        }
+        filled += read;
+    }
+    if filled < first.len() {
+        // Too short to be a page at all: keep what there is.
+        out.write_all(&first[..filled])?;
+        return Ok(());
+    }
+    if &first[0..4] != b"OggS" {
+        // Not the layout this knows about; keep everything.
+        out.write_all(&first)?;
+        return std::io::copy(reader, out).map(|_| ());
+    }
+    let segments = first[26] as usize;
+    let mut table = vec![0u8; segments];
+    reader.read_exact(&mut table)?;
+    let body_len: usize = table.iter().map(|&length| length as usize).sum();
+    let mut body = vec![0u8; body_len];
+    reader.read_exact(&mut body)?;
+
+    let identification = body.starts_with(b"\x01vorbis")
+        || body.starts_with(b"OpusHead")
+        || body.starts_with(b"fLaC");
+    if identification {
+        out.write_all(&first)?;
+        out.write_all(&table)?;
+        out.write_all(&body)?;
+    }
+    std::io::copy(reader, out).map(|_| ())
+}
+
+/// Writes through `<name>.part` and renames, so a download killed halfway
+/// cannot leave a file that looks playable but is cut short.
+async fn write_atomically<F>(path: &Path, write: F) -> Result<(), String>
+where
+    F: FnOnce(&mut std::fs::File) -> std::io::Result<()> + Send + 'static,
+{
+    let path = path.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let mut temporary = path.clone();
+        let name = temporary
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default();
+        temporary.set_file_name(format!("{name}.part"));
+        let mut out = std::fs::File::create(&temporary)?;
+        write(&mut out)?;
+        out.sync_all()?;
+        drop(out);
+        std::fs::rename(&temporary, &path)
+    })
+    .await
+    .map_err(|error| format!("write task failed: {error}"))?
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(test)]
+mod copy_tests {
+    use super::copy_audio;
+    use std::io::Cursor;
+
+    /// One Ogg page carrying `body`, with a valid page header and segment
+    /// table but no meaningful checksum: the copy code never reads it.
+    fn page(body: &[u8]) -> Vec<u8> {
+        let mut segments = Vec::new();
+        let mut remaining = body.len();
+        while remaining >= 255 {
+            segments.push(255u8);
+            remaining -= 255;
+        }
+        segments.push(remaining as u8);
+        let mut out = b"OggS".to_vec();
+        out.resize(26, 0);
+        out.push(segments.len() as u8);
+        out.extend_from_slice(&segments);
+        out.extend_from_slice(body);
+        out
+    }
+
+    fn copied(stream: &[u8]) -> Vec<u8> {
+        let mut reader = Cursor::new(stream.to_vec());
+        let mut out = Vec::new();
+        copy_audio(&mut reader, &mut out).unwrap();
+        out
+    }
+
+    #[test]
+    fn the_spotify_preamble_is_left_out() {
+        // What Spotify sends first: one page that decrypts to bytes that are
+        // not audio, before the Vorbis identification header.
+        let mut stream = page(&[0xAB; 139]);
+        let identification = page(b"\x01vorbis identification header");
+        stream.extend_from_slice(&identification);
+        stream.extend_from_slice(&page(b"audio"));
+
+        let out = copied(&stream);
+        assert!(out.starts_with(b"OggS"));
+        assert!(out.windows(7).any(|window| window == b"\x01vorbis"));
+        assert!(!out.windows(2).any(|window| window == [0xAB, 0xAB]));
+    }
+
+    #[test]
+    fn a_stream_that_is_already_audio_is_copied_whole() {
+        let mut stream = page(b"\x01vorbis identification header");
+        stream.extend_from_slice(&page(b"audio"));
+        assert_eq!(copied(&stream), stream);
+    }
+
+    #[test]
+    fn something_that_is_not_ogg_is_not_lost() {
+        let stream = b"not an ogg stream at all".to_vec();
+        assert_eq!(copied(&stream), stream);
     }
 }

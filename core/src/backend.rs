@@ -2075,6 +2075,10 @@ impl Worker {
                 Command::ClearAudioCache => {
                     let dir = self.dirs.audio_cache_dir();
                     log_cache_removal(&dir, tokio::fs::remove_dir_all(&dir).await);
+                    // The decrypted copies are part of the downloads they
+                    // belong to, so clearing the cache clears them too.
+                    let offline = self.dirs.offline_audio_dir();
+                    log_cache_removal(&offline, tokio::fs::remove_dir_all(&offline).await);
                 }
                 Command::AuthorizePlayback => self.authorize_playback(),
                 Command::RestartEngine(mut config) => {
@@ -3875,7 +3879,7 @@ impl Worker {
         let dir = self.dirs.audio_cache_dir();
         let mut downloads = crate::downloads::Downloads::load(&dir);
         let uris = downloads.remove(&key);
-        drop_tracks(&dir, &uris);
+        drop_tracks(&dir, &offline_dir(&dir), &uris);
         let _ = downloads.save(&dir);
         self.report_downloads();
     }
@@ -5577,8 +5581,9 @@ async fn run_download_job(
     job: crate::downloads::PendingDownload,
 ) {
     let mut downloads = crate::downloads::Downloads::load(dir);
+    let offline = offline_dir(dir);
     let (_, gone) = downloads.sync(&job.key, &job.uris);
-    drop_tracks(dir, &gone);
+    drop_tracks(dir, &offline, &gone);
 
     let total = job.uris.len() as u32;
     for (index, uri) in job.uris.iter().enumerate() {
@@ -5632,8 +5637,9 @@ async fn run_download_job(
 }
 
 /// Unpins these track URIs, leaving their audio in the cache for ordinary
-/// eviction.
-fn drop_tracks(dir: &std::path::Path, uris: &[String]) {
+/// eviction, and removes their decrypted copies, which exist only for the
+/// download.
+fn drop_tracks(dir: &std::path::Path, offline: &std::path::Path, uris: &[String]) {
     if uris.is_empty() {
         return;
     }
@@ -5643,6 +5649,28 @@ fn drop_tracks(dir: &std::path::Path, uris: &[String]) {
             let _ = crate::pins::unpin(&pin.audio);
         }
     }
+    let saved: Vec<std::path::PathBuf> = std::fs::read_dir(offline)
+        .map(|entries| entries.flatten().map(|entry| entry.path()).collect())
+        .unwrap_or_default();
+    for uri in uris {
+        let Some(id) = uri.rsplit(':').next() else {
+            continue;
+        };
+        for path in &saved {
+            let named = path.file_stem().and_then(|stem| stem.to_str()) == Some(id);
+            if named {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
+}
+
+/// Where the decrypted copies of a cache's downloads live.
+fn offline_dir(audio: &std::path::Path) -> std::path::PathBuf {
+    audio
+        .parent()
+        .map(|cache| cache.join("offline"))
+        .unwrap_or_else(|| audio.join("offline"))
 }
 
 /// The downloaded collections as a JSON object of key to track URIs, which is

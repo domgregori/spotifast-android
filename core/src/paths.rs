@@ -116,6 +116,13 @@ impl AppDirs {
         self.cache.join("audio")
     }
 
+    /// Decrypted copies of downloaded tracks, for playing without a network.
+    /// Beside the audio cache rather than inside it: that directory is swept
+    /// as cache, and these files are owned by the download record instead.
+    pub fn offline_audio_dir(&self) -> PathBuf {
+        self.cache.join("offline")
+    }
+
     pub fn art_cache_dir(&self) -> PathBuf {
         self.cache.join("art")
     }
