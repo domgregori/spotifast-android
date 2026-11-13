@@ -25,10 +25,34 @@ use crate::player::Engine;
 /// normally a moment behind the last read.
 const CACHE_WRITE_TIMEOUT: Duration = Duration::from_secs(20);
 
-/// Waits between attempts at one track. Spotify rate-limits audio keys, and
-/// the second wait is long enough for that limit to clear.
-const DOWNLOAD_RETRY_DELAY: Duration = Duration::from_secs(5);
-const DOWNLOAD_RETRY_LONG_DELAY: Duration = Duration::from_secs(20);
+/// Waits between attempts at one track. Spotify rate-limits audio keys, and a
+/// batch of a hundred tracks meets that limit; the waits grow so a closed key
+/// channel has time to come back.
+const DOWNLOAD_RETRY_DELAYS: [Duration; 4] = [
+    Duration::from_secs(5),
+    Duration::from_secs(15),
+    Duration::from_secs(30),
+    Duration::from_secs(60),
+];
+
+/// The wait before the next attempt: the schedule above plus up to a fifth of
+/// jitter, so several failures do not line up and retry in lockstep.
+fn retry_delay(attempt: usize) -> Duration {
+    let base = DOWNLOAD_RETRY_DELAYS[attempt.min(DOWNLOAD_RETRY_DELAYS.len() - 1)];
+    let slack = (base.as_millis() / 5) as u64;
+    let jitter = if slack == 0 {
+        0
+    } else {
+        rand::random_range(0..=slack)
+    };
+    base + Duration::from_millis(jitter)
+}
+
+/// An error that more waiting cannot fix: the track's own files cannot be
+/// played by this engine, so it is reported at once instead of retried.
+fn is_permanent(error: &str) -> bool {
+    error.contains("has no file this engine can play")
+}
 
 impl Engine {
     /// Downloads one track into the audio cache and pins it.
@@ -46,18 +70,29 @@ impl Engine {
         // Spotify rate-limits audio keys, and the metadata and CDN lookups go
         // over the same session; a batch of a hundred tracks will meet that
         // limit. One failure used to abandon the track for good, which left a
-        // "downloaded" album with silent holes in it. Retry the fetch a couple
-        // of times, waiting longer each time, and report only the last error.
-        for (attempt, delay) in [(1u32, DOWNLOAD_RETRY_DELAY), (2, DOWNLOAD_RETRY_LONG_DELAY)] {
+        // "downloaded" album with silent holes in it. Retry with a growing
+        // wait (five attempts in all, about two minutes at worst), report only
+        // the last error, and skip the wait when the track can never play.
+        let mut last_error = String::new();
+        for attempt in 0..=DOWNLOAD_RETRY_DELAYS.len() {
             match self.download_once(cache, uri).await {
                 Ok(fetched) => return Ok(fetched),
                 Err(error) => {
-                    log::warn!("download of <{uri}> failed on attempt {attempt}: {error}");
+                    log::warn!(
+                        "download of <{uri}> failed on attempt {}: {error}",
+                        attempt + 1
+                    );
+                    last_error = error;
+                    if is_permanent(&last_error) || attempt == DOWNLOAD_RETRY_DELAYS.len() {
+                        break;
+                    }
+                    let delay = retry_delay(attempt);
+                    log::info!("retrying <{uri}> in {delay:?}");
                     tokio::time::sleep(delay).await;
                 }
             }
         }
-        self.download_once(cache, uri).await
+        Err(last_error)
     }
 
     /// One attempt at fetching and pinning a track.
@@ -471,5 +506,40 @@ mod copy_tests {
     fn something_that_is_not_ogg_is_not_lost() {
         let stream = b"not an ogg stream at all".to_vec();
         assert_eq!(copied(&stream), stream);
+    }
+}
+
+#[cfg(test)]
+mod retry_tests {
+    use super::{DOWNLOAD_RETRY_DELAYS, is_permanent, retry_delay};
+
+    #[test]
+    fn retry_waits_grow_and_stay_bounded() {
+        for (attempt, base) in DOWNLOAD_RETRY_DELAYS.iter().enumerate() {
+            let delay = retry_delay(attempt);
+            assert!(
+                delay >= *base,
+                "attempt {attempt} waited less than {base:?}"
+            );
+            assert!(
+                delay <= *base + *base / 5,
+                "attempt {attempt} waited more than a fifth over {base:?}"
+            );
+        }
+        // Past the schedule the last wait repeats rather than panicking.
+        let last = DOWNLOAD_RETRY_DELAYS[DOWNLOAD_RETRY_DELAYS.len() - 1];
+        let beyond = retry_delay(DOWNLOAD_RETRY_DELAYS.len() + 3);
+        assert!(beyond >= last && beyond <= last + last / 5);
+    }
+
+    #[test]
+    fn only_a_missing_file_is_permanent() {
+        assert!(is_permanent("<track> has no file this engine can play"));
+        assert!(!is_permanent(
+            "unable to fetch the audio key: Service unavailable { audio key error }"
+        ));
+        assert!(!is_permanent(
+            "unable to load <spotify:track:x>: channel closed"
+        ));
     }
 }
