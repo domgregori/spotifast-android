@@ -7,6 +7,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
+import rocks.spotifast.android.service.OfflinePlayer
 import rocks.spotifast.android.service.PlaybackService
 import rocks.spotifast.android.util.vibrateTick
 import uniffi.spotifast.CoreHandle
@@ -422,6 +424,11 @@ object SpotifyCore {
      *  *this* device can still be told apart from one on another device. */
     private var engineState: LocalPlayback? = null
 
+    /** Plays downloaded tracks from their decrypted copies when there is no
+     *  network; null until [init] has an application context to build it. */
+    private var offlinePlayer: OfflinePlayer? = null
+    private var offlineTicker: Job? = null
+
     /** The account's playback as `GET /me/player` last reported it —
      *  whichever Connect device is active, polled periodically since
      *  nothing pushes this the way the local engine pushes [engineState].
@@ -473,6 +480,52 @@ object SpotifyCore {
     /** Recomputes [localPlayback] from [engineState] and [remoteSnapshot].
      *  Call after changing either, or after [localDeviceId] first becomes
      *  known (a remote poll can land before that does). */
+    /** Shows the offline player's state as this phone's playback, so the mini
+     *  player, the Now Playing screen and the media session need no separate
+     *  path for it. */
+    private fun publishOffline() {
+        val player = offlinePlayer ?: return
+        val track = player.track
+        if (!player.isActive || track == null) {
+            // The queue ran out: keep the last track on screen, stopped.
+            val current = engineState ?: return
+            engineState = current.copy(phase = PlaybackPhase.Stopped)
+            publishEffectivePlayback()
+            return
+        }
+        engineState = LocalPlayback(
+            phase = if (player.isPlaying) PlaybackPhase.Playing else PlaybackPhase.Paused,
+            track = PlayingTrack(
+                uri = track.uri,
+                title = track.name,
+                artist = track.artist,
+                artistId = track.artistId,
+                album = "",
+                albumId = track.albumId,
+                artUrl = track.artUrl,
+                durationMs = track.durationMs,
+            ),
+            positionMs = player.positionMs,
+            shuffle = false,
+            repeat = "Off",
+            error = null,
+        )
+        publishEffectivePlayback()
+        if (offlineTicker?.isActive != true) {
+            // The player has no position callback of its own, and the scrubber
+            // needs one; half a second keeps it moving without waking anything.
+            // Media3 refuses to be touched from anywhere but its own thread.
+            offlineTicker = scope.launch(Dispatchers.Main) {
+                while (true) {
+                    val current = offlinePlayer?.takeIf { it.isActive } ?: break
+                    engineState = engineState?.copy(positionMs = current.positionMs)
+                    publishEffectivePlayback()
+                    delay(500)
+                }
+            }
+        }
+    }
+
     private fun publishEffectivePlayback() {
         val remote = remoteSnapshot
         val isRemoteActive = remote != null && remote.deviceId != null && remote.deviceId != localDeviceId
@@ -983,6 +1036,16 @@ object SpotifyCore {
                 )
             }.getOrNull() ?: return
 
+            // While a downloaded file is playing with no network, the engine
+            // is reconnecting and reports Ready, Stopped or a stale track;
+            // letting that through would blank the now playing state under
+            // audio that is still coming out of the speaker. It only wins
+            // when it is actually playing something again.
+            if (offlinePlayer?.isActive == true) {
+                if (parsed.phase != PlaybackPhase.Playing) return
+                offlinePlayer?.stop()
+            }
+
             // A track-change goes through the engine's own Stopped, then
             // Loading, before its TrackChanged finally reports the new
             // track — Stopped/Loading don't clear the previous one, so
@@ -1048,6 +1111,12 @@ object SpotifyCore {
                     source = source,
                 )
             }.getOrNull()
+            val remotePlaying = remoteSnapshot?.isPlaying == true &&
+                remoteSnapshot?.deviceId != localDeviceId
+            if (remotePlaying) {
+                // Something is playing for real, and it is not this file.
+                offlinePlayer?.stop()
+            }
             publishEffectivePlayback()
         }
 
@@ -1290,6 +1359,7 @@ object SpotifyCore {
                 bitrateKbps.toUShort(),
             )
             handle?.setListener(listener)
+            offlinePlayer = OfflinePlayer(context.applicationContext) { publishOffline() }
             // Android has no other way to tell the core whether the network
             // exists; without this an offline moment looks like a broken
             // Spotify and the engine keeps retrying.
@@ -1511,6 +1581,16 @@ object SpotifyCore {
             pollRemoteSoon()
             return
         }
+        // With no network the session cannot open a track, but a downloaded
+        // one can still play if it was decrypted when it was downloaded.
+        if (_online.value == false && offlinePlayer?.play(tracks, startIndex) == true) {
+            localPlaySource = context?.toCurrentSource()
+            publishOffline()
+            return
+        }
+        // Session playback takes over from the offline player rather than
+        // playing beside it.
+        offlinePlayer?.stop()
         localPlaySource = context?.toCurrentSource()
         engineState = LocalPlayback(
             phase = PlaybackPhase.Loading,
@@ -1571,6 +1651,11 @@ object SpotifyCore {
     }
 
     fun togglePlayback() {
+        if (offlinePlayer?.isActive == true) {
+            offlinePlayer?.toggle()
+            publishOffline()
+            return
+        }
         val remoteId = activeRemoteDeviceId()
         if (remoteId != null) {
             val playing = remoteSnapshot?.isPlaying ?: false
@@ -1599,6 +1684,11 @@ object SpotifyCore {
     }
 
     fun skipNext() {
+        if (offlinePlayer?.isActive == true) {
+            offlinePlayer?.next()
+            publishOffline()
+            return
+        }
         val remoteId = activeRemoteDeviceId()
         if (remoteId != null) {
             handle?.remoteNext(remoteId)
@@ -1609,6 +1699,11 @@ object SpotifyCore {
     }
 
     fun skipPrevious() {
+        if (offlinePlayer?.isActive == true) {
+            offlinePlayer?.previous()
+            publishOffline()
+            return
+        }
         val remoteId = activeRemoteDeviceId()
         if (remoteId != null) {
             handle?.remotePrevious(remoteId)
@@ -1622,6 +1717,11 @@ object SpotifyCore {
      *  or the active remote Connect device's, same split as
      *  [togglePlayback]. */
     fun seek(positionMs: Long) {
+        if (offlinePlayer?.isActive == true) {
+            offlinePlayer?.seek(positionMs)
+            publishOffline()
+            return
+        }
         val remoteId = activeRemoteDeviceId()
         if (remoteId != null) {
             handle?.remoteSeek(remoteId, positionMs.toUInt())

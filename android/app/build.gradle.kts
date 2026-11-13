@@ -130,6 +130,8 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.androidx.media3.session)
+    // Plays the decrypted copies of downloaded tracks when there is no network.
+    implementation(libs.androidx.media3.exoplayer)
     // The UniFFI-generated bindings call through JNA. The AAR ships
     // libjnidispatch.so for the Android ABIs; the plain JAR does not.
     implementation("net.java.dev.jna:jna:5.14.0@aar")
