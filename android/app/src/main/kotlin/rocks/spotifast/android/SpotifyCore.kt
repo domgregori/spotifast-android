@@ -763,6 +763,9 @@ object SpotifyCore {
         override fun onLibrary(playlists: String) {
             _library.value = parseLibraryItems(playlists)
             libraryLoaded = true
+            // A fresh list is the other chance for names a dropped request
+            // never brought back; answering ones are already in the list.
+            requestedPlaylistInfoIds.clear()
             rebuildLibraryTree()
         }
 
@@ -990,6 +993,15 @@ object SpotifyCore {
             // trigger on the (re)connection itself.
             if (status == "Ready") {
                 ensurePlaybackServiceStarted()
+                // A playlist metadata request is dropped when the session
+                // changes under it, and nothing tells the interface, so a row
+                // would keep showing its id for the rest of the process. Ask
+                // again now that a session can answer: playlists already
+                // named, or known unavailable, are skipped by the rebuild.
+                if (requestedPlaylistInfoIds.isNotEmpty()) {
+                    requestedPlaylistInfoIds.clear()
+                    if (libraryLoaded) rebuildLibraryTree()
+                }
             }
             // The rootlist (unlike the flat Web API playlist list) reads
             // through the local session, so it's only reachable once that
