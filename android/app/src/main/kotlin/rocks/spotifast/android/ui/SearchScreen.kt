@@ -8,12 +8,14 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -41,14 +43,16 @@ import rocks.spotifast.android.ui.components.TrackRow
 /** The kind of result shown below the search field. */
 private enum class SearchFilter(val label: String) {
     Songs("Songs"),
+    Liked("Liked"),
     Artists("Artists"),
     Albums("Albums"),
     Playlists("Playlists"),
 }
 
 /** Spotify's Search tab: the rounded search field, a row of result-type
- *  chips, and the matching results. The backend already fetches all four
- *  kinds for every query — the chips just pick which one is on screen. */
+ *  chips, and the matching results. The backend fetches songs, artists,
+ *  albums and playlists for every query; "Liked" is different, a local match
+ *  over the liked songs already loaded or cached. */
 @Composable
 fun SearchScreen(onOpenPlaylist: (String) -> Unit, onOpenArtist: (String) -> Unit, onOpenAlbum: (String) -> Unit) {
     var query by remember { mutableStateOf("") }
@@ -62,6 +66,13 @@ fun SearchScreen(onOpenPlaylist: (String) -> Unit, onOpenArtist: (String) -> Uni
     val likedTracks by SpotifyCore.likedTracks.collectAsState()
     val nowPlaying by SpotifyCore.localPlayback.collectAsState()
     val nowPlayingUri = nowPlaying?.track?.uri
+    val allTracks by SpotifyCore.tracks.collectAsState()
+    val tracksHasMore by SpotifyCore.tracksHasMore.collectAsState()
+    val tracksLoadingMore by SpotifyCore.tracksLoadingMore.collectAsState()
+    val likedTotal by SpotifyCore.likedSongsTotal.collectAsState()
+    val likedSongs = allTracks[SpotifyCore.LIKED_SONGS_ID].orEmpty()
+    val likedIncomplete = tracksHasMore[SpotifyCore.LIKED_SONGS_ID] == true
+    val likedLoading = tracksLoadingMore.contains(SpotifyCore.LIKED_SONGS_ID)
 
     LaunchedEffect(query) {
         if (query.isNotBlank()) {
@@ -74,6 +85,25 @@ fun SearchScreen(onOpenPlaylist: (String) -> Unit, onOpenArtist: (String) -> Uni
     // nothing else asks about search results, so a result the session had
     // never seen looked unliked even when it was in Liked Songs.
     LaunchedEffect(tracks) { SpotifyCore.checkLikedBatch(tracks.map { it.uri }) }
+
+    // The Liked chip searches a local list, so it has to be loaded first; an
+    // empty list means it never was (the cache answers instantly when it has
+    // one).
+    LaunchedEffect(filter) {
+        if (filter == SearchFilter.Liked && likedSongs.isEmpty()) SpotifyCore.likedSongs()
+    }
+
+    val likedMatches = remember(likedSongs, query) {
+        val needle = query.trim()
+        if (needle.isBlank()) {
+            emptyList()
+        } else {
+            likedSongs.filter { track ->
+                track.name.contains(needle, ignoreCase = true) ||
+                    track.artist.contains(needle, ignoreCase = true)
+            }
+        }
+    }
 
     // A local name match against the library, not a server round trip —
     // Spotify's playlist search only ever indexes public playlists, so a
@@ -93,6 +123,7 @@ fun SearchScreen(onOpenPlaylist: (String) -> Unit, onOpenArtist: (String) -> Uni
 
     val resultCount = when (filter) {
         SearchFilter.Songs -> tracks.size
+        SearchFilter.Liked -> likedMatches.size
         SearchFilter.Artists -> artists.size
         SearchFilter.Albums -> albums.size
         SearchFilter.Playlists -> myPlaylists.size + otherPlaylists.size
@@ -133,6 +164,10 @@ fun SearchScreen(onOpenPlaylist: (String) -> Unit, onOpenArtist: (String) -> Uni
                     onClearAll = { SpotifyCore.clearSearchHistory() },
                 )
                 query.isBlank() -> Hint("Search for a song, artist, album, or playlist.")
+                resultCount == 0 && filter == SearchFilter.Liked -> Hint(
+                    if (likedSongs.isEmpty()) "Your liked songs are still loading."
+                    else "No liked songs match \"$query\".",
+                )
                 resultCount == 0 -> Hint("No ${filter.label.lowercase()} for \"$query\".")
                 else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
                     when (filter) {
@@ -144,6 +179,27 @@ fun SearchScreen(onOpenPlaylist: (String) -> Unit, onOpenArtist: (String) -> Uni
                                 isPlaying = track.uri == nowPlayingUri,
                                 liked = likedTracks[track.uri] == true,
                             )
+                        }
+                        SearchFilter.Liked -> {
+                            if (likedIncomplete) {
+                                item {
+                                    LikedSearchNote(
+                                        loaded = likedSongs.size,
+                                        total = likedTotal,
+                                        loading = likedLoading,
+                                        onLoadAll = { SpotifyCore.loadAllTracks(SpotifyCore.LIKED_SONGS_ID) },
+                                    )
+                                }
+                            }
+                            itemsIndexed(likedMatches, key = { _, track -> track.uri }) { index, track ->
+                                TrackRow(
+                                    track = track,
+                                    onClick = { SpotifyCore.playTracks(likedMatches, index) },
+                                    onLongClick = { SpotifyCore.openTrackMenu(track) },
+                                    isPlaying = track.uri == nowPlayingUri,
+                                    liked = likedTracks[track.uri] == true,
+                                )
+                            }
                         }
                         SearchFilter.Artists -> itemsIndexed(artists, key = { _, artist -> artist.id }) { _, artist ->
                             ArtistRow(artist = artist, onClick = { onOpenArtist(artist.id) })
@@ -252,3 +308,42 @@ private fun Hint(text: String) {
         modifier = Modifier.padding(32.dp),
     )
 }
+
+/** How much of Liked Songs the local search can see, and the way to get the
+ *  rest: a library of thousands takes several passes of fifty. */
+@Composable
+private fun LikedSearchNote(loaded: Int, total: Int, loading: Boolean, onLoadAll: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (total > loaded) {
+                "Searching ${formatLikedCount(loaded)} of ${formatLikedCount(total)} liked songs"
+            } else {
+                "Searching ${formatLikedCount(loaded)} liked songs"
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
+        )
+        if (loading) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 2.dp,
+            )
+        } else {
+            Text(
+                text = "Load all",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.clickable(onClick = onLoadAll),
+            )
+        }
+    }
+}
+
+private fun formatLikedCount(value: Int): String =
+    java.text.NumberFormat.getIntegerInstance().format(value)
