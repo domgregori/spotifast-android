@@ -383,6 +383,10 @@ struct LikedSongsPage {
     /// when the last one arrives, so an out-of-date list stays on screen
     /// instead of shrinking to one page.
     refresh: Option<Vec<SavedTrack>>,
+    /// A complete cache is being checked against the newest page only: if the
+    /// top has not moved, the whole list is still current and nothing is
+    /// rebuilt.
+    verify: bool,
 }
 
 /// Seconds since the epoch, for the cache's freshness window.
@@ -688,6 +692,7 @@ impl CoreHandle {
             refreshed_at: 0,
             pages_since_store: 0,
             refresh: None,
+            verify: false,
         });
         // The cache answers first; the page request follows it, so reopening
         // a large Liked Songs costs a disk read instead of a network round
@@ -733,7 +738,7 @@ impl CoreHandle {
             .as_ref()
             // A background refresh of a stale cache is already fetching every
             // page; a second chain would double it.
-            .filter(|page| page.refresh.is_none())
+            .filter(|page| page.refresh.is_none() && !page.verify)
             .and_then(|page| page.next_offset.map(|offset| (offset, page.generation)));
         if let Some((offset, generation)) = next {
             self.backend
@@ -750,7 +755,7 @@ impl CoreHandle {
             let Some(page) = guard.as_mut() else { return };
             // A stale cache is already being rebuilt page by page; marking it
             // for continuation would chain a second copy of every page.
-            if page.refresh.is_some() {
+            if page.refresh.is_some() || page.verify {
                 return;
             }
             page.auto_continue = true;
@@ -1465,12 +1470,12 @@ impl CoreHandle {
                                 let fresh = page.refreshed_at > 0
                                     && now_seconds() - page.refreshed_at
                                         <= spotifast_core::liked::FRESH_SECONDS;
-                                // Only a cache that exists is refreshed whole in the
-                                // background; with no cache the first page is fetched and
-                                // the rest waits for "Load all", as asked.
-                                if !fresh && cached {
-                                    page.refresh = Some(Vec::new());
-                                }
+                                // A complete cache is checked against its newest
+                                // page, which is one request instead of the whole
+                                // list; an older, partial cache is left as it is,
+                                // because "Load all" is what resumes it.
+                                page.verify = !fresh && cached && page.next_offset.is_none();
+                                let fetch = !cached || page.verify;
                                 let has_more = page.next_offset.is_some();
                                 let generation = page.generation;
                                 drop(guard);
@@ -1478,9 +1483,10 @@ impl CoreHandle {
                                     // The cached list replaces whatever is shown.
                                     listener.on_liked_songs(json, has_more, total, true);
                                 }
-                                // A missing or stale cache refreshes from the top; a
-                                // fresh one is answered from disk and costs nothing.
-                                if !fresh {
+                                // A missing cache fetches the first page; a stale
+                                // complete one fetches only the page it compares
+                                // against. A fresh cache costs nothing at all.
+                                if fetch {
                                     backend.lock().unwrap().api(ApiRequest::SavedTracks {
                                         offset: 0,
                                         generation,
@@ -1887,8 +1893,42 @@ impl CoreHandle {
                                         // A failed page leaves what is shown standing, and "Load more"/
                                         // "Load all" can simply be tried again.
                                         page.refresh = None;
+                                        page.verify = false;
                                         continue;
                                     };
+                                    if page.verify {
+                                        page.verify = false;
+                                        let unchanged = response.total == page.total
+                                            && response.items.len() <= page.items.len()
+                                            && response
+                                                .items
+                                                .iter()
+                                                .zip(page.items.iter())
+                                                .all(|(fresh, cached)| fresh.track.uri == cached.track.uri);
+                                        if unchanged {
+                                            page.refreshed_at = now_seconds();
+                                            let store = page.account_id.clone().map(|account_id| {
+                                                LikedCache::from_parts(
+                                                    account_id,
+                                                    page.items.clone(),
+                                                    page.total,
+                                                    page.next_offset,
+                                                    page.refreshed_at,
+                                                )
+                                            });
+                                            drop(guard);
+                                            if let Some(cache) = store {
+                                                backend
+                                                    .lock()
+                                                    .unwrap()
+                                                    .send(Command::StoreLikedSongsCache(cache));
+                                            }
+                                            continue;
+                                        }
+                                        // The top moved or the count did: the list is
+                                        // out of date, so rebuild it whole.
+                                        page.refresh = Some(Vec::new());
+                                    }
                                     if let Some(refresh) = page.refresh.as_mut() {
                                         // A refresh collects whole and swaps in at the end, so the visible
                                         // list never shrinks to one page while it is being rebuilt.
