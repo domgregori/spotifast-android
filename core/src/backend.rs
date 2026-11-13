@@ -2419,6 +2419,16 @@ impl Worker {
                             });
                             waker.wake();
                         });
+                    } else {
+                        // Still answer: the caller is waiting for this event
+                        // before it fetches a page, and an unanswered read
+                        // would leave Liked Songs blank for ever.
+                        let _ = self.events.send(Event::LikedSongsCache {
+                            account_id: String::new(),
+                            generation,
+                            cache: None,
+                        });
+                        self.waker.wake();
                     }
                 }
                 Command::StoreLikedSongsCache(cache) => {

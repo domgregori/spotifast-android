@@ -9,19 +9,20 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
 use spotifast_core::api::PlayRequest;
-use spotifast_core::api::models::{PlaylistItem, pick_image};
+use spotifast_core::api::models::{PlaylistItem, SavedTrack, pick_image};
 use spotifast_core::backend::{
     ApiRequest, ApiResponse, AuthStatus, Backend, Command, Event, LocalPlayback, LyricsRequest,
     PlaylistCacheRows, RecentsFor,
 };
-use spotifast_core::remote_action::RemoteAction;
 use spotifast_core::config;
 use spotifast_core::http::Http;
+use spotifast_core::liked::Cache as LikedCache;
 use spotifast_core::lyrics;
 use spotifast_core::paths::AppDirs;
 use spotifast_core::player::{LoadSpec, LocalState, Playback, PlayerCommand, RootlistEntry};
-use spotifast_core::repeat::RepeatMode;
 use spotifast_core::proxy::ProxyConfig;
+use spotifast_core::remote_action::RemoteAction;
+use spotifast_core::repeat::RepeatMode;
 use spotifast_core::services::{NoServices, Services};
 use spotifast_core::settings::Settings;
 use spotifast_core::vis::AudioTap;
@@ -43,7 +44,10 @@ uniffi::setup_scaffolding!("spotifast");
 /// early, so the Application context comes via the standard
 /// `ActivityThread.currentApplication()` reflection trick.
 #[unsafe(no_mangle)]
-pub extern "system" fn JNI_OnLoad(vm: *mut jni::sys::JavaVM, _reserved: *mut std::ffi::c_void) -> jni::sys::jint {
+pub extern "system" fn JNI_OnLoad(
+    vm: *mut jni::sys::JavaVM,
+    _reserved: *mut std::ffi::c_void,
+) -> jni::sys::jint {
     use jni::refs::Reference;
 
     // SAFETY: the Android runtime passes a valid JavaVM pointer to JNI_OnLoad.
@@ -69,7 +73,10 @@ pub extern "system" fn JNI_OnLoad(vm: *mut jni::sys::JavaVM, _reserved: *mut std
         Ok(context_ptr) => {
             let vm_ptr = vm.get_raw().cast::<std::ffi::c_void>();
             unsafe {
-                ndk_context::initialize_android_context(vm_ptr, context_ptr as *mut std::ffi::c_void);
+                ndk_context::initialize_android_context(
+                    vm_ptr,
+                    context_ptr as *mut std::ffi::c_void,
+                );
             }
         }
         Err(error) => log::error!("JNI_OnLoad: couldn't initialize the ndk-context: {error}"),
@@ -92,12 +99,18 @@ pub trait PlaybackStateListener: Send + Sync {
     /// The account's playlists, as a JSON array of `{ "id", "name" }`.
     fn on_library(&self, playlists: String);
 
+    /// Liked Songs, page by page: `rows` is a JSON array of
+    /// `{ "uri", "name", "artist", "duration_ms" }` holding only the page
+    /// that just arrived, except when `replace` is true (the cached list, or
+    /// the first page of a refresh), where it is the whole list. [total] is
+    /// Spotify's own count, so a long backfill can say how far it has got.
+    fn on_liked_songs(&self, rows: String, has_more: bool, total: u32, replace: bool);
+
     /// One playlist's tracks loaded so far, as a JSON array of
     /// `{ "uri", "name", "artist", "duration_ms" }` — the complete list
     /// loaded up to now, not just the page that just arrived. `has_more`
     /// is true while a further `load_more_playlist_tracks`/
-    /// `load_all_playlist_tracks` (or the Liked Songs equivalents) call
-    /// would fetch more.
+    /// `load_all_playlist_tracks` call would fetch more.
     fn on_playlist_tracks(&self, playlist_id: String, tracks: String, has_more: bool);
 
     /// Search results for a query: the matching tracks, as a JSON array of
@@ -261,7 +274,14 @@ pub trait PlaybackStateListener: Send + Sync {
     /// of the requested track uris actually made it in — `requested`
     /// is always whatever `create_playlist` was called with; `added` can
     /// fall short of it if a later chunk failed partway through.
-    fn on_playlist_created(&self, name: String, id: String, added: u32, requested: u32, error: Option<String>);
+    fn on_playlist_created(
+        &self,
+        name: String,
+        id: String,
+        added: u32,
+        requested: u32,
+        error: Option<String>,
+    );
 
     /// One track of a `download_collection` batch finished: `done` of `total` so
     /// far. `fetched` is true when the audio was downloaded now and false
@@ -349,8 +369,48 @@ struct PlaylistPage {
 struct LikedSongsPage {
     generation: u64,
     next_offset: Option<u32>,
-    items: Vec<TrackEntry>,
+    items: Vec<SavedTrack>,
     auto_continue: bool,
+    /// The account the cache belongs to, learned from the cache read; a cache
+    /// cannot be written without it.
+    account_id: Option<String>,
+    total: u32,
+    refreshed_at: i64,
+    /// Pages received since the cache was last written, so a long backfill
+    /// does not rewrite a growing file on every page.
+    pages_since_store: u32,
+    /// A refresh from the top is in progress: pages collect here and swap in
+    /// when the last one arrives, so an out-of-date list stays on screen
+    /// instead of shrinking to one page.
+    refresh: Option<Vec<SavedTrack>>,
+}
+
+/// Seconds since the epoch, for the cache's freshness window.
+fn now_seconds() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+/// One saved track as the interface shows it.
+fn liked_entry(saved: &SavedTrack) -> TrackEntry {
+    let added_at = saved.added_at.clone();
+    let track = &saved.track;
+    TrackEntry {
+        uri: track.uri.clone(),
+        name: track.name.clone(),
+        artist: track.artist_names(),
+        duration_ms: track.duration_ms,
+        art_url: track.image(TRACK_ART_TARGET).map(str::to_string),
+        added_at,
+        artist_id: track.artists.first().and_then(|artist| artist.id.clone()),
+        album_id: track
+            .album
+            .as_ref()
+            .map(|album| album.id.clone())
+            .filter(|id| !id.is_empty()),
+    }
 }
 
 /// The long-lived core handle: owns the backend (and its tokio runtime) for
@@ -478,9 +538,12 @@ impl CoreHandle {
     /// id (whose `spotifast://callback` redirect is registered). The browser
     /// URL arrives via `on_auth_status(WaitingForBrowser, url)`.
     pub fn sign_in(&self) {
-        self.backend.lock().unwrap().send(Command::ConfigurePersonalWebApp(
-            Some(self.web_client_id.clone()),
-        ));
+        self.backend
+            .lock()
+            .unwrap()
+            .send(Command::ConfigurePersonalWebApp(Some(
+                self.web_client_id.clone(),
+            )));
     }
 
     /// Kotlin calls this from `onNewIntent` with the captured `code`.
@@ -502,7 +565,10 @@ impl CoreHandle {
     /// image cache and the in-memory unavailable-playlist list, is Kotlin's
     /// to do, since neither one is reachable from here).
     pub fn clear_playlist_cache(&self) {
-        self.backend.lock().unwrap().send(Command::ClearPlaylistCaches);
+        self.backend
+            .lock()
+            .unwrap()
+            .send(Command::ClearPlaylistCaches);
     }
 
     /// Wipes librespot's on-disk audio cache — the "Clear Cache" Settings
@@ -549,10 +615,13 @@ impl CoreHandle {
                 auto_continue: false,
             },
         );
-        self.backend.lock().unwrap().send(Command::LoadPlaylistCache {
-            id: id.clone(),
-            generation,
-        });
+        self.backend
+            .lock()
+            .unwrap()
+            .send(Command::LoadPlaylistCache {
+                id: id.clone(),
+                generation,
+            });
         if !skip_fetch {
             self.backend.lock().unwrap().api(ApiRequest::PlaylistItems {
                 id,
@@ -575,7 +644,11 @@ impl CoreHandle {
             .get(&id)
             .and_then(|page| page.next_offset.map(|offset| (offset, page.generation)));
         if let Some((offset, generation)) = next {
-            self.backend.lock().unwrap().api(ApiRequest::PlaylistItems { id, offset, generation });
+            self.backend.lock().unwrap().api(ApiRequest::PlaylistItems {
+                id,
+                offset,
+                generation,
+            });
         }
     }
 
@@ -592,7 +665,10 @@ impl CoreHandle {
     /// Search for a query; the matching tracks arrive via `on_search_tracks`.
     pub fn search(&self, query: String) {
         let serial = self.generation.fetch_add(1, Ordering::Relaxed);
-        self.backend.lock().unwrap().api(ApiRequest::Search { query, serial });
+        self.backend
+            .lock()
+            .unwrap()
+            .api(ApiRequest::Search { query, serial });
     }
 
     /// Request Liked Songs' first page. The result arrives via
@@ -602,12 +678,48 @@ impl CoreHandle {
     /// playlist — see `load_more_liked_songs`/`load_all_liked_songs`.
     pub fn liked_songs(&self) {
         let generation = self.generation.fetch_add(1, Ordering::Relaxed);
-        *self.liked_songs_page.lock().unwrap() =
-            Some(LikedSongsPage { generation, next_offset: None, items: Vec::new(), auto_continue: false });
-        self.backend.lock().unwrap().api(ApiRequest::SavedTracks {
-            offset: 0,
+        *self.liked_songs_page.lock().unwrap() = Some(LikedSongsPage {
             generation,
+            next_offset: None,
+            items: Vec::new(),
+            auto_continue: false,
+            account_id: None,
+            total: 0,
+            refreshed_at: 0,
+            pages_since_store: 0,
+            refresh: None,
         });
+        // The cache answers first; the page request follows it, so reopening
+        // a large Liked Songs costs a disk read instead of a network round
+        // trip.
+        self.backend
+            .lock()
+            .unwrap()
+            .send(Command::LoadLikedSongsCache { generation });
+    }
+
+    /// Marks the stored liked-songs list stale, so the next open refreshes it.
+    /// Saving or unsaving one track moves every later offset, which is not
+    /// worth patching in place.
+    fn mark_liked_cache_stale(&self) {
+        let mut guard = self.liked_songs_page.lock().unwrap();
+        let Some(page) = guard.as_mut() else { return };
+        page.refreshed_at = 0;
+        let Some(account_id) = page.account_id.clone() else {
+            return;
+        };
+        let cache = LikedCache::from_parts(
+            account_id,
+            page.items.clone(),
+            page.total,
+            page.next_offset,
+            0,
+        );
+        drop(guard);
+        self.backend
+            .lock()
+            .unwrap()
+            .send(Command::StoreLikedSongsCache(cache));
     }
 
     /// Fetches the next page of Liked Songs on top of what's already
@@ -619,15 +731,28 @@ impl CoreHandle {
             .lock()
             .unwrap()
             .as_ref()
+            // A background refresh of a stale cache is already fetching every
+            // page; a second chain would double it.
+            .filter(|page| page.refresh.is_none())
             .and_then(|page| page.next_offset.map(|offset| (offset, page.generation)));
         if let Some((offset, generation)) = next {
-            self.backend.lock().unwrap().api(ApiRequest::SavedTracks { offset, generation });
+            self.backend
+                .lock()
+                .unwrap()
+                .api(ApiRequest::SavedTracks { offset, generation });
         }
     }
 
     /// The "Load all" button's Rust half for Liked Songs.
     pub fn load_all_liked_songs(&self) {
-        if let Some(page) = self.liked_songs_page.lock().unwrap().as_mut() {
+        {
+            let mut guard = self.liked_songs_page.lock().unwrap();
+            let Some(page) = guard.as_mut() else { return };
+            // A stale cache is already being rebuilt page by page; marking it
+            // for continuation would chain a second copy of every page.
+            if page.refresh.is_some() {
+                return;
+            }
             page.auto_continue = true;
         }
         self.load_more_liked_songs();
@@ -636,16 +761,20 @@ impl CoreHandle {
     /// Saves or removes `uri` from Liked Songs. The confirmed result arrives
     /// via `on_track_saved`.
     pub fn set_track_saved(&self, uri: String, saved: bool) {
-        self.backend
-            .lock()
-            .unwrap()
-            .api(ApiRequest::SetSaved { uris: vec![uri], saved });
+        self.backend.lock().unwrap().api(ApiRequest::SetSaved {
+            uris: vec![uri],
+            saved,
+        });
+        self.mark_liked_cache_stale();
     }
 
     /// Asks whether `uri` is already saved; the answer arrives via
     /// `on_track_saved`.
     pub fn check_track_saved(&self, uri: String) {
-        self.backend.lock().unwrap().api(ApiRequest::Contains { uris: vec![uri] });
+        self.backend
+            .lock()
+            .unwrap()
+            .api(ApiRequest::Contains { uris: vec![uri] });
     }
 
     /// Checks several tracks' liked state at once — up to 50 per Spotify's
@@ -653,7 +782,10 @@ impl CoreHandle {
     /// chunk a longer list. Each result still arrives individually via
     /// `on_track_saved`, same as `check_track_saved`.
     pub fn check_tracks_saved(&self, uris: Vec<String>) {
-        self.backend.lock().unwrap().api(ApiRequest::Contains { uris });
+        self.backend
+            .lock()
+            .unwrap()
+            .api(ApiRequest::Contains { uris });
     }
 
     /// Creates a private playlist named `name`, then adds `track_uris` to
@@ -671,11 +803,14 @@ impl CoreHandle {
             playlist_id: String::new(),
             last_chunk_len: 0,
         });
-        self.backend.lock().unwrap().api(ApiRequest::CreatePlaylist {
-            name,
-            public: false,
-            description: "Made with Spotifast".to_string(),
-        });
+        self.backend
+            .lock()
+            .unwrap()
+            .api(ApiRequest::CreatePlaylist {
+                name,
+                public: false,
+                description: "Made with Spotifast".to_string(),
+            });
     }
 
     /// Adds one track to an existing playlist — `playlist_id`/`playlist_name`
@@ -685,7 +820,12 @@ impl CoreHandle {
     /// (`added`/`requested` both 1 on success) since the add-items call and
     /// its completion handling are otherwise identical either way. Subject
     /// to the same one-in-flight-at-a-time limit as `create_playlist`.
-    pub fn add_track_to_playlist(&self, playlist_id: String, playlist_name: String, track_uri: String) {
+    pub fn add_track_to_playlist(
+        &self,
+        playlist_id: String,
+        playlist_name: String,
+        track_uri: String,
+    ) {
         *self.pending_playlist.lock().unwrap() = Some(PendingPlaylist {
             name: playlist_name.clone(),
             requested: 1,
@@ -714,7 +854,10 @@ impl CoreHandle {
     /// arrives via `on_playlist_info`.
     pub fn playlist_info(&self, id: String) {
         let generation = self.generation.fetch_add(1, Ordering::Relaxed);
-        self.backend.lock().unwrap().api(ApiRequest::Playlist { id, generation });
+        self.backend
+            .lock()
+            .unwrap()
+            .api(ApiRequest::Playlist { id, generation });
     }
 
     /// Downloads a collection (`playlist:<id>` or `album:<id>`) and records
@@ -801,7 +944,10 @@ impl CoreHandle {
     /// The account's saved albums, from the start; the result arrives via
     /// `on_saved_albums`.
     pub fn saved_albums(&self) {
-        self.backend.lock().unwrap().api(ApiRequest::SavedAlbums { offset: 0 });
+        self.backend
+            .lock()
+            .unwrap()
+            .api(ApiRequest::SavedAlbums { offset: 0 });
     }
 
     /// The account's followed artists, from the start; the result arrives
@@ -816,7 +962,10 @@ impl CoreHandle {
     /// This week's new releases, from the start; the result arrives via
     /// `on_new_releases`.
     pub fn new_releases(&self) {
-        self.backend.lock().unwrap().api(ApiRequest::NewReleases { offset: 0 });
+        self.backend
+            .lock()
+            .unwrap()
+            .api(ApiRequest::NewReleases { offset: 0 });
     }
 
     /// An artist's most popular tracks; the result arrives via
@@ -848,7 +997,10 @@ impl CoreHandle {
         let Some(id) = uri.strip_prefix("spotify:track:") else {
             return;
         };
-        self.backend.lock().unwrap().api(ApiRequest::Track { id: id.to_string() });
+        self.backend
+            .lock()
+            .unwrap()
+            .api(ApiRequest::Track { id: id.to_string() });
     }
 
     /// An album's metadata; the result arrives via `on_album_info`.
@@ -873,12 +1025,15 @@ impl CoreHandle {
     /// `on_recently_played`. Backs the "Recently played" library sort.
     pub fn recently_played(&self) {
         let generation = self.generation.fetch_add(1, Ordering::Relaxed);
-        self.backend.lock().unwrap().api(ApiRequest::RecentlyPlayed {
-            who: RecentsFor::Home,
-            generation,
-            before: None,
-            limit: 50,
-        });
+        self.backend
+            .lock()
+            .unwrap()
+            .api(ApiRequest::RecentlyPlayed {
+                who: RecentsFor::Home,
+                generation,
+                before: None,
+                limit: 50,
+            });
     }
 
     /// The account's top artists; the result arrives via `on_top_artists`.
@@ -906,10 +1061,10 @@ impl CoreHandle {
     /// Transfers playback to `device_id`; the confirmation arrives via
     /// `on_device_transferred`.
     pub fn transfer_playback(&self, device_id: String) {
-        self.backend
-            .lock()
-            .unwrap()
-            .api(ApiRequest::Transfer { device_id, play: true });
+        self.backend.lock().unwrap().api(ApiRequest::Transfer {
+            device_id,
+            play: true,
+        });
     }
 
     /// Sets `device_id`'s volume (0..=100) through Spotify Connect — the
@@ -948,7 +1103,10 @@ impl CoreHandle {
 
     /// Authorize local playback in the browser (the streaming grant).
     pub fn authorize_playback(&self) {
-        self.backend.lock().unwrap().send(Command::AuthorizePlayback);
+        self.backend
+            .lock()
+            .unwrap()
+            .send(Command::AuthorizePlayback);
     }
 
     /// Looks up lyrics for the track at `uri` — Spotify's own transcription
@@ -956,16 +1114,26 @@ impl CoreHandle {
     /// passes the track's own metadata since nothing on the Rust side
     /// tracks "what's currently playing" independently of it; the result
     /// arrives via `on_lyrics`.
-    pub fn lyrics(&self, uri: String, artist: String, title: String, album: String, duration_ms: u32) {
-        self.backend.lock().unwrap().send(Command::Lyrics(Box::new(LyricsRequest {
-            uri,
-            query: lyrics::Query {
-                artist,
-                title,
-                album,
-                duration_ms,
-            },
-        })));
+    pub fn lyrics(
+        &self,
+        uri: String,
+        artist: String,
+        title: String,
+        album: String,
+        duration_ms: u32,
+    ) {
+        self.backend
+            .lock()
+            .unwrap()
+            .send(Command::Lyrics(Box::new(LyricsRequest {
+                uri,
+                query: lyrics::Query {
+                    artist,
+                    title,
+                    album,
+                    duration_ms,
+                },
+            })));
     }
 
     /// Resolves Spotify's radio for `seed` (a `spotify:track:...`,
@@ -998,7 +1166,10 @@ impl CoreHandle {
     }
 
     pub fn toggle_playback(&self) {
-        self.backend.lock().unwrap().send(Command::Player(PlayerCommand::Toggle));
+        self.backend
+            .lock()
+            .unwrap()
+            .send(Command::Player(PlayerCommand::Toggle));
     }
 
     /// Jumps local playback to `position_ms` within the current track.
@@ -1105,11 +1276,17 @@ impl CoreHandle {
     }
 
     pub fn skip_next(&self) {
-        self.backend.lock().unwrap().send(Command::Player(PlayerCommand::Next));
+        self.backend
+            .lock()
+            .unwrap()
+            .send(Command::Player(PlayerCommand::Next));
     }
 
     pub fn skip_previous(&self) {
-        self.backend.lock().unwrap().send(Command::Player(PlayerCommand::Previous));
+        self.backend
+            .lock()
+            .unwrap()
+            .send(Command::Player(PlayerCommand::Previous));
     }
 
     pub fn set_shuffle(&self, enabled: bool) {
@@ -1268,6 +1445,48 @@ impl CoreHandle {
                                 }
                             }
                             Event::PlaylistCache { cache: None, .. } => {}
+                            Event::LikedSongsCache { account_id, generation, cache } => {
+                                let mut guard = liked_songs_page.lock().unwrap();
+                                let Some(page) = guard.as_mut().filter(|page| page.generation == generation) else {
+                                    continue;
+                                };
+                                if !account_id.is_empty() {
+                                    page.account_id = Some(account_id);
+                                }
+                                let cached = cache.is_some();
+                                if let Some(cache) = cache {
+                                    page.items = cache.items().to_vec();
+                                    page.total = cache.total();
+                                    page.next_offset = cache.next_offset();
+                                    page.refreshed_at = cache.refreshed_at();
+                                }
+                                let rows: Vec<TrackEntry> = page.items.iter().map(liked_entry).collect();
+                                let total = page.total;
+                                let fresh = page.refreshed_at > 0
+                                    && now_seconds() - page.refreshed_at
+                                        <= spotifast_core::liked::FRESH_SECONDS;
+                                // Only a cache that exists is refreshed whole in the
+                                // background; with no cache the first page is fetched and
+                                // the rest waits for "Load all", as asked.
+                                if !fresh && cached {
+                                    page.refresh = Some(Vec::new());
+                                }
+                                let has_more = page.next_offset.is_some();
+                                let generation = page.generation;
+                                drop(guard);
+                                if let Ok(json) = serde_json::to_string(&rows) {
+                                    // The cached list replaces whatever is shown.
+                                    listener.on_liked_songs(json, has_more, total, true);
+                                }
+                                // A missing or stale cache refreshes from the top; a
+                                // fresh one is answered from disk and costs nothing.
+                                if !fresh {
+                                    backend.lock().unwrap().api(ApiRequest::SavedTracks {
+                                        offset: 0,
+                                        generation,
+                                    });
+                                }
+                            }
                             Event::Api(api) => match *api {
                                 ApiResponse::MyPlaylists { generation, result, .. } => match result {
                                     Ok(page) => {
@@ -1657,61 +1876,109 @@ impl CoreHandle {
                                 ApiResponse::PlaylistVerified { key, missing } => {
                                     listener.on_download_verified(key, missing);
                                 }
-                                ApiResponse::SavedTracks { generation, result, .. } => {
+                                ApiResponse::SavedTracks { offset, generation, result, .. } => {
                                     let mut guard = liked_songs_page.lock().unwrap();
-                                    // Stale: `liked_songs()` was called again (new generation)
-                                    // since this page was requested — drop the answer.
-                                    let Some(page) = guard.as_mut().filter(|p| p.generation == generation) else {
+                                    // Stale: `liked_songs()` was called again (new generation) since
+                                    // this page was requested — drop the answer.
+                                    let Some(page) = guard.as_mut().filter(|page| page.generation == generation) else {
                                         continue;
                                     };
-                                    if let Ok(response) = result {
+                                    let Ok(response) = result else {
+                                        // A failed page leaves what is shown standing, and "Load more"/
+                                        // "Load all" can simply be tried again.
+                                        page.refresh = None;
+                                        continue;
+                                    };
+                                    if let Some(refresh) = page.refresh.as_mut() {
+                                        // A refresh collects whole and swaps in at the end, so the visible
+                                        // list never shrinks to one page while it is being rebuilt.
+                                        page.total = response.total;
                                         page.next_offset = response.next_offset();
-                                        page.items.extend(response.items.into_iter().map(|saved| {
-                                            let added_at = saved.added_at;
-                                            let track = saved.track;
-                                            let artist = track.artist_names();
-                                            let art_url = track.image(TRACK_ART_TARGET).map(str::to_string);
-                                            let artist_id = track.artists.first().and_then(|a| a.id.clone());
-                                            let album_id = track
-                                                .album
-                                                .as_ref()
-                                                .map(|a| a.id.clone())
-                                                .filter(|id| !id.is_empty());
-                                            TrackEntry {
-                                                uri: track.uri,
-                                                name: track.name,
-                                                artist,
-                                                duration_ms: track.duration_ms,
-                                                art_url,
-                                                added_at,
-                                                artist_id,
-                                                album_id,
+                                        refresh.extend(response.items);
+                                        let next = page.next_offset;
+                                        if next.is_some() {
+                                            drop(guard);
+                                            if let Some(next) = next {
+                                                backend.lock().unwrap().api(ApiRequest::SavedTracks {
+                                                    offset: next,
+                                                    generation,
+                                                });
                                             }
-                                        }));
+                                            continue;
+                                        }
+                                        page.items = page.refresh.take().unwrap_or_default();
+                                        page.refreshed_at = now_seconds();
+                                        page.pages_since_store = 0;
+                                        let rows: Vec<TrackEntry> = page.items.iter().map(liked_entry).collect();
+                                        let total = page.total;
+                                        let store = page.account_id.clone().map(|account_id| {
+                                            LikedCache::from_parts(
+                                                account_id,
+                                                page.items.clone(),
+                                                page.total,
+                                                page.next_offset,
+                                                page.refreshed_at,
+                                            )
+                                        });
+                                        drop(guard);
+                                        if let Ok(json) = serde_json::to_string(&rows) {
+                                            listener.on_liked_songs(json, false, total, true);
+                                        }
+                                        if let Some(cache) = store {
+                                            backend.lock().unwrap().send(Command::StoreLikedSongsCache(cache));
+                                        }
+                                        continue;
                                     }
-                                    // On `Err`, `next_offset`/`items` are left exactly as they
-                                    // were — a prior page's own success still stands, and "Load
-                                    // more"/"Load all" can simply be tried again.
+                                    // No refresh: a page from the top starts the list over; every other
+                                    // page continues it.
+                                    let replace = offset == 0;
+                                    if replace {
+                                        page.items.clear();
+                                        page.refreshed_at = now_seconds();
+                                    }
+                                    page.total = response.total;
+                                    page.next_offset = response.next_offset();
+                                    let fresh_rows: Vec<TrackEntry> = response.items.iter().map(liked_entry).collect();
+                                    page.items.extend(response.items);
+                                    page.pages_since_store += 1;
                                     let has_more = page.next_offset.is_some();
                                     let next_offset = page.next_offset;
                                     let auto_continue = page.auto_continue;
-                                    let entries_json = serde_json::to_string(&page.items);
+                                    let total = page.total;
+                                    // Rewriting a list of thousands on every page would be quadratic;
+                                    // every tenth page and the last one is enough for an interrupted
+                                    // backfill to resume near where it stopped.
+                                    let store = if page.pages_since_store >= 10 || next_offset.is_none() {
+                                        page.pages_since_store = 0;
+                                        page.account_id.clone().map(|account_id| {
+                                            LikedCache::from_parts(
+                                                account_id,
+                                                page.items.clone(),
+                                                page.total,
+                                                page.next_offset,
+                                                page.refreshed_at,
+                                            )
+                                        })
+                                    } else {
+                                        None
+                                    };
                                     drop(guard);
 
-                                    if let Ok(json) = entries_json {
-                                        listener.on_playlist_tracks("__liked__".to_string(), json, has_more);
+                                    if let Ok(json) = serde_json::to_string(&fresh_rows) {
+                                        listener.on_liked_songs(json, has_more, total, replace);
                                     }
-                                    // `PLAYLIST_PAGE_SIZE` (50) at a time, and Liked Songs is
-                                    // exactly the library most likely to clear that — "Load all"
-                                    // keeps following every page itself instead of waiting for
-                                    // another `load_more_liked_songs` call.
-                                    if auto_continue {
-                                        if let Some(next) = next_offset {
-                                            backend
-                                                .lock()
-                                                .unwrap()
-                                                .api(ApiRequest::SavedTracks { offset: next, generation });
-                                        }
+                                    if let Some(cache) = store {
+                                        backend.lock().unwrap().send(Command::StoreLikedSongsCache(cache));
+                                    }
+                                    // `PLAYLIST_PAGE_SIZE` (50) at a time, and Liked Songs is exactly
+                                    // the library most likely to clear that — "Load all" keeps
+                                    // following every page itself instead of waiting for another
+                                    // `load_more_liked_songs` call.
+                                    if auto_continue && let Some(next) = next_offset {
+                                        backend
+                                            .lock()
+                                            .unwrap()
+                                            .api(ApiRequest::SavedTracks { offset: next, generation });
                                     }
                                 }
                                 ApiResponse::SavedChanged { uris, saved, result } => {

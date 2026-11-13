@@ -8,7 +8,7 @@ use crate::api::models::{Page, SavedTrack, Track};
 use crate::model::PagedList;
 
 const VERSION: u32 = 1;
-const FRESH_SECONDS: i64 = 15 * 60;
+pub const FRESH_SECONDS: i64 = 15 * 60;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Cache {
@@ -22,6 +22,44 @@ pub struct Cache {
 }
 
 impl Cache {
+    /// The cache as a bridge that keeps its own page state builds it, and the
+    /// parts it needs to read back. Changes are left to the bridge's own
+    /// optimistic state; a saved or unsaved track makes the cache stale
+    /// instead.
+    pub fn from_parts(
+        account_id: String,
+        items: Vec<SavedTrack>,
+        total: u32,
+        next_offset: Option<u32>,
+        refreshed_at: i64,
+    ) -> Self {
+        Self {
+            version: VERSION,
+            account_id,
+            items,
+            total,
+            next_offset,
+            refreshed_at,
+            changes: BTreeMap::new(),
+        }
+    }
+
+    pub fn items(&self) -> &[SavedTrack] {
+        &self.items
+    }
+
+    pub fn total(&self) -> u32 {
+        self.total
+    }
+
+    pub fn next_offset(&self) -> Option<u32> {
+        self.next_offset
+    }
+
+    pub fn refreshed_at(&self) -> i64 {
+        self.refreshed_at
+    }
+
     pub fn valid_for(&self, account: &str) -> bool {
         self.version == VERSION
             && self.account_id == account

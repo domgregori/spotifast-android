@@ -326,6 +326,12 @@ object SpotifyCore {
      *  [tracks] currently holds — [loadMoreTracks]/[loadAllTracks] fetch
      *  them. Absent (rather than false) until the first page has arrived. */
     private val _tracksHasMore = MutableStateFlow<Map<String, Boolean>>(emptyMap())
+
+    private val _likedSongsTotal = MutableStateFlow(0)
+
+    /** How many tracks Spotify says Liked Songs holds, so a long backfill can
+     *  say how far it has got. */
+    val likedSongsTotal: StateFlow<Int> = _likedSongsTotal.asStateFlow()
     val tracksHasMore: StateFlow<Map<String, Boolean>> = _tracksHasMore.asStateFlow()
 
     /** Ids with a [loadMoreTracks]/[loadAllTracks] request in flight — lets
@@ -889,6 +895,31 @@ object SpotifyCore {
             if (!hasMore || !loadingAllIds.contains(playlistId)) {
                 loadingAllIds.remove(playlistId)
                 _tracksLoadingMore.value = _tracksLoadingMore.value - playlistId
+            }
+        }
+
+        /** Liked Songs arrive page by page now; the cached list (or the first
+         *  page of a refresh) replaces what is shown, later pages extend it. */
+        override fun onLikedSongs(rows: String, hasMore: Boolean, total: UInt, replace: Boolean) {
+            val parsed = parseTrackItems(rows)
+            val existing = if (replace) emptyList() else _tracks.value[LIKED_SONGS_ID].orEmpty()
+            // Spotify's own app shows Liked Songs newest-saved-first, which is
+            // the order the API returns, so appending keeps that order.
+            val merged = if (replace) {
+                parsed.sortedByDescending { it.addedAt ?: "" }
+            } else {
+                existing + parsed
+            }
+            _tracks.value = _tracks.value + (LIKED_SONGS_ID to merged)
+            _tracksHasMore.value = _tracksHasMore.value + (LIKED_SONGS_ID to hasMore)
+            _likedSongsTotal.value = total.toInt()
+            // A page that replaces the list starts a new view, so a backfill
+            // left running by an earlier visit must not keep the spinner on
+            // and hide "Load all".
+            val backfilling = !replace && hasMore && loadingAllIds.contains(LIKED_SONGS_ID)
+            if (!backfilling) {
+                loadingAllIds.remove(LIKED_SONGS_ID)
+                _tracksLoadingMore.value = _tracksLoadingMore.value - LIKED_SONGS_ID
             }
         }
 

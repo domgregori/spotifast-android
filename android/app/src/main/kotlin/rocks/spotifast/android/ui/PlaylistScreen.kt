@@ -69,6 +69,7 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
     val manifest = downloads[downloadKey]
     // Offline the playlist's rows come from the download's own record.
     val playlistTracks = (tracks[playlistId] ?: emptyList()).ifEmpty { manifest?.tracks.orEmpty() }
+    val likedTotal by SpotifyCore.likedSongsTotal.collectAsState()
     val uris = playlistTracks.map { it.uri }
     val hasMore = tracksHasMore[playlistId] == true
     val loadingMore = tracksLoadingMore.contains(playlistId)
@@ -142,6 +143,7 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
                     name = playlist?.name ?: manifest?.name ?: "Playlist",
                     artUrl = playlist?.artUrl,
                     trackCount = playlistTracks.size,
+                    totalCount = if (isLiked) likedTotal else 0,
                     hasMore = hasMore,
                     loadingMore = loadingMore,
                     onLoadAll = { SpotifyCore.loadAllTracks(playlistId) },
@@ -221,6 +223,9 @@ private fun PlaylistHeader(
     name: String,
     artUrl: String?,
     trackCount: Int,
+    /** Spotify's own count for Liked Songs, so a long backfill can say how far
+     *  it has got; zero everywhere else. */
+    totalCount: Int,
     hasMore: Boolean,
     loadingMore: Boolean,
     onLoadAll: () -> Unit,
@@ -274,7 +279,11 @@ private fun PlaylistHeader(
                 Spacer(Modifier.height(4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        text = if (trackCount == 1) "1 song" else "$trackCount songs",
+                        text = when {
+                            totalCount > trackCount -> "${formatCount(trackCount)} of ${formatCount(totalCount)} songs"
+                            trackCount == 1 -> "1 song"
+                            else -> "$trackCount songs"
+                        },
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -351,3 +360,7 @@ private fun PlaylistHeader(
         }
     }
 }
+
+/** Thousands separators, so "3,200 of 10,412" reads as a count. */
+private fun formatCount(value: Int): String =
+    java.text.NumberFormat.getIntegerInstance().format(value)
