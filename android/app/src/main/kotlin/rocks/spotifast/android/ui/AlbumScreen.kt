@@ -83,6 +83,9 @@ fun AlbumScreen(albumId: String, onBack: () -> Unit) {
                 onDownload = {
                     SpotifyCore.downloadCollection(
                         downloadKey,
+                        // An album's tracks arrive whole in one callback, so
+                        // there is never a partial list to wait for.
+                        "",
                         album?.name ?: manifest?.name ?: "Album",
                         album?.artUrl ?: manifest?.artUrl,
                         uris,

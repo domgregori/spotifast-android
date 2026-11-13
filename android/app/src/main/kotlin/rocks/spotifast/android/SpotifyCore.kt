@@ -904,6 +904,8 @@ object SpotifyCore {
                 loadingAllIds.remove(playlistId)
                 _tracksLoadingMore.value = _tracksLoadingMore.value - playlistId
             }
+            // The list is whole now, so a download waiting for it can start.
+            resumePendingDownload(playlistId)
         }
 
         /** Liked Songs arrive page by page now; the cached list (or the first
@@ -1520,6 +1522,23 @@ object SpotifyCore {
         if (id == LIKED_SONGS_ID) handle?.loadAllLikedSongs() else handle?.loadAllPlaylistTracks(id)
     }
 
+    /** Starts a download that was waiting on the rest of a playlist. */
+    private fun resumePendingDownload(listId: String) {
+        val pending = pendingDownload ?: return
+        if (pending.listId != listId) return
+        if (_tracksHasMore.value[listId] == true) return
+        val tracks = _tracks.value[listId].orEmpty()
+        pendingDownload = null
+        downloadCollection(
+            pending.key,
+            listId,
+            pending.name,
+            pending.artUrl,
+            tracks.map { it.uri },
+            tracks,
+        )
+    }
+
     /** [selectedPlaylist]/[selectedArtist]/[selectedAlbum] are mutually
      *  exclusive detail screens — opening one must clear the other two, or
      *  the one already open keeps winning the app's single `when` over the
@@ -1864,13 +1883,32 @@ object SpotifyCore {
     /** Downloads a collection and records the tracks it covers. Calling it
      *  again syncs: tracks that joined are fetched, tracks that left are
      *  unpinned. [key] is `playlist:<id>` or `album:<id>`. */
+    /** A download waiting for [listId] to finish loading; a playlist still
+     *  paging would otherwise pin only the pages fetched so far. */
+    private data class PendingDownload(
+        val key: String,
+        val listId: String,
+        val name: String,
+        val artUrl: String?,
+    )
+
+    private var pendingDownload: PendingDownload? = null
+
     fun downloadCollection(
         key: String,
+        listId: String,
         name: String,
         artUrl: String?,
         uris: List<String>,
         tracks: List<TrackItem>,
     ) {
+        // Load the whole collection first: downloading the rows on screen would
+        // pin only the first page of a longer playlist.
+        if (listId.isNotEmpty() && _tracksHasMore.value[listId] == true) {
+            pendingDownload = PendingDownload(key, listId, name, artUrl)
+            loadAllTracks(listId)
+            return
+        }
         if (uris.isEmpty()) return
         _downloadProgress.value = DownloadProgress(0, uris.size, uris.toSet())
         // Recorded with the download so the collection can be listed and

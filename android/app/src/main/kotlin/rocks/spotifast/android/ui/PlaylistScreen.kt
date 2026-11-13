@@ -163,6 +163,7 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
                     onDownload = {
                         SpotifyCore.downloadCollection(
                             downloadKey,
+                            playlistId,
                             playlist?.name ?: manifest?.name ?: "Playlist",
                             playlist?.artUrl ?: manifest?.artUrl,
                             uris,
