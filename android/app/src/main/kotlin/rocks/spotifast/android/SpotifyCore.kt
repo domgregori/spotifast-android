@@ -911,6 +911,12 @@ object SpotifyCore {
                 existing + parsed
             }
             _tracks.value = _tracks.value + (LIKED_SONGS_ID to merged)
+            // Everything here is liked by definition, so the heart is known
+            // without asking — a check per fifty rows was 210 requests for a
+            // library this size.
+            if (parsed.isNotEmpty()) {
+                _likedTracks.value = _likedTracks.value + parsed.associate { it.uri to true }
+            }
             _tracksHasMore.value = _tracksHasMore.value + (LIKED_SONGS_ID to hasMore)
             _likedSongsTotal.value = total.toInt()
             // A page that replaces the list starts a new view, so a backfill

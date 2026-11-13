@@ -81,7 +81,11 @@ fun PlaylistScreen(playlistId: String, onBack: () -> Unit) {
     val isLiked = playlistId == SpotifyCore.LIKED_SONGS_ID
     val inLibrary = isLiked || likedTracks["spotify:playlist:$playlistId"] == true
 
-    LaunchedEffect(playlistTracks) { SpotifyCore.checkLikedBatch(playlistTracks.map { it.uri }) }
+    // Liked Songs rows are all liked; asking per fifty of them was a couple of
+    // hundred requests every time the screen opened.
+    LaunchedEffect(playlistTracks) {
+        if (!isLiked) SpotifyCore.checkLikedBatch(playlistTracks.map { it.uri })
+    }
     LaunchedEffect(playlistId) {
         if (!isLiked) SpotifyCore.checkLiked("spotify:playlist:$playlistId")
     }
