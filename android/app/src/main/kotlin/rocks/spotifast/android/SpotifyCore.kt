@@ -618,6 +618,14 @@ object SpotifyCore {
     private val _online = MutableStateFlow<Boolean?>(null)
     val online: StateFlow<Boolean?> = _online.asStateFlow()
 
+    private val _offlineMode = MutableStateFlow(false)
+
+    /** True when the user chose offline mode: only downloads, no network. */
+    val offlineMode: StateFlow<Boolean> = _offlineMode.asStateFlow()
+
+    /** The system's last answer, before offline mode has its say. */
+    private var systemReachable: Boolean? = null
+
     private var networkWatched = false
     /** Held for the life of the process: the system only keeps a weak one. */
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
@@ -1260,7 +1268,9 @@ object SpotifyCore {
         }
 
         override fun onNetworkStatus(reachable: Boolean) {
-            _online.value = reachable
+            // The core echoes what it was told; offline mode is the authority
+            // while it is on.
+            if (!_offlineMode.value) _online.value = reachable
         }
 
         override fun onDownloads(collections: String) {
@@ -1317,8 +1327,8 @@ object SpotifyCore {
         }
 
         fun report(reachable: Boolean) {
-            _online.value = reachable
-            handle?.setNetworkReachable(reachable)
+            systemReachable = reachable
+            applyReachability()
         }
 
         // The OS can claim a network that carries nothing: an IMS-only
@@ -1374,6 +1384,22 @@ object SpotifyCore {
         manager.registerDefaultNetworkCallback(callback, android.os.Handler(android.os.Looper.getMainLooper()))
     }
 
+    /** What the interface shows, and what the core is told about the network:
+     *  offline mode wins over whatever the system reports. */
+    private fun applyReachability() {
+        val reachable = !_offlineMode.value && systemReachable == true
+        _online.value = reachable
+        handle?.setNetworkReachable(reachable)
+    }
+
+    /** The Settings switch: stop all network use and play downloads only. */
+    fun setOfflineMode(on: Boolean) {
+        if (_offlineMode.value == on) return
+        _offlineMode.value = on
+        prefs?.edit()?.putBoolean(PREF_OFFLINE_MODE, on)?.apply()
+        applyReachability()
+    }
+
     fun init(context: Context) {
         appContext = context.applicationContext
         ListenBrainz.init(context)
@@ -1385,6 +1411,7 @@ object SpotifyCore {
             _appTheme.value = AppTheme.entries.firstOrNull { it.name == prefs.getString(PREF_APP_THEME, null) }
                 ?: AppTheme.Spotify
             _inkOutlineEnabled.value = prefs.getBoolean(PREF_INK_OUTLINE, true)
+            _offlineMode.value = prefs.getBoolean(PREF_OFFLINE_MODE, false)
             _librarySort.value = LibrarySort.entries.firstOrNull { it.name == prefs.getString(PREF_LIBRARY_SORT, null) }
                 ?: LibrarySort.Custom
             _searchHistory.value = runCatching {
@@ -2192,6 +2219,7 @@ private const val PREFS_NAME = "spotifast_prefs"
 private const val PREF_PINNED_IDS = "pinned_ids"
 private const val PREF_PINNED_RECENT_KEYS = "pinned_recent_keys"
 private const val PREF_BITRATE_KBPS = "bitrate_kbps"
+private const val PREF_OFFLINE_MODE = "offline_mode"
 private const val PREF_APP_THEME = "app_theme"
 private const val PREF_INK_OUTLINE = "ink_outline_enabled"
 private const val PREF_LIBRARY_SORT = "library_sort"

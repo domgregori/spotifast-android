@@ -63,7 +63,11 @@ fun SpotifastApp() {
         is AuthState.WaitingForBrowser -> BrowserRedirectScreen(state.url)
         // Without a network the handshake cannot finish, so say that rather
         // than spin until one appears.
-        is AuthState.Connecting -> if (online == false) OfflineScreen() else ConnectingScreen()
+        is AuthState.Connecting -> if (online == false) {
+            OfflineScreen(manual = SpotifyCore.offlineMode.collectAsState().value)
+        } else {
+            ConnectingScreen()
+        }
         is AuthState.Connected -> ConnectedApp(username = state.username)
         is AuthState.Failed -> AuthFailedScreen(state.message)
         AuthState.SignedOut -> LoginScreen()
@@ -161,7 +165,9 @@ private fun ConnectedApp(username: String) {
             containerColor = MaterialTheme.colorScheme.background,
             bottomBar = {
                 Column {
-                    if (online == false) OfflineBar()
+                    if (online == false) {
+                        OfflineBar(manual = SpotifyCore.offlineMode.collectAsState().value)
+                    }
                     MiniPlayerBar(
                         status = playbackStatus.first,
                         detail = playbackStatus.second,
@@ -436,7 +442,7 @@ private fun ConnectedApp(username: String) {
  *  screen that cannot load reads as "there is no network" rather than as
  *  something broken in the app. */
 @Composable
-private fun OfflineBar() {
+private fun OfflineBar(manual: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -446,7 +452,7 @@ private fun OfflineBar() {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "Offline",
+            text = if (manual) "Offline mode" else "Offline",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

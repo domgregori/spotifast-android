@@ -101,16 +101,20 @@ fun ConnectingScreen() {
  * own once the network returns.
  */
 @Composable
-fun OfflineScreen() {
+fun OfflineScreen(manual: Boolean = false) {
     AuthScaffold {
         Text(
-            text = "Offline",
+            text = if (manual) "Offline mode" else "Offline",
             style = MaterialTheme.typography.headlineSmall,
             color = MaterialTheme.colorScheme.onBackground,
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = "This phone has no network. The app connects on its own when it comes back.",
+            text = if (manual) {
+                "Offline mode is on in Settings. Turn it off there to connect again."
+            } else {
+                "This phone has no network. The app connects on its own when it comes back."
+            },
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,

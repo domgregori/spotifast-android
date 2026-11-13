@@ -64,6 +64,7 @@ fun SettingsScreen(onClose: () -> Unit) {
     var selected by remember { mutableStateOf(SpotifyCore.audioQuality()) }
     val appTheme by SpotifyCore.appTheme.collectAsState()
     val inkOutlineEnabled by SpotifyCore.inkOutlineEnabled.collectAsState()
+    val offlineMode by SpotifyCore.offlineMode.collectAsState()
     val context = LocalContext.current
     var appIcon by remember { mutableStateOf(currentAppIcon(context)) }
     var lbConnected by remember { mutableStateOf(ListenBrainz.isConnected) }
@@ -289,6 +290,31 @@ fun SettingsScreen(onClose: () -> Unit) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
+
+        SectionHeader("Offline")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Offline mode",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = "Play only downloaded songs. The app makes no network requests.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Switch(
+                checked = offlineMode,
+                onCheckedChange = { SpotifyCore.setOfflineMode(it) },
+            )
+        }
 
         SectionHeader("ListenBrainz")
         if (!lbConnected) {
