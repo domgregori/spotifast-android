@@ -512,8 +512,8 @@ object SpotifyCore {
                 durationMs = track.durationMs,
             ),
             positionMs = player.positionMs,
-            shuffle = false,
-            repeat = "Off",
+            shuffle = player.shuffle,
+            repeat = player.repeat,
             error = null,
         )
         publishEffectivePlayback()
@@ -1873,6 +1873,11 @@ object SpotifyCore {
 
     fun toggleShuffle() {
         val next = !(_localPlayback.value?.shuffle ?: false)
+        if (offlinePlayer?.isActive == true) {
+            offlinePlayer?.setShuffle(next)
+            publishOffline()
+            return
+        }
         _localPlayback.value = _localPlayback.value?.copy(shuffle = next)
         handle?.setShuffle(next)
     }
@@ -1882,6 +1887,11 @@ object SpotifyCore {
             "Off" -> "Context"
             "Context" -> "Track"
             else -> "Off"
+        }
+        if (offlinePlayer?.isActive == true) {
+            offlinePlayer?.setRepeat(next)
+            publishOffline()
+            return
         }
         _localPlayback.value = _localPlayback.value?.copy(repeat = next)
         handle?.setRepeat(next)

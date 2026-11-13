@@ -57,6 +57,17 @@ class OfflinePlayer(context: Context, private val onChanged: () -> Unit) {
     var index: Int = 0
         private set
 
+    var shuffle: Boolean = false
+        private set
+
+    /** "Off", "Context" (repeat all) or "Track" (repeat one), like the session. */
+    var repeat: String = "Off"
+        private set
+
+    /** The order playback walks: natural, or a shuffle fixed when it was turned
+     *  on so Previous still means the track that came before. */
+    private var order: List<Int> = emptyList()
+
     val isActive: Boolean get() = entries.isNotEmpty()
     val track: TrackItem? get() = entries.getOrNull(index)?.first
     val isPlaying: Boolean get() = isActive && player.isPlaying
@@ -73,6 +84,7 @@ class OfflinePlayer(context: Context, private val onChanged: () -> Unit) {
         val at = playable.indexOfFirst { it.first.uri == tapped }
         if (at < 0) return false
         entries = playable
+        rebuildOrder(at)
         start(at)
         return true
     }
@@ -89,10 +101,44 @@ class OfflinePlayer(context: Context, private val onChanged: () -> Unit) {
         onChanged()
     }
 
-    fun next() = advance()
+    fun next() = step(forward = true)
 
-    fun previous() {
-        if (isActive && index > 0) start(index - 1)
+    fun previous() = step(forward = false)
+
+    fun setShuffle(on: Boolean) {
+        if (shuffle == on) return
+        shuffle = on
+        rebuildOrder(index)
+        onChanged()
+    }
+
+    fun setRepeat(mode: String) {
+        if (repeat == mode) return
+        repeat = mode
+        onChanged()
+    }
+
+    /// Natural order, or the current track followed by the rest shuffled.
+    private fun rebuildOrder(current: Int) {
+        order = if (shuffle) {
+            listOf(current) + entries.indices.filter { it != current }.shuffled()
+        } else {
+            entries.indices.toList()
+        }
+    }
+
+    /// One step through [order]; repeat-all wraps, and without it the queue
+    /// simply ends.
+    private fun step(forward: Boolean) {
+        if (!isActive) return
+        val position = order.indexOf(index).takeIf { it >= 0 } ?: 0
+        val next = position + if (forward) 1 else -1
+        when {
+            next in order.indices -> start(order[next])
+            repeat == "Context" -> start(if (forward) order.first() else order.last())
+            forward -> stop()
+            else -> start(order.first())
+        }
     }
 
     fun stop() {
@@ -106,7 +152,11 @@ class OfflinePlayer(context: Context, private val onChanged: () -> Unit) {
 
     private fun advance() {
         if (!isActive) return
-        if (index + 1 < entries.size) start(index + 1) else stop()
+        if (repeat == "Track") {
+            start(index)
+            return
+        }
+        step(forward = true)
     }
 
     private fun start(at: Int) {
