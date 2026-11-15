@@ -452,6 +452,10 @@ object SpotifyCore {
      *  trusted at face value during this window. */
     private var pendingTrackUri: String? = null
 
+    /** The last playback error already shown, so the same one reported twice
+     *  by the engine (Loading, then Stopped) is only a single toast. */
+    private var lastPlaybackError: String? = null
+
     /** What [playTracks] last started *locally* playing from, if a
      *  [PlayContext] was given — persists across a natural track advance
      *  within that same context, only changing on the next [playTracks]
@@ -1128,6 +1132,14 @@ object SpotifyCore {
 
             engineState = parsed
             publishEffectivePlayback()
+            // A failed load used to fall back to the previous track with no
+            // explanation at all; the engine's own message is the only thing
+            // that says why the tap did nothing.
+            val error = parsed.error
+            if (error != null && error != lastPlaybackError) {
+                _toast.value = error
+            }
+            lastPlaybackError = error
             val newUri = engineState?.track?.uri
             if (newUri != null && newUri != previousTrack?.uri) {
                 handle?.trackAlbum(newUri)
@@ -1721,6 +1733,7 @@ object SpotifyCore {
             error = null,
         )
         publishEffectivePlayback()
+        lastPlaybackError = null
         pendingTrackUri = track.uri
         scope.launch {
             delay(8_000)

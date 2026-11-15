@@ -5584,6 +5584,16 @@ fn optional(value: String) -> Option<String> {
 
 /// Runs one recorded download to completion, records what it covered, and only
 /// then takes it off the queue: a kill during the batch leaves it queued.
+/// How many audio key refusals in a row stop a download batch: Spotify is
+/// rate limiting, and grinding every track through it would keep the limit
+/// alive instead of letting it pass.
+const AUDIO_KEY_REFUSAL_LIMIT: u32 = 3;
+
+/// Whether a download error was the audio key service refusing us.
+fn is_audio_key_refusal(error: &str) -> bool {
+    error.contains("audio key")
+}
+
 async fn run_download_job(
     engine: &Engine,
     events: &std::sync::mpsc::Sender<Event>,
@@ -5596,8 +5606,18 @@ async fn run_download_job(
     drop_tracks(dir, &offline, &gone);
 
     let total = job.uris.len() as u32;
+    // Spotify's audio key service refuses in bursts when it is rate limited.
+    // Retrying every track of a long collection through that refusal would
+    // take hours and keep the limit alive, so a few refusals in a row stop
+    // the batch. What did download is still recorded, and the rest can be
+    // asked for again once the service is answering.
+    let mut key_refusals = 0u32;
     for (index, uri) in job.uris.iter().enumerate() {
         let result = engine.download_track(uri).await;
+        match &result {
+            Err(error) if is_audio_key_refusal(error) => key_refusals += 1,
+            _ => key_refusals = 0,
+        }
         let _ = events.send(Event::DownloadProgress {
             request: job.request,
             done: index as u32 + 1,
@@ -5605,6 +5625,24 @@ async fn run_download_job(
             uri: uri.clone(),
             result,
         });
+        if key_refusals >= AUDIO_KEY_REFUSAL_LIMIT {
+            log::warn!(
+                "stopping the download of <{}>: Spotify refused {} audio keys in a row",
+                job.key,
+                key_refusals
+            );
+            let _ = events.send(Event::DownloadProgress {
+                request: job.request,
+                done: index as u32 + 1,
+                total,
+                uri: String::new(),
+                result: Err(
+                    "Spotify is refusing audio keys, so the download stopped. Try again in a few minutes."
+                        .to_string(),
+                ),
+            });
+            break;
+        }
     }
 
     // The record follows the pins, not the request: a track that could not be
@@ -9137,5 +9175,19 @@ mod tests {
                 .try_iter()
                 .any(|event| matches!(event, Event::Playback(LocalPlayback::Failed(_))))
         );
+    }
+}
+
+#[cfg(test)]
+mod download_refusal_tests {
+    use super::is_audio_key_refusal;
+
+    #[test]
+    fn audio_key_refusals_are_told_apart() {
+        assert!(is_audio_key_refusal(
+            "unable to fetch the audio key for abc: Service unavailable { audio key error }"
+        ));
+        assert!(!is_audio_key_refusal("unable to load <x>: channel closed"));
+        assert!(!is_audio_key_refusal("no audio cache"));
     }
 }
