@@ -808,9 +808,9 @@ impl CoreHandle {
             .api(ApiRequest::Contains { uris: vec![uri] });
     }
 
-    /// Checks several tracks' liked state at once — up to 50 per Spotify's
-    /// own limit on `/me/library/contains`; the caller is expected to
-    /// chunk a longer list. Each result still arrives individually via
+    /// Checks several tracks' liked state at once — up to 40 per Spotify's
+    /// own limit on `/me/library/contains` (a longer list is a 400 with no
+    /// answers at all); the caller is expected to chunk a longer list. Each result still arrives individually via
     /// `on_track_saved`, same as `check_track_saved`.
     pub fn check_tracks_saved(&self, uris: Vec<String>) {
         self.backend

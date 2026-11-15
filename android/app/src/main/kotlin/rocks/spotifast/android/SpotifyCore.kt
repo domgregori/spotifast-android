@@ -2071,7 +2071,10 @@ object SpotifyCore {
         val unknown = uris.distinct().filterNot { _likedTracks.value.containsKey(it) }
         if (unknown.isEmpty()) return
         likedChecksRequested.addAll(unknown)
-        unknown.chunked(50).forEach { chunk -> handle?.checkTracksSaved(chunk) }
+        // Spotify refuses a longer batch with 400, which used to leave every
+        // heart in a playlist of more than forty rows blank: the whole chunk
+        // failed and no answer came back.
+        unknown.chunked(40).forEach { chunk -> handle?.checkTracksSaved(chunk) }
     }
 
     /** Requests the account's top tracks; the result arrives in [topTracks]. */
