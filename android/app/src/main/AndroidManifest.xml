@@ -31,6 +31,48 @@
                     android:scheme="spotifast"
                     android:host="callback" />
             </intent-filter>
+
+            <!-- Spotifast's own links: spotifast://album/<id> and the rest of
+                 the template in android/DEEPLINKS.md. Kept separate from the
+                 callback filter so a stray link can never be taken for the
+                 authorization code. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="spotifast"
+                    android:host="track" />
+                <data
+                    android:scheme="spotifast"
+                    android:host="album" />
+                <data
+                    android:scheme="spotifast"
+                    android:host="playlist" />
+                <data
+                    android:scheme="spotifast"
+                    android:host="artist" />
+            </intent-filter>
+
+            <!-- Spotify's own links, so a shared song can land here. When the
+                 Spotify app is installed Android asks which one to open. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="spotify" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="open.spotify.com" />
+                <data
+                    android:scheme="http"
+                    android:host="open.spotify.com" />
+            </intent-filter>
         </activity>
 
         <!-- The launcher entry point lives on these aliases, not on

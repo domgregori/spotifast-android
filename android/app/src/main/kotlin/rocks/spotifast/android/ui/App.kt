@@ -32,6 +32,7 @@ import rocks.spotifast.android.CurrentSource
 import rocks.spotifast.android.LibraryItem
 import rocks.spotifast.android.ListenBrainz
 import rocks.spotifast.android.PlaybackPhase
+import rocks.spotifast.android.DeepLink
 import rocks.spotifast.android.SpotifyCore
 import rocks.spotifast.android.TrackItem
 import rocks.spotifast.android.ui.components.AddToPlaylistSheet
@@ -108,6 +109,31 @@ private fun ConnectedApp(username: String) {
     LaunchedEffect(Unit) {
         SpotifyCore.library()
         SpotifyCore.loadLibraryTree()
+    }
+
+    // A shared link opens once the app is connected: the detail screens for a
+    // playlist, album or artist, playback for a track. Panels already open are
+    // dismissed first so the link lands on its own screen instead of behind
+    // one.
+    val pendingDeepLink by SpotifyCore.deepLink.collectAsState()
+    LaunchedEffect(pendingDeepLink) {
+        val link = pendingDeepLink ?: return@LaunchedEffect
+        SpotifyCore.consumeDeepLink()
+        nowPlayingOpen = false
+        queueOpen = false
+        statsOpen = false
+        settingsOpen = false
+        devicesOpen = false
+        newReleasesOpen = false
+        when (link) {
+            is DeepLink.Playlist -> {
+                if (selectedTab == AppTab.Search) SpotifyCore.closeSearch()
+                SpotifyCore.openPlaylist(link.id)
+            }
+            is DeepLink.Album -> SpotifyCore.openAlbum(link.id)
+            is DeepLink.Artist -> SpotifyCore.openArtist(link.id)
+            is DeepLink.Track -> SpotifyCore.playUri(link.uri)
+        }
     }
 
     fun selectTab(tab: AppTab) {

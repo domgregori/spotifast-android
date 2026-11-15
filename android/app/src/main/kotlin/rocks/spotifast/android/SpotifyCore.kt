@@ -618,6 +618,11 @@ object SpotifyCore {
     private val _online = MutableStateFlow<Boolean?>(null)
     val online: StateFlow<Boolean?> = _online.asStateFlow()
 
+    private val _deepLink = MutableStateFlow<DeepLink?>(null)
+
+    /** A link waiting for the app to be ready; a null one has been handled. */
+    val deepLink: StateFlow<DeepLink?> = _deepLink.asStateFlow()
+
     private val _offlineMode = MutableStateFlow(false)
 
     /** True when the user chose offline mode: only downloads, no network. */
@@ -1549,6 +1554,26 @@ object SpotifyCore {
         _selectedPlaylist.value = null
         _selectedArtist.value = null
         _selectedAlbum.value = null
+    }
+
+    /** Takes a VIEW intent's address; unknown addresses are ignored. */
+    fun receiveDeepLink(raw: String) {
+        DeepLink.parse(raw)?.let { _deepLink.value = it }
+    }
+
+    fun consumeDeepLink(): DeepLink? = _deepLink.value.also { _deepLink.value = null }
+
+    /** Plays one track: the local copy when it is already known, the session
+     *  otherwise, so a shared track plays straight away. */
+    fun playUri(uri: String) {
+        val known = _tracks.value.values.firstNotNullOfOrNull { rows ->
+            rows.firstOrNull { it.uri == uri }
+        }
+        if (known != null) {
+            playTracks(listOf(known), 0)
+        } else {
+            handle?.playTracks(listOf(uri), 0u)
+        }
     }
 
     fun openPlaylist(id: String) {
