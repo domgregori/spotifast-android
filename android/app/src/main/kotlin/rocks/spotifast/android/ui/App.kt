@@ -396,6 +396,11 @@ private fun ConnectedApp(username: String) {
                 } else {
                     { deletePlaylistItem = menuItem }
                 },
+                onRefresh = if (menuItem.id == SpotifyCore.LIKED_SONGS_ID) {
+                    null
+                } else {
+                    { SpotifyCore.refreshPlaylist(menuItem.id) }
+                },
             )
         }
         val deleteItem = deletePlaylistItem

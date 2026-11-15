@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.outlined.FavoriteBorder
@@ -155,6 +156,7 @@ fun LibraryItemContextMenu(
     onTogglePinned: () -> Unit,
     onShare: (() -> Unit)? = null,
     onDelete: (() -> Unit)? = null,
+    onRefresh: (() -> Unit)? = null,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = rememberModalBottomSheetState()) {
         Column(modifier = Modifier.navigationBarsPadding()) {
@@ -176,6 +178,17 @@ fun LibraryItemContextMenu(
                     contentDescription = null,
                     tint = if (pinned) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+            if (onRefresh != null) {
+                // Drops this playlist's stored track list and asks Spotify for
+                // it again, for a list that has gone stale behind the cache.
+                MenuRow(label = "Refresh playlist", onClick = { onRefresh(); onDismiss() }) {
+                    Icon(
+                        imageVector = Icons.Filled.Refresh,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             if (onShare != null) {
                 MenuRow(label = "Share", onClick = { onShare(); onDismiss() }) {

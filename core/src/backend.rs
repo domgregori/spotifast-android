@@ -644,6 +644,10 @@ pub enum Command {
     /// `SignOut` already does this as part of its own cleanup; this is the
     /// same purge for a "clear cache" action on its own.
     ClearPlaylistCaches,
+    /// Forgets one playlist's cached rows so the next open fetches it fresh.
+    ClearPlaylistCache {
+        id: String,
+    },
     /// Wipes librespot's on-disk audio cache. Separate from
     /// `ClearPlaylistCaches` since it empties a different directory and
     /// doesn't touch the rootlist/library state the playlist purge rebuilds.
@@ -2054,6 +2058,18 @@ impl Worker {
                     let purge = PlaylistCacheJob::Purge(self.dirs.playlist_cache_dir());
                     if cache_writes.send(purge).await.is_err() {
                         log::warn!("unable to remove the playlist caches: writer unavailable");
+                    }
+                }
+                Command::ClearPlaylistCache { id } => {
+                    if let Some(account) = self.api.account() {
+                        let dir = self.dirs.account_playlist_cache_dir(account.as_str());
+                        let cleared = tokio::task::spawn_blocking(move || {
+                            clear_playlist_cache_files(&dir, &id)
+                        })
+                        .await;
+                        if let Ok(Err(error)) = cleared {
+                            log::warn!("unable to clear one playlist cache: {error}");
+                        }
                     }
                 }
                 Command::ClearPlaylistCaches => {
@@ -5584,6 +5600,26 @@ fn optional(value: String) -> Option<String> {
 
 /// Runs one recorded download to completion, records what it covered, and only
 /// then takes it off the queue: a kill during the batch leaves it queued.
+/// Removes one playlist's cached rows, both the legacy single file and the
+/// incremental manifest plus its row file, so the next open fetches it fresh.
+fn clear_playlist_cache_files(dir: &std::path::Path, id: &str) -> std::io::Result<()> {
+    if !id.chars().all(|c| c.is_ascii_alphanumeric()) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "not a playlist id",
+        ));
+    }
+    let _ = std::fs::remove_file(dir.join(format!("{id}.json")));
+    let _ = std::fs::remove_file(dir.join(format!("{id}.manifest.json")));
+    let rows = format!("{id}.rows.");
+    for entry in std::fs::read_dir(dir)?.flatten() {
+        if entry.file_name().to_string_lossy().starts_with(&rows) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+    Ok(())
+}
+
 /// How many audio key refusals in a row stop a download batch: Spotify is
 /// rate limiting, and grinding every track through it would keep the limit
 /// alive instead of letting it pass.

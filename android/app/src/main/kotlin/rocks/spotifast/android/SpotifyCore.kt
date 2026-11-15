@@ -1588,6 +1588,18 @@ object SpotifyCore {
         }
     }
 
+    /** Drops a playlist's stored track list and fetches it from the top. The
+     *  screen updates when the fresh first page lands; the stored list is only
+     *  used by the next open. */
+    fun refreshPlaylist(id: String) {
+        if (id == LIKED_SONGS_ID) {
+            likedSongs()
+            return
+        }
+        _toast.value = "Refreshing playlist"
+        handle?.refreshPlaylist(id)
+    }
+
     fun openPlaylist(id: String) {
         closeDetailScreens()
         _selectedPlaylist.value = id

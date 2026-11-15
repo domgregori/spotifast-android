@@ -635,6 +635,32 @@ impl CoreHandle {
         }
     }
 
+    /// Throws away one playlist's stored track list and asks for it again
+    /// from the top, ignoring the reopen window. What comes back is a fresh
+    /// first page, which replaces what the screen is showing.
+    pub fn refresh_playlist(&self, id: String) {
+        let generation = self.generation.fetch_add(1, Ordering::Relaxed);
+        self.playlist_pages.lock().unwrap().insert(
+            id.clone(),
+            PlaylistPage {
+                generation,
+                fetched_at: None,
+                next_offset: None,
+                items: Vec::new(),
+                auto_continue: false,
+            },
+        );
+        {
+            let mut backend = self.backend.lock().unwrap();
+            backend.send(Command::ClearPlaylistCache { id: id.clone() });
+            backend.api(ApiRequest::PlaylistItems {
+                id,
+                offset: 0,
+                generation,
+            });
+        }
+    }
+
     /// Fetches the next page of `id`'s tracks on top of what's already
     /// loaded — a no-op if everything is already loaded, or `id` was never
     /// opened via `playlist`. Meant for a scroll nearing the end of what's
