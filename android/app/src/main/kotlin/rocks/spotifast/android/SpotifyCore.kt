@@ -1031,6 +1031,12 @@ object SpotifyCore {
                 // "another device took over" from "that's just me".
                 localDeviceId = detail
                 publishEffectivePlayback()
+                // Anything asked for before this session was ready may have
+                // gone with a dropped request; ask again for what is still
+                // unknown so hearts on an open playlist do not stay blank.
+                val missing = likedChecksRequested.filterNot { _likedTracks.value.containsKey(it) }
+                likedChecksRequested.clear()
+                if (missing.isNotEmpty()) checkLikedBatch(missing)
             }
             // The playback grant's browser flow (reusing WaitingForBrowser) is
             // done; return to the library rather than leaving the spinner up.
@@ -2056,8 +2062,15 @@ object SpotifyCore {
      *  show a liked heart without each row checking for itself. Already-known
      *  uris are skipped; Spotify's `/me/library/contains` takes at most 50
      *  ids per call, so a longer list is chunked. */
+    /** URIs whose liked state was asked for but not answered yet. A request
+     *  dropped by a session change used to leave a playlist's hearts empty for
+     *  the rest of the process, since nothing asked again. */
+    private val likedChecksRequested = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+
     fun checkLikedBatch(uris: List<String>) {
         val unknown = uris.distinct().filterNot { _likedTracks.value.containsKey(it) }
+        if (unknown.isEmpty()) return
+        likedChecksRequested.addAll(unknown)
         unknown.chunked(50).forEach { chunk -> handle?.checkTracksSaved(chunk) }
     }
 
